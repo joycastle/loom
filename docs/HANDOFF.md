@@ -185,10 +185,12 @@ loom doc add <路径…> [--to 类目] [--tags a,b] [--title T] [--move] [--push
                                 #   docx→纯标准库提取文本、pdf→pdftotext 提取(有则用),都成可检索 .md + 留原件;
                                 #   pptx/xlsx 等→原样拷(CLI 提示未扫描)。
 loom doc ls                     # 列 notes/ 下所有文档
-loom data add <csv|xlsx…> [--to 主题] [--code a.sql b.py] [--used-by 文档] [--tags] [--push]
+loom data add <csv|xlsx…> [--to 主题] [--kind source|derived] [--from 上游…]
+                          [--code a.sql b.py] [--used-by 文档] [--tags] [--push]
                                 # 数据文件纳入:蒸馏「数据卡」(列/类型/统计/样例,上云可检索)+
-                                #   原始拷进 主题/_data/(gitignore 本地留存、不上云)+ 存产出代码
-                                #   (sql/py…,嵌入卡片可检索)。把 数据↔代码↔文档 钉成一个分析单元。
+                                #   原始拷进 主题/_data/(gitignore 本地留存、不上云)+ 存产出代码。
+                                #   血缘:--kind 区分原始(拉取)/派生(本地加工);派生用 --from 记上游输入
+                                #   (inputs [[...]]),配 --code 构成 输入→(代码)→本数据。数据↔代码↔文档 成单元。
 loom doc triage                 # 【AI 辅助归类】打印清单(现有类目/标签 + inbox 待分类文档头部,已打码)
 loom doc triage --apply <tsv>   #   应用 AI 给的映射(每行 相对路径<TAB>类目<TAB>标签),移到类目 + 更新标签
 

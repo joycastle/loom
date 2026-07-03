@@ -188,7 +188,8 @@ def cmd_data(cfg, a):
         return
     ok = 0
     for p in a.path:
-        dest, msg = dataset.add(cfg, p, to=a.to, code=a.code, used_by=a.used_by, tags=a.tags)
+        dest, msg = dataset.add(cfg, p, to=a.to, code=a.code, used_by=a.used_by,
+                                tags=a.tags, kind=a.kind, frm=getattr(a, "frm", None))
         print(("  ✓ " if dest else "  · ") + msg)
         ok += 1 if dest else 0
     print(f"数据入库 {ok}/{len(a.path)} 个 → {config.notes_dir(cfg)}/{a.to or 'data'}"
@@ -311,6 +312,8 @@ def build_parser():
     sp.add_argument("path", nargs="*")    # csv/xlsx 数据文件
     sp.add_argument("--to")
     sp.add_argument("--code", nargs="*")  # 产出/相关代码(sql/py/…)
+    sp.add_argument("--kind", choices=("source", "derived"))   # 原始 / 派生
+    sp.add_argument("--from", dest="frm", nargs="*")           # 派生数据的上游输入(血缘)
     sp.add_argument("--used-by", dest="used_by")
     sp.add_argument("--tags")
     sp.add_argument("--push", action="store_true")

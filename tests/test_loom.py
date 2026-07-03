@@ -399,6 +399,27 @@ class DatasetTest(unittest.TestCase):
         self.assertIn("```python", card)                  # 按 .py 高亮
         self.assertIn("produced_by: [pull.py]", card)
 
+    def test_source_vs_derived_and_lineage(self):
+        raw = self._mk("raw_events.csv", "id,v\n1,2\n")
+        proc = self._mk("daily_agg.csv", "day,total\n2026-01-01,5\n")
+        tp = self._mk("agg.py", "df.groupby('day').sum()")
+        # 原始(拉取):无 --from → kind=source
+        d1, _ = self.dataset.add(self.cfg, raw, to="t", code=[self._mk("q.sql", "SELECT *")])
+        self.assertIn("kind: source", _read(d1))
+        # 派生(本地加工):有 --from → kind=derived + 血缘
+        d2, _ = self.dataset.add(self.cfg, proc, to="t", frm=[raw], code=[tp])
+        card = _read(d2)
+        self.assertIn("kind: derived", card)
+        self.assertIn("inputs: [[[raw_events]]]", card)   # 上游血缘链
+        self.assertIn("produced_by: [agg.py]", card)
+        self.assertIn("**派生数据**", card)
+        self.assertIn("[[raw_events]] —", card)            # 血缘一行
+
+    def test_explicit_kind_override(self):
+        p = self._mk("m.csv", "a\n1\n")
+        d, _ = self.dataset.add(self.cfg, p, to="t", kind="derived")   # 强制 derived 即使无 from
+        self.assertIn("kind: derived", _read(d))
+
     def test_rejects_non_data(self):
         p = self._mk("note.md", "# hi")
         dest, msg = self.dataset.add(self.cfg, p, to="x")

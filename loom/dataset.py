@@ -109,20 +109,29 @@ _LANG = {".sql": "sql", ".py": "python", ".sh": "bash", ".r": "r", ".R": "r",
 
 
 def _card(name, src, ext, nrows, capped, cols, sample, size, date, tags,
-          code_files, used_by, raw_rel, redact):
+          code_files, used_by, raw_rel, kind, inputs, redact):
     tg = "[" + ", ".join(tags) + "]" if tags else "[]"
-    L = ["---", f"title: {name}", "type: loom-datacard", f"source: {src}",
+    L = ["---", f"title: {name}", "type: loom-datacard", f"kind: {kind}",
+         f"source: {src}",
          f"rows: {'≥' if capped else ''}{nrows} · cols: {len(cols)} · size: {size}",
          f"date: {date}", f"tags: {tg}", f"raw: {raw_rel}"]
+    if inputs:                                        # 血缘:上游数据
+        L.append("inputs: [" + ", ".join(f"[[{i}]]" for i in inputs) + "]")
     if code_files:
         L.append("produced_by: [" + ", ".join(c["fname"] for c in code_files) + "]")
     if used_by:
         L.append(f"used_by: [[{used_by}]]")
-    L += ["---", "",
-          f"> 数据卡。原始 {ext[1:]} 在 `{raw_rel}`(本地留存、不上云);"
-          + (f"产出/相关代码见 {', '.join('`' + c['fname'] + '`' for c in code_files)}。"
-             if code_files else ""), "",
-          f"## 列({len(cols)})", "", "| 列 | 类型 | 统计 |", "|---|---|---|"]
+    L += ["---", ""]
+    if kind == "derived":                             # 血缘一行:输入 →(代码)→ 本数据
+        via = "、".join("`" + c["fname"] + "`" for c in code_files) or "(未记代码)"
+        frm = "、".join(f"[[{i}]]" for i in inputs) or "(未记输入)"
+        L += [f"> **派生数据**。血缘:{frm} —({via})→ 本数据。原始产物在 "
+              f"`{raw_rel}`(本地不上云)。", ""]
+    else:
+        L += [f"> **原始数据**。在 `{raw_rel}`(本地留存、不上云);"
+              + (f"拉取代码见 {', '.join('`' + c['fname'] + '`' for c in code_files)}。"
+                 if code_files else ""), ""]
+    L += [f"## 列({len(cols)})", "", "| 列 | 类型 | 统计 |", "|---|---|---|"]
     for c, t, s in cols:
         L.append(f"| {c} | {t} | {s} |")
     if sample:
@@ -138,9 +147,14 @@ def _card(name, src, ext, nrows, capped, cols, sample, size, date, tags,
     return util.redact(text) if redact else text
 
 
-def add(cfg, datafile, to=None, code=None, used_by=None, tags=None):
-    """纳入一个数据文件:写数据卡(上云)+ 拷原始到 _data/(gitignore)+ 存产出代码(sql/py/…)。"""
+def add(cfg, datafile, to=None, code=None, used_by=None, tags=None, kind=None, frm=None):
+    """纳入一个数据文件:数据卡(上云)+ 原始到 _data/(gitignore)+ 产出代码 + 血缘。
+
+    kind: source(原始/拉取)| derived(本地加工);未指定则有 --from 视为 derived,否则 source。
+    frm:  派生数据的上游输入(文件/名字),记为 inputs 血缘链。"""
     redact = cfg.get("redact", True)
+    inputs = [_slug(os.path.splitext(os.path.basename(util.expand(x)))[0]) for x in (frm or [])]
+    kind = kind or ("derived" if inputs else "source")
     tags = [t.strip() for t in (tags or "").split(",") if t.strip()]
     src = os.path.abspath(util.expand(datafile))
     if not os.path.isfile(src):
@@ -186,10 +200,11 @@ def add(cfg, datafile, to=None, code=None, used_by=None, tags=None):
         code_files.append({"fname": fname, "lang": _LANG.get(cext, "text"), "text": text})
 
     card = _card(stem, src, ext, nrows, capped, cols, sample, size, date, tags,
-                 code_files, used_by, raw_rel, redact)
+                 code_files, used_by, raw_rel, kind, inputs, redact)
     card_path = os.path.join(topic_dir, stem + ".card.md")
     with open(card_path, "w", encoding="utf-8") as f:
         f.write(card)
-    return card_path, (f"数据卡 {os.path.relpath(card_path, config.vault_dir(cfg))} "
+    return card_path, (f"数据卡[{kind}] {os.path.relpath(card_path, config.vault_dir(cfg))} "
                        f"({nrows} 行 × {len(cols)} 列;原始入 _data/"
+                       + (f";←{len(inputs)} 输入" if inputs else "")
                        + (f";+{len(code_files)} 代码" if code_files else "") + ")")
