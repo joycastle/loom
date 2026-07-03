@@ -1,20 +1,57 @@
 # -*- coding: utf-8 -*-
-"""按天渲染 markdown 日记(Basic Memory / Obsidian 友好),保留手写区。"""
+"""按天渲染 markdown 日记(Basic Memory / Obsidian 友好)。
+
+自动区与手写区**物理分离**为两个文件,消灭「重渲染吃掉手写正文」的不可逆风险:
+  {date}.md         自动日志,每次 sync 整体重写(可再生)
+  {date}.notes.md   手写笔记,loom **永不覆盖**(只在缺失时建空模板 / 从旧哨兵迁移)
+日志末尾用 Obsidian 内嵌 `![[{date}.notes]]` 把笔记显示在一起;两文件对 Basic Memory
+也各自独立可检索。
+"""
 import os
 from collections import defaultdict
 
 from . import config
 
-NOTES_MARK = "<!-- ✍️ 手写区(loom sync 不会覆盖下方内容)-->"
+# 旧版:手写正文曾内联在 {date}.md 的此哨兵之下。保留用于一次性迁移。
+LEGACY_MARK = "<!-- ✍️ 手写区(loom sync 不会覆盖下方内容)-->"
 
 
-def _preserve_notes(path):
-    if os.path.exists(path):
-        txt = open(path, encoding="utf-8").read()
-        idx = txt.find(NOTES_MARK)
-        if idx != -1:
-            return txt[idx:]
-    return NOTES_MARK + "\n\n"
+def _notes_stem(date):
+    return f"{date}.notes"
+
+
+def _notes_template(date):
+    return (f"---\ndate: {date}\ntype: loom-notes\ntags: [loom, notes]\n---\n\n"
+            f"# {date} 手写笔记\n\n"
+            f"<!-- 这个文件 loom 永不覆盖,随手记在这里。 -->\n")
+
+
+def _ensure_notes_file(jdir, date):
+    """保证 {date}.notes.md 存在且**绝不覆盖**已有内容。
+
+    首次建立时:若旧 {date}.md 的哨兵下有手写正文,则迁移过来;否则写空模板。
+    返回内嵌用的文件名 stem(如 '2026-07-03.notes')。
+    """
+    stem = _notes_stem(date)
+    notes_path = os.path.join(jdir, f"{stem}.md")
+    if os.path.exists(notes_path):
+        return stem  # 已存在 → 一个字都不动
+
+    migrated = ""
+    legacy_path = os.path.join(jdir, f"{date}.md")
+    if os.path.exists(legacy_path):
+        old = open(legacy_path, encoding="utf-8").read()
+        i = old.find(LEGACY_MARK)
+        if i != -1:
+            below = old[i + len(LEGACY_MARK):].strip()
+            if below:
+                migrated = below
+
+    with open(notes_path, "w", encoding="utf-8") as f:
+        f.write(_notes_template(date))
+        if migrated:
+            f.write("\n" + migrated + "\n")
+    return stem
 
 
 def build(cfg, by_id):
@@ -65,8 +102,13 @@ def build(cfg, by_id):
                         span = f"{d['start'][11:16]}–{d['end'][11:16]} · "
                     lines.append(f"- **{e['tool']}** {span}{e['summary']}  \n  ↳ `{e['ref']}`")
                 lines.append("")
+
+        stem = _ensure_notes_file(jdir, date)
+        lines += ["---", "",
+                  f"> ✍️ **手写笔记**(loom 永不覆盖):[[{stem}]]", "",
+                  f"![[{stem}]]", ""]
+
         path = os.path.join(jdir, f"{date}.md")
-        lines.append(_preserve_notes(path).rstrip("\n") + "\n")
         with open(path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
         written += 1

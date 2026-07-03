@@ -62,7 +62,7 @@
     cli.py                 # argparse 分发 + init 引导 + 配置子命令
     config.py              # 读写 config.json + 增删助手 + 飞书 URL 解析
     store.py               # entries.jsonl 按 id upsert(load/save/upsert)
-    render.py              # 按天渲染 markdown,保留「手写区」哨兵
+    render.py              # 按天渲染 markdown;自动区({date}.md)与手写区({date}.notes.md)物理分离
     util.py                # 路径/LOOM_HOME、load_env、http_json(urllib)、read_sqlite(copy-to-temp 防锁)、ms_to_iso
     collectors/
       __init__.py          # REGISTRY: name -> collect(cfg,since)->[entry];加源在此注册
@@ -83,7 +83,13 @@
   "detail":  { ... }                 # 工具特有:改动量 / 起止时间 / 状态 / thread_id 等
 }
 ```
-**渲染分组**:日记按 `date → project` 分组;每项目下分「提交 / 需求 / 飞书记事 / AI 会话」小节。`render._preserve_notes` 用哨兵 `<!-- ✍️ 手写区 -->` 保护哨兵以下的**手写正文**,`sync` 只重写自动区块。
+**渲染分组**:日记按 `date → project` 分组;每项目下分「提交 / 需求 / 飞书记事 / AI 会话」小节。
+
+**自动区 / 手写区物理分离**(消灭「重渲染吃掉手写正文」的不可逆风险):
+- `{date}.md`:自动日志,每次 `sync` **整体重写**(可再生)。
+- `{date}.notes.md`:手写笔记,loom **永不覆盖**——`render._ensure_notes_file` 只在文件缺失时建空模板,或从旧版 `{date}.md` 哨兵(`LEGACY_MARK`)下的遗留正文**一次性迁移**过来;已存在则一个字都不动。
+- `{date}.md` 末尾用 Obsidian 内嵌 `![[{date}.notes]]` 把笔记显示在一起;两文件对 Basic Memory 也各自独立可检索。
+- (旧版是把手写正文内联在 `{date}.md` 哨兵之下、随重渲染保留 —— 现已废弃,因为渲染 bug 会不可逆地吃掉手写正文。)
 
 **扩展新源**:在 `collectors/` 加 `xxx.py` 实现 `collect(cfg, since)->[entry]`,在 `__init__.py` 注册即可;CLI 的 `--source` 选项自动含它。
 
