@@ -1,0 +1,34 @@
+{
+  "owner": {"name": "你的名字", "feishu_name": "飞书里的负责人名"},
+  "identities": {
+    "emails": ["you@company.com"],
+    "names": ["your-git-name"]
+  },
+  "default_since_days": 100,
+  "repos": [
+    "/absolute/path/to/repo-a",
+    "/absolute/path/to/repo-b"
+  ],
+  "sources": {
+    "claude":    {"enabled": true, "projects_dir": "~/.claude/projects"},
+    "codex":     {"enabled": true, "home": "~/.codex"},
+    "cursor":    {"enabled": true, "app_support": "~/Library/Application Support/Cursor"},
+    "codebuddy": {"enabled": true, "app_support": "~/Library/Application Support/CodeBuddy"}
+  },
+  "feishu": {
+    "enabled": false,
+    "base_url": "https://open.feishu.cn/open-apis",
+    "bitables": [
+      {
+        "name": "数据中台需求池",
+        "app_token": "bascn...",
+        "table_id": "tbl...",
+        "person_field": "需求负责人",
+        "date_field": "预计完成时间",
+        "title_field": "需求描述",
+        "status_field": "需求状态"
+      }
+    ]
+  },
+  "vault": {"dir": "~/.worklog/vault", "remote": ""}
+}

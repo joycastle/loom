@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.DS_Store
+# 个人配置/数据/凭证从不进产品仓(它们在 ~/.worklog/)
+.worklog/
+.env

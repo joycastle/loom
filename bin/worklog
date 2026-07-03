@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""worklog 瘦入口:把产品仓根加入 sys.path,再跑 worklog.cli.main。
+支持软链到 PATH(会解析真实路径定位包)。"""
+import os
+import sys
+
+_real = os.path.realpath(__file__)
+_repo_root = os.path.dirname(os.path.dirname(_real))  # <repo>/bin/worklog -> <repo>
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+
+from worklog.cli import main  # noqa: E402
+
+if __name__ == "__main__":
+    main()
