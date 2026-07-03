@@ -47,7 +47,7 @@
 - 采集入库前对自由文本(summary / detail.body / detail.opening 等)跑 `util.redact` 抹掉 token/密钥值(`cfg.redact` 默认 true;私有可信仓可设 false)——`entries.jsonl` 与 vault 两处都不留机密,推云端天然安全。覆盖:私钥块 / JWT / AWS / gh / slack / sk- / bearer / URL 密码 / `键=值`(键像密钥)。原文永远在 transcript/git,回链可查。
 - `~/.loom/data/entries.jsonl`:归一化条目(可再生,不必手改)。
 - `~/.loom/data/index.sqlite`:从 entries 派生的 FTS5 检索索引(可删可再生,`loom search` 会自动重建)。
-- `~/.loom/vault/journal/*.md`:按天日记,是**独立 git 仓** → push 私有 GitHub;也是 Basic Memory / Obsidian 的索引对象。
+- `~/.loom/vault/`:**独立 git 仓** → push 私有 GitHub(`loom-vault`),Basic Memory / Obsidian 的索引对象。分区:`journal/*.md`(自动生成,勿手改)+ `notes/`(手写文档区,loom 从不碰)+ 仓根 `README.md`(说明布局)。
 - 环境变量 **`LOOM_HOME`** 可覆盖 `~/.loom`(多实例 / 测试用)。
 
 ---
@@ -194,10 +194,11 @@ loom source enable|disable <name>
    - 然后 `loom feishu add <url>` + 把 `feishu.enabled` 置 true,用一张表实拉验证(可用已知的「迪仔负责」条数交叉校验)。
 2. **独立飞书机器人(打点写表)** — 姊妹组件,尚未实现。「话题 @ 机器人 → 总结 → 写多维表格(带原消息回链)」。蓝图见 `docs/loom-bot-design.md`;写表的字段名(负责人/日期列)须对齐上面 `feishu` collector 的 `person_field`/`date_field`。
 3. ✅ **cursor 项目归属修正(已完成)**:改用 `workspaceIdentifier.uri.fsPath`,79/80 正确归属(见 §4 cursor)。
-4. **云端 / 定时 / 检索底座**(均未做,**需用户点头**):
-   - 云端:`cd ~/.loom/vault && gh repo create loom-vault --private --source=. --push`,并 `loom sync --push`;
-   - 每日:crontab `0 19 * * * /opt/homebrew/bin/loom sync --push`(或 launchd);
-   - Basic Memory:`uvx basic-memory project add loom ~/.loom/vault/journal` + 各 AI 工具接 MCP。
+4. **云端 / 定时 / 检索底座**:
+   - ✅ **云端已建**:私有仓 `github.com/dizai6266/loom-vault`,`main` 跟踪 `origin/main`,`loom sync --push` 已验证上云。
+   - **每日(待)**:crontab `0 19 * * * /opt/homebrew/bin/loom sync --push`(或 launchd);
+   - **Basic Memory(待)**:`uvx basic-memory project add loom ~/.loom/vault`(指向仓根,日记 + `notes/` 一起检索)+ 各 AI 工具接 MCP。
+6. **散碎文档收编**:vault 已分区 —— `journal/`(自动,勿手改)vs `notes/`(手写文档,loom 不碰)。把原先散落的笔记/设计迁进 `vault/notes/` 即可随 vault 上云 + 被 Basic Memory 检索。
 5. ✅ **codebuddy 已查清(无本地历史)**:三处本地存储实测全空,存服务端;采集器已探测已知位置并优雅降级(见 §4 codebuddy)。仅当未来某机器有本地会话再补映射。
 
 ---
@@ -212,7 +213,7 @@ loom source enable|disable <name>
 5. 末尾打印云端 / cron / Basic Memory 的可选命令。
 
 **各 AI 工具接 Basic Memory MCP**(共享同一批 vault markdown):
-- 先 `uvx basic-memory project add loom ~/.loom/vault/journal`;
+- 先 `uvx basic-memory project add loom ~/.loom/vault`(指向仓根:日记 + `notes/` 手写文档一起检索);
 - Claude Code:`claude mcp add basic-memory -- uvx basic-memory mcp`;
 - Cursor:`~/.cursor/mcp.json` 加 `{"mcpServers":{"basic-memory":{"command":"uvx","args":["basic-memory","mcp"]}}}`;
 - Codex:`~/.codex/config.toml` 加 `[mcp_servers.basic-memory]\ncommand="uvx"\nargs=["basic-memory","mcp"]`。

@@ -71,7 +71,7 @@ loom 只做**拉取式读多维表格**这一条飞书链路(scope 仅需 `bitab
 cd ~/.loom/vault && gh repo create loom-vault --private --source=. --remote=origin --push
 # 之后 loom sync --push 自动上云
 
-uvx basic-memory project add loom ~/.loom/vault/journal   # 语义检索
+uvx basic-memory project add loom ~/.loom/vault   # 指向仓根:日记 + 手写文档(notes/)一起语义检索
 # 各 AI 工具接 Basic Memory MCP:见 adapters(claude/cursor/codex 的 mcp 配置)
 ```
 
