@@ -69,7 +69,10 @@
     collectors/
       __init__.py          # REGISTRY: name -> collect(cfg,since)->[entry];加源在此注册
       git.py claude.py codex.py cursor.py codebuddy.py feishu.py
+  tests/test_loom.py       # 纯标准库 unittest;跑:python3 -m unittest discover tests
 ```
+
+**测试**:`python3 -m unittest discover tests`(或 `-m unittest tests.test_loom`)。零外部依赖。测试**必须**在导入 loom 前把 `LOOM_HOME` 指向临时目录(`util` 在导入时就固化了 `HOME`/`DATA_PATH`/`INDEX_PATH`);`test_loom.py` 顶部已这么做。覆盖:store upsert/排序、config(飞书 URL 解析 / add_bitable 去重 / 非 git 仓拒绝 / 默认键合并)、cursor `_project` 归属优先级、render 手写区不被覆盖 + 旧哨兵迁移、search FTS/LIKE 兜底/过滤/自动重建。
 
 **统一条目 schema**(所有采集器产出同构,render/store 只认这个):
 ```python
@@ -122,9 +125,10 @@
 - 项目归属(`_project`):首选 `workspaceIdentifier.uri.fsPath`(打开会话时的工作区根,覆盖最广),次选 `trackedGitRepos[].repoPath`,两者都跳过临时 worktree(`/private/tmp/`、`/scratchpad/`、`/wt-`)。都无 → `"cursor"` 桶(无文件夹的临时对话,合理)。
 - ✅ **已修(原「60/80 落 cursor 桶」)**:旧 `_project_from_repos` 只看 `trackedGitRepos`,而 360 个 composer 里仅 20 个有该字段;真实工作区在 `workspaceIdentifier.uri.fsPath`。改用它后实测 **79/80 正确归到真实项目**,仅 1 条为无文件夹对话。
 
-### codebuddy(占位)
-- 读:`CodeBuddy/User/globalStorage/state.vscdb` 的 `interactive.sessions`。本机为空 → log 一句并返回 `[]`(其产出已由 git 脊柱覆盖)。
-- 待办:有实际会话数据的机器上,确认结构后在此按 codex/cursor 同构映射(已留 TODO hook)。
+### codebuddy(腾讯 coding-copilot;本地无历史)
+- **已查清(2026-07)**:会话历史**不落本地**,三处本地存储实测全空 —— globalStorage 的 `interactive.sessions`=`[]`、专用 `codebuddy-sessions.vscdb` 无行、每个 `workspaceStorage/*/state.vscdb` 的 `history.entries`/chat memento=`[]`/`{}`。即 CodeBuddy 存服务端,git 脊柱已覆盖其产出。
+- 采集器已探测这三处已知位置,有数据则汇总(结构待补映射),无则 log 一句返回 `[]`。
+- 待办:仅当某机器/某版本确有本地会话时,按 codex/cursor 同构映射(TODO hook 在模块注释旁)。
 
 ### feishu(多维表格 / 需求池)
 - 读:`cfg.feishu.bitables` 每张表 `bitable/v1/apps/{app_token}/tables/{table_id}/records` 分页全量。
@@ -190,7 +194,7 @@ loom source enable|disable <name>
    - 云端:`cd ~/.loom/vault && gh repo create loom-vault --private --source=. --push`,并 `loom sync --push`;
    - 每日:crontab `0 19 * * * /opt/homebrew/bin/loom sync --push`(或 launchd);
    - Basic Memory:`uvx basic-memory project add loom ~/.loom/vault/journal` + 各 AI 工具接 MCP。
-5. **codebuddy 解析**:待有本地会话数据的机器上确认结构后补(已留 TODO hook)。
+5. ✅ **codebuddy 已查清(无本地历史)**:三处本地存储实测全空,存服务端;采集器已探测已知位置并优雅降级(见 §4 codebuddy)。仅当未来某机器有本地会话再补映射。
 
 ---
 
