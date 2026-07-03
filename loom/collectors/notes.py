@@ -11,9 +11,10 @@ import os
 import re
 
 from .. import config, util
-from ..intake import _parse_frontmatter
+from ..intake import _parse_frontmatter, CODE_EXT
 
 CONTENT_CAP = 200_000
+INDEX_EXT = (".md",) + CODE_EXT     # 索引 markdown + 代码/脚本(sql/py…),让 pull recipe 可检索
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
@@ -28,7 +29,7 @@ def collect(cfg, since):
     for dp, dns, fns in os.walk(nd):
         dns[:] = [d for d in dns if d != "_archive" and not d.startswith(".")]
         for fn in fns:
-            if not fn.lower().endswith(".md"):
+            if not fn.lower().endswith(INDEX_EXT):
                 continue
             fp = os.path.join(dp, fn)
             rel = os.path.relpath(fp, nd)

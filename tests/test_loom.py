@@ -563,6 +563,47 @@ class IntakeTest(unittest.TestCase):
         (dest, _), = self.intake.ingest(self.cfg, [p])
         self.assertEqual(_read(dest).count("---\ntitle:"), 1)  # 不重复注入
 
+    def test_code_file_ingested_and_redacted(self):
+        p = self._mk("cohort_pull.sql", "SELECT * FROM t\n-- token=ghp_ABCDEFGHIJKLMNOPQRSTUV012345")
+        (dest, _), = self.intake.ingest(self.cfg, [p], to="pulls")
+        self.assertTrue(dest.endswith(".sql"))            # 保留扩展名
+        body = _read(dest)
+        self.assertIn("SELECT * FROM t", body)
+        self.assertIn("已打码", body)                      # 代码里的密钥被抹
+        self.assertNotIn("ghp_ABCDEFGHIJKLMNOPQRSTUV", body)
+
+    def test_dir_recursion_includes_code_excludes_data(self):
+        d = tempfile.mkdtemp(prefix="loom-scratch-")
+        for name, txt in (("q.sql", "SELECT 1"), ("agg.py", "print(1)"),
+                          ("out.csv", "a\n1"), ("readme.md", "# x")):
+            with open(os.path.join(d, name), "w") as f:
+                f.write(txt)
+        names = {os.path.basename(dest) for dest, _ in self.intake.ingest(self.cfg, [d], to="p") if dest}
+        self.assertIn("q.sql", names)          # 代码随目录进
+        self.assertIn("agg.py", names)
+        self.assertIn("readme.md", names)
+        self.assertNotIn("out.csv", names)     # 数据仍不随目录进
+
+    def test_ipynb_rendered_to_narrative_md(self):
+        nb = {"metadata": {"language_info": {"name": "python"}}, "cells": [
+            {"cell_type": "markdown", "source": ["# 分析标题"]},
+            {"cell_type": "code", "source": ["df = spark.sql('SELECT 1')"],
+             "outputs": [{"output_type": "execute_result",
+                          "data": {"text/plain": ["   col\n0    1"]}}]},
+            {"cell_type": "code", "source": ["df.show()"],
+             "outputs": [{"output_type": "display_data", "data": {"image/png": "base64..."}}]},
+        ]}
+        p = self._mk("nb.ipynb", json.dumps(nb))
+        (dest, _), = self.intake.ingest(self.cfg, [p], to="nb")
+        self.assertTrue(dest.endswith(".md"))
+        body = _read(dest)
+        self.assertIn("# 分析标题", body)                  # markdown 单元
+        self.assertIn("```python", body)                  # 代码单元
+        self.assertIn("spark.sql", body)
+        self.assertIn("> 结果:", body)                     # 查询结果块
+        self.assertIn("col", body)
+        self.assertIn("[图表]", body)                      # 图输出被标注而非嵌入
+
     def test_docx_extracted_to_searchable_md_and_redacted(self):
         import zipfile
         ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"

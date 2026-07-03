@@ -5,6 +5,7 @@
 `notes/<类目>`(默认 `inbox/`,先收后归类)。文本类抽正文;docx/pdf 提取文本成可检索
 .md(并留原件保真);其余二进制原样拷。
 """
+import json
 import os
 import re
 import shutil
@@ -17,9 +18,10 @@ from . import config, util
 
 TEXT_EXT = (".md", ".txt", ".rst", ".org", ".markdown")   # 补 frontmatter + 打码 → .md
 TEXTDATA_EXT = (".json", ".yaml", ".yml", ".csv", ".tsv", ".toml")  # 原样存但打码(仍是文本)
-EXTRACTABLE_EXT = (".docx", ".pdf")   # 提取文本→可检索 .md(打码)+ 留原件保真
+CODE_EXT = (".sql", ".py", ".sh", ".r", ".js", ".ts", ".scala")  # 代码/脚本:原样存 + 打码 + 可检索
+EXTRACTABLE_EXT = (".docx", ".pdf", ".ipynb")  # 提取文本→可检索 .md(打码)+ 留原件保真
 BINARY_EXT = (".pptx", ".xlsx", ".numbers", ".pages", ".key", ".parquet")  # 原样拷,无法提取/打码
-DOC_EXT = TEXT_EXT + TEXTDATA_EXT + EXTRACTABLE_EXT + BINARY_EXT
+DOC_EXT = TEXT_EXT + TEXTDATA_EXT + CODE_EXT + EXTRACTABLE_EXT + BINARY_EXT
 SKIP_DIRS = {"node_modules", ".git", "venv", ".venv", "__pycache__", "site-packages",
              "dist", "build", ".next", "target", "vendor", ".cache"}
 _H1 = re.compile(r"^#\s+(.+)")
@@ -51,8 +53,68 @@ def _pdf_text(path):
         return ""
 
 
+def _nb_outputs(outputs, max_lines=30):
+    """从 notebook 单元输出提取文本结果:流/执行结果的 text/plain(截断);图丢弃标注。"""
+    chunks = []
+    for o in outputs or []:
+        t = o.get("output_type")
+        txt = ""
+        if t == "stream":
+            txt = o.get("text", "")
+        elif t in ("execute_result", "display_data"):
+            data = o.get("data", {})
+            if "text/plain" in data:
+                txt = data["text/plain"]
+            elif any(k.startswith("image/") for k in data):
+                txt = "[图表]"
+        elif t == "error":
+            txt = "\n".join(o.get("traceback", [])) or o.get("evalue", "")
+        if isinstance(txt, list):
+            txt = "".join(txt)
+        txt = txt.strip()
+        if txt and txt != "[图表]":
+            lines = txt.splitlines()
+            if len(lines) > max_lines:
+                txt = "\n".join(lines[:max_lines]) + f"\n… (+{len(lines) - max_lines} 行)"
+            chunks.append("> 结果:\n```\n" + txt + "\n```")
+        elif txt:
+            chunks.append("> 结果:[图表]")
+    return "\n".join(chunks)
+
+
+def _ipynb_text(path):
+    """把 .ipynb 渲染成 narrative markdown:md 单元原样 + 代码块 + 截断的结果块。"""
+    try:
+        nb = json.loads(_read(path))
+    except Exception:
+        return ""
+    lang = (nb.get("metadata", {}).get("language_info", {}) or {}).get("name", "python")
+    out = []
+    for cell in nb.get("cells", []):
+        src = cell.get("source", "")
+        if isinstance(src, list):
+            src = "".join(src)
+        src = src.strip()
+        if cell.get("cell_type") == "markdown":
+            if src:
+                out.append(src)
+        elif cell.get("cell_type") == "code":
+            if src:
+                out.append(f"```{lang}\n{src}\n```")
+            res = _nb_outputs(cell.get("outputs", []))
+            if res:
+                out.append(res)
+    return "\n\n".join(out).strip()
+
+
 def _extract_text(path, ext):
-    return _docx_text(path) if ext == ".docx" else _pdf_text(path) if ext == ".pdf" else ""
+    if ext == ".docx":
+        return _docx_text(path)
+    if ext == ".pdf":
+        return _pdf_text(path)
+    if ext == ".ipynb":
+        return _ipynb_text(path)
+    return ""
 
 
 def _read(path):
@@ -121,7 +183,7 @@ def _one(cfg, src, to, tags, title, move, redact):
                 f.write(_frontmatter(title or _title_of(body, stem), date,
                                      tags, src, status))
                 f.write(body if body.endswith("\n") else body + "\n")
-    elif ext in TEXTDATA_EXT:                        # 数据文件:保留原扩展名,仍打码(值级)
+    elif ext in TEXTDATA_EXT or ext in CODE_EXT:     # 数据/代码:保留原扩展名,仍打码
         dest = _uniq(os.path.join(dest_dir, _slug(os.path.basename(src))))
         with open(src, encoding="utf-8", errors="replace") as f:
             data = f.read()
@@ -292,9 +354,9 @@ def ingest(cfg, paths, to=None, tags=None, title=None, move=False):
     redact = cfg.get("redact", True)
     tags = [t.strip() for t in (tags or "").split(",") if t.strip()]
     results = []
-    # 目录递归**只收文档类**(md/txt/docx/pdf),不扫数据文件(csv/json/xlsx…),
-    # 免得把一个分析项目里几十个数据 CSV 一起拖进来;数据文件请显式点名单个文件。
-    dir_ext = TEXT_EXT + EXTRACTABLE_EXT
+    # 目录递归收文档 + 代码(md/txt/docx/pdf/sql/py…),但**不扫数据文件**(csv/json/xlsx),
+    # 免得把一个分析项目里几十个数据 CSV 一起拖进来;数据文件请显式点名或用 loom data add。
+    dir_ext = TEXT_EXT + EXTRACTABLE_EXT + CODE_EXT
     for p in paths:
         p = util.expand(p)
         if os.path.isdir(p):                         # 目录:只纳入文档类文件
