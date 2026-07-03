@@ -17,7 +17,8 @@ DEFAULT_CONFIG = {
         "codex":     {"enabled": True, "home": "~/.codex"},
         "cursor":    {"enabled": True, "app_support": "~/Library/Application Support/Cursor"},
         "codebuddy": {"enabled": True, "app_support": "~/Library/Application Support/CodeBuddy"},
-        "docs":      {"enabled": True},   # 索引各仓 .md(不搬文件,不进日记)
+        "docs":      {"enabled": True},   # 索引各仓 .md(全文归档,不进日记)
+        "notes":     {"enabled": True},   # 索引 vault/notes/ 手动加的文档(loom doc add 闭环)
     },
     "feishu": {
         "enabled": False,

@@ -89,7 +89,7 @@ def build(cfg, by_id):
     _write_archives(cfg, by_id)         # 全文档案(可安全删源)
     by_date = defaultdict(list)
     for e in by_id.values():
-        if e.get("kind") == "doc":      # 文档不进按天日记(参考,不是当天活动)
+        if e.get("kind") in ("doc", "note"):   # 文档/笔记是参考,不进按天日记
             continue
         by_date[e["date"]].append(e)
     written = 0

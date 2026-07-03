@@ -57,6 +57,7 @@ loom source enable|disable <name>
 | cursor | `Cursor/.../globalStorage/state.vscdb` composer 头 | 会话:标题 + 改动量(无正文) |
 | codebuddy | `CodeBuddy/.../state.vscdb` | 占位;本地无缓存时由 git 兜底 |
 | docs | 各配置仓里的 `*.md` | 全文归档进 `notes/_archive/`(打码、永不裁剪 → **删源也不丢**)+ 标题/大纲索引;不进日记 |
+| notes | `vault/notes/`(手动加的) | 把 `loom doc add` 的文档也纳入 `loom search`(闭环);跳过 `_archive`,不进日记 |
 | feishu | 多维表格 `bitable/v1 list records` | 需求 / 记事:按「负责人=你」+ 日期筛 |
 
 隐私:vault 只存**元数据 + 意图/正文**,不存完整对话;token/密钥值在**采集入库前自动打码**(`redact`,默认开;变量名保留,只抹「键=值」的值),推云端不泄露。完整对话/整 diff 走回链一跳回溯。

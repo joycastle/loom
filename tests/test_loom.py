@@ -19,6 +19,7 @@ from loom.collectors import cursor as cursor_col               # noqa: E402
 from loom.collectors import git as git_col                     # noqa: E402
 from loom.collectors import claude as claude_col                # noqa: E402
 from loom.collectors import docs as docs_col                    # noqa: E402
+from loom.collectors import notes as notes_col                  # noqa: E402
 import subprocess                                              # noqa: E402
 
 
@@ -259,6 +260,38 @@ class DocsCollectorTest(unittest.TestCase):
     def test_disabled(self):
         self.assertEqual(docs_col.collect({"sources": {"docs": {"enabled": False}}, "repos": []},
                                           "2000-01-01"), [])
+
+
+class NotesCollectorTest(unittest.TestCase):
+    def setUp(self):
+        from loom import intake
+        self.cfg = {"vault": {"dir": tempfile.mkdtemp(prefix="loom-vault-")},
+                    "sources": {"notes": {"enabled": True}}, "redact": True}
+        # 一篇手动加进 attribution 的文档 + 一个 _archive 镜像(应被跳过)
+        src = tempfile.mkdtemp()
+        with open(os.path.join(src, "foo.md"), "w", encoding="utf-8") as f:
+            f.write("# 手动加的归因笔记\n口径对齐问题。")
+        intake.ingest(self.cfg, [os.path.join(src, "foo.md")], to="attribution", tags="applovin")
+        adir = os.path.join(config.notes_dir(self.cfg), "_archive", "somerepo")
+        os.makedirs(adir)
+        with open(os.path.join(adir, "mirror.md"), "w", encoding="utf-8") as f:
+            f.write("---\ntitle: 镜像\n---\n仓文档镜像,不该被 notes 源重复索引")
+
+    def test_indexes_notes_skips_archive(self):
+        out = notes_col.collect(self.cfg, "2000-01-01")
+        paths = {e["detail"]["path"] for e in out}
+        self.assertIn("attribution/foo.md", paths)
+        self.assertNotIn("_archive/somerepo/mirror.md", str(paths))   # 跳过档案镜像
+        e = next(e for e in out if e["detail"]["path"] == "attribution/foo.md")
+        self.assertEqual(e["kind"], "note")
+        self.assertEqual(e["project"], "attribution")     # 类目 = project(可 --project 过滤)
+        self.assertEqual(e["summary"], "手动加的归因笔记")  # 取 frontmatter title
+        self.assertIn("口径对齐", e["detail"]["content"])   # 全文可搜
+
+    def test_disabled(self):
+        self.assertEqual(notes_col.collect({"vault": self.cfg["vault"],
+                                            "sources": {"notes": {"enabled": False}}},
+                                           "2000-01-01"), [])
 
 
 class RenderNotesTest(unittest.TestCase):

@@ -70,7 +70,7 @@
     util.py                # 路径/LOOM_HOME、load_env、http_json(urllib)、read_sqlite(copy-to-temp 防锁)、ms_to_iso、redact(密钥打码)
     collectors/
       __init__.py          # REGISTRY: name -> collect(cfg,since)->[entry];加源在此注册
-      git.py claude.py codex.py cursor.py codebuddy.py feishu.py docs.py
+      git.py claude.py codex.py cursor.py codebuddy.py feishu.py docs.py notes.py
   tests/test_loom.py       # 纯标准库 unittest;跑:python3 -m unittest discover tests
 ```
 
@@ -148,6 +148,12 @@
 - **全文归档(解决"不敢删")**:`render._write_archives` 把全文(打码)写进 `vault/notes/_archive/<repo>/<相对路径>`,带 `type: loom-archive` frontmatter。**永不裁剪**——entries 只 upsert 不 prune,删了源文件其条目仍在→归档仍写;即便清空 entries.jsonl,已落盘的归档文件也不动。**故删任何源 .md 都安全**(实测:删源+重建后归档全文仍在)。归档随 vault 上 GitHub、被 Basic Memory 检索。
 - 检索:`loom search <词> --tool docs` 跨项目搜;标题/大纲/全文经 FTS `aux` 列(见 §3)。
 - 坑:只认 `.md`;`_archive` 是派生镜像(live 文件每次 sync 刷新为当前版;已删源保留最后一版),`harvest_taxonomy`/`loom doc ls`/triage 都跳过它。
+
+### notes(vault/notes/ 手动文档索引)
+- 读:扫 `vault/notes/`(跳过 `_archive`)每个 `.md`。解析 frontmatter 标题/标签,取全文。
+- 产出:`kind=note, tool=notes`,`project`=类目(相对路径首段,如 `attribution`/`inbox`),`ref`=文件路径,detail=`{path,tags,content}`。
+- **补齐 `loom doc add` 闭环**:此前手动加的 doc 只在 vault(Basic Memory 可搜)、`loom search` 搜不到;有了本采集器,`loom search`(含 `--project 类目`)也能搜到手动加的文档。不进日记、不再归档(它们本就是 vault 原件)。
+- 日期:frontmatter `date` 否则 mtime。跳过 `_archive`(那是 docs 源的全文镜像,避免重复索引)。
 
 ### ~~feishu_im~~(已退役)
 - **决策**:loom 不再直接读 IM。「话题里 @ 机器人 → 总结 → 写多维表格」交给**独立飞书机器人**(它做实时事件订阅 + AI 总结 + 写表并带原消息回链);loom 只当作普通需求池表读回来。捕获(push)与聚合(pull)解耦,loom 的飞书 scope 收敛到仅 `bitable:app:readonly`。
