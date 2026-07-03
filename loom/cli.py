@@ -20,7 +20,11 @@ def do_collect(cfg, sources, since):
     redact = cfg.get("redact", True)
     total = 0
     for s in sources:
-        got = collectors.REGISTRY[s](cfg, since)
+        try:                                    # 一个源坏了不该掀翻整个 sync(个人数据源会腐烂)
+            got = collectors.REGISTRY[s](cfg, since)
+        except Exception as e:
+            util.log(f"  [{s}] 采集失败,跳过: {e}")
+            continue
         if got:
             if redact:
                 got = [util.redact_entry(e) for e in got]  # 入库前抹密钥
@@ -38,11 +42,56 @@ def do_build(cfg):
     print(f"渲染完成:{n} 个日记 → {config.journal_dir(cfg)}")
 
 
+# 上云前必须被 git 忽略的东西:原始数据(_data/)、密钥(.env)、无法打码的二进制原件。
+# 由代码保证存在——绝不能依赖用户手工建 .gitignore(否则换台机器就把原始数据推上云)。
+_REQUIRED_IGNORES = ["_data/", ".env", "*.xlsx", "*.pptx", "*.numbers",
+                     "*.pages", "*.key", "*.parquet", "*.pdf", "*.docx"]
+
+
+def _ensure_gitignore(vd):
+    """确保 vault/.gitignore 含所有必需忽略项(缺啥补啥,保留用户已有行)。返回是否有改动。"""
+    gi = os.path.join(vd, ".gitignore")
+    lines = open(gi, encoding="utf-8").read().splitlines() if os.path.exists(gi) else []
+    have = {ln.strip() for ln in lines}
+    missing = [p for p in _REQUIRED_IGNORES if p not in have]
+    if not missing:
+        return False
+    if not lines:
+        lines = ["# loom:原始数据/二进制/密钥只在本地留存,不上云"]
+    lines += missing
+    with open(gi, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    return True
+
+
+def _untrack_ignored(vd):
+    """把「已被跟踪但现在应忽略」的文件从 git 移出(保留本地文件)。返回被移出的路径列表。
+
+    core.quotepath=false:否则 git 会把非 ASCII 路径转成八进制转义,`git rm` 匹配不上
+    (且 git rm 会先校验所有 pathspec,一个不匹配就整批失败)。"""
+    r = subprocess.run(["git", "-c", "core.quotepath=false", "-C", vd,
+                        "ls-files", "-i", "-c", "--exclude-standard"],
+                       capture_output=True, text=True)
+    files = [f for f in r.stdout.splitlines() if f.strip()]
+    if files:
+        subprocess.run(["git", "-C", vd, "rm", "--cached", "--quiet", "--"] + files,
+                       capture_output=True)
+    return files
+
+
 def vault_git(cfg, push):
     vd = config.vault_dir(cfg)
     os.makedirs(vd, exist_ok=True)
     if not os.path.isdir(os.path.join(vd, ".git")):
         subprocess.run(["git", "-C", vd, "init", "-q"])
+    _ensure_gitignore(vd)                       # 先立规矩,再 add
+    untracked = _untrack_ignored(vd)            # 历史上误跟踪的原始数据/二进制,移出云端(本地保留)
+    if untracked:
+        print(f"已从云端移出 {len(untracked)} 个应本地留存的文件(本地仍在):")
+        for f in untracked[:10]:
+            print("  -", f)
+        if len(untracked) > 10:
+            print(f"  …及其余 {len(untracked) - 10} 个")
     subprocess.run(["git", "-C", vd, "add", "-A"])
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     r = subprocess.run(["git", "-C", vd, "commit", "-q", "-m", f"loom sync {stamp}"])
@@ -173,8 +222,6 @@ def cmd_doc(cfg, a):
     ok = 0
     for dest, msg in results:
         print(("  ✓ " if dest else "  · ") + msg)
-        if dest and os.path.splitext(dest)[1].lower() in intake.BINARY_EXT:
-            print("      ⚠ 二进制文件原样拷入,未做密钥扫描——确认不含机密再上云")
         ok += 1 if dest else 0
     print(f"入库 {ok}/{len(results)} 个 → {config.notes_dir(cfg)}/{a.to or 'inbox'}")
     if a.push and ok:

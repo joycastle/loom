@@ -12,6 +12,17 @@ GS = "\x1d"      # 消息(header+%b)与 numstat 之间的哨兵,防正文里的 
 _STASH = re.compile(r"^(index on |untracked files on |WIP on )")
 _NUMSTAT = re.compile(r"^(?:\d+|-)\t(?:\d+|-)\t")
 _TRAILER = re.compile(r"^(Co-Authored-By|Signed-off-by|Change-Id):", re.I)
+_BRACE_RENAME = re.compile(r"\{(.*?) => (.*?)\}")   # dir/{old => new}/x 花括号重命名
+
+
+def _norm_path(p):
+    """规整 numstat 的重命名路径:'old => new' 或 'dir/{a => b}/x' → 取新路径。"""
+    if "=>" not in p:
+        return p
+    m = _BRACE_RENAME.search(p)
+    if m:
+        return (p[:m.start()] + m.group(2) + p[m.end():]).replace("//", "/")
+    return p.split("=>")[-1].strip()
 BODY_CAP = 4000    # 正文封顶(极端长正文防爆;实测中位 367、最大 ~1200)
 FILES_CAP = 40     # 每提交存的文件明细上限(渲染时再截更短)
 
@@ -63,7 +74,7 @@ def collect(cfg, since):
                     ins += a
                     dele += d
                     if len(file_list) < FILES_CAP:
-                        file_list.append({"path": p[2], "ins": a, "del": d})
+                        file_list.append({"path": _norm_path(p[2].strip()), "ins": a, "del": d})
             # 正文 = 消息里除首行 header 外的部分;去掉纯噪声 trailer。
             body_lines = [b for b in mlines[1:] if not _TRAILER.match(b)]
             body = "\n".join(body_lines).strip()[:BODY_CAP]
@@ -74,12 +85,12 @@ def collect(cfg, since):
                 "detail": {"files": files, "ins": ins, "del": dele,
                            "body": body, "file_list": file_list},
             })
-    # 同 (项目,日期,标题) 只留改动最大一条(收敛 rebase/cherry-pick 重复)
+    # 收敛 rebase/cherry-pick 重复:只有 (项目,日期,标题,改动量) 完全相同才算重复
+    # (加 ins/del/files 进 key,避免同一天两个真实但同名的提交如 wip/fix 被误合并丢掉)。
     best = {}
     for e in entries:
-        k = (e["project"], e["date"], e["summary"])
         d = e["detail"]
-        score = d["ins"] + d["del"] + d["files"]
-        if k not in best or score > best[k][0]:
-            best[k] = (score, e)
-    return [v[1] for v in best.values()]
+        k = (e["project"], e["date"], e["summary"], d["ins"], d["del"], d["files"])
+        if k not in best:
+            best[k] = e
+    return list(best.values())

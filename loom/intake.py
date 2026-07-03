@@ -206,9 +206,12 @@ def _one(cfg, src, to, tags, title, move, redact):
         else:
             dest = raw                                # 提取失败(如无 pdftotext)→ 只留原件
             note = "(未能提取文本,仅原件;pdf 需 pdftotext)"
-    elif ext in BINARY_EXT:                          # 其余二进制:原样拷,无法提取/打码
-        dest = _uniq(os.path.join(dest_dir, _slug(os.path.basename(src))))
+    elif ext in BINARY_EXT:                          # 其余二进制:无法提取/打码 → 进本地 _data/,不上云
+        ddir = os.path.join(dest_dir, "_data")
+        os.makedirs(ddir, exist_ok=True)
+        dest = _uniq(os.path.join(ddir, _slug(os.path.basename(src))))
         shutil.copy2(src, dest)
+        note = "(二进制:存本地 _data/,不上云)"
     else:
         return None, f"跳过(非文档类型 {ext}):{src}"
 

@@ -92,6 +92,24 @@ def ms_to_iso(ms):
         return None
 
 
+def iso_utc_to_local(iso):
+    """把带时区的 ISO(如 claude 的 ...Z / 带偏移)转成【本地】朴素 ISO,统一各源日期口径。
+
+    各采集器日期必须同一时区,否则午夜前后同一晚的活动会落到不同日记
+    (codex/cursor 走 ms_to_iso 已是本地;claude 原始是 UTC 的 Z)。
+    无时区信息 / 解析失败 → 原样返回(视为已是本地)。"""
+    if not iso:
+        return iso
+    s = iso.strip()
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        return s
+    if dt.tzinfo is None:
+        return s
+    return dt.astimezone().replace(tzinfo=None).strftime("%Y-%m-%dT%H:%M:%S")
+
+
 # ---- 密钥打码:采集入库前抹掉 token/密钥【值】,保证推 GitHub / Basic Memory 不泄露 ----
 # 只打码「值」,不动变量名/代码引用(如 Variable.get("secret_xxx") 里的 secret_xxx 保留)。
 # 原文永远在 transcript / git 里,回链可查;这里只保证 loom 的派生文件干净。
@@ -106,6 +124,8 @@ def _looks_secret(v, quoted=False):
         return False
     if quoted:
         return True
+    if "(" in v:                                   # 裸值含括号=代码调用(如 x = get_secret(...)),非机密字面量
+        return False
     if re.fullmatch(r"[A-Za-z][A-Za-z\-]*", v):   # 纯字母/连字符词 → 散文,不打码
         return False
     return bool(re.search(r"\d", v) or v.endswith("=") or len(v) >= 32)
@@ -129,6 +149,8 @@ _REDACTORS = [
     (re.compile(r"\bya29\.[0-9A-Za-z_\-]{10,}"), _MASK),             # Google OAuth
     (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), _MASK),         # Slack token
     (re.compile(r"https://hooks\.slack\.com/services/[A-Za-z0-9/]+"), _MASK),  # Slack webhook
+    (re.compile(r"https://open\.(?:feishu\.cn|larksuite\.com)/open-apis/bot/v2/hook/"
+                r"[A-Za-z0-9-]+"), _MASK),                       # 飞书/Lark 机器人 webhook
     (re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"), _MASK),                  # OpenAI 风格
     (re.compile(r"(?i)\bAccountKey=[A-Za-z0-9+/=]{20,}"), _MASK),     # Azure
     (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{16,}"), "bearer " + _MASK),

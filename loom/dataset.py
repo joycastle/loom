@@ -12,7 +12,7 @@ import re
 import shutil
 import zipfile
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from . import config, util
 
@@ -21,6 +21,52 @@ SAMPLE = 5
 _XL_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _NUM = re.compile(r"^-?\d+(\.\d+)?$")
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2})?")
+_EXCEL_EPOCH = datetime(1899, 12, 30)                 # Excel 序列号原点(含 1900 闰年 bug 补偿)
+_DATE_BUILTIN = set(range(14, 23)) | {45, 46, 47}     # Excel 内置日期/时间格式 numFmtId
+
+
+def _excel_serial_to_date(v):
+    """Excel 把日期存成数值序列号(如 46023);按日期样式的列还原成可读日期。"""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return v
+    dt = _EXCEL_EPOCH + timedelta(days=f)
+    return dt.strftime("%Y-%m-%d") if f == int(f) else dt.strftime("%Y-%m-%d %H:%M")
+
+
+def _date_style_indices(z, names):
+    """解析 styles.xml,返回「应按日期还原」的 cellXfs 样式下标集合(供 s= 属性查)。"""
+    if "xl/styles.xml" not in names:
+        return set()
+    try:
+        root = ET.fromstring(z.read("xl/styles.xml"))
+    except Exception:
+        return set()
+    custom = {}                                        # 自定义格式码含 y/m/d/h/s → 日期/时间
+    nfs = root.find(_XL_NS + "numFmts")
+    if nfs is not None:
+        for nf in nfs.iter(_XL_NS + "numFmt"):
+            code = re.sub(r'\[[^\]]*\]|"[^"]*"', "", nf.get("formatCode") or "")
+            try:
+                custom[int(nf.get("numFmtId"))] = bool(re.search(r"[ymdhs]", code, re.I))
+            except (TypeError, ValueError):
+                pass
+    idx, cx = set(), root.find(_XL_NS + "cellXfs")
+    if cx is not None:
+        for i, xf in enumerate(cx.findall(_XL_NS + "xf")):
+            try:
+                fid = int(xf.get("numFmtId") or 0)
+            except ValueError:
+                fid = 0
+            if fid in _DATE_BUILTIN or custom.get(fid):
+                idx.add(i)
+    return idx
+
+
+def _clean_cell(v):
+    """markdown 表格单元:转义竖线、折叠换行,避免样例值把表格结构撑坏。"""
+    return str(v).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
 
 def _slug(name):
@@ -28,9 +74,10 @@ def _slug(name):
 
 
 def _csv_rows(path):
+    delim = "\t" if path.lower().endswith(".tsv") else ","   # .tsv 用制表符,否则整表塌成一列
     rows, capped = [], False
     with open(path, newline="", encoding="utf-8", errors="replace") as f:
-        for i, row in enumerate(csv.reader(f)):
+        for i, row in enumerate(csv.reader(f, delimiter=delim)):
             if i >= SCAN_CAP:
                 capped = True
                 break
@@ -49,7 +96,7 @@ def _col_idx(ref):
     return idx - 1
 
 
-def _sheet_rows(root, shared):
+def _sheet_rows(root, shared, date_styles=frozenset()):
     rows = []
     for row in root.iter(_XL_NS + "row"):
         cells, maxc = {}, -1
@@ -67,6 +114,13 @@ def _sheet_rows(root, shared):
                     val = shared[int(v.text)] if v.text.isdigit() and int(v.text) < len(shared) else ""
                 else:
                     val = v.text
+                    si = c.get("s")                     # 数值 + 日期样式 → 还原成可读日期
+                    if val and si is not None and _NUM.match(val):
+                        try:
+                            if int(si) in date_styles:
+                                val = _excel_serial_to_date(val)
+                        except ValueError:
+                            pass
             cells[ci] = val
             maxc = max(maxc, ci)
         rows.append([cells.get(i, "") for i in range(maxc + 1)])
@@ -84,11 +138,12 @@ def _xlsx_rows(path):
             root = ET.fromstring(z.read("xl/sharedStrings.xml"))
             for si in root.iter(_XL_NS + "si"):
                 shared.append("".join(t.text or "" for t in si.iter(_XL_NS + "t")))
+        date_styles = _date_style_indices(z, names)
         sheets = sorted(n for n in names
                         if n.startswith("xl/worksheets/sheet") and n.endswith(".xml"))
         best, best_cells = [], -1
         for s in sheets:
-            rows = _sheet_rows(ET.fromstring(z.read(s)), shared)
+            rows = _sheet_rows(ET.fromstring(z.read(s)), shared, date_styles)
             ncells = sum(len(r) for r in rows)          # 选单元格最多的 sheet(真数据表)
             if ncells > best_cells:
                 best, best_cells = rows, ncells
@@ -167,10 +222,10 @@ def _card(name, src, ext, nrows, capped, cols, sample, size, date, tags,
         L.append(f"| {c} | {t} | {s} |")
     if sample:
         L += ["", f"## 前 {len(sample)} 行样例", "",
-              "| " + " | ".join(c for c, _, _ in cols) + " |",
+              "| " + " | ".join(_clean_cell(c) for c, _, _ in cols) + " |",
               "|" + "|".join("---" for _ in cols) + "|"]
         for r in sample:
-            L.append("| " + " | ".join((r[i] if i < len(r) else "").replace("|", "\\|")
+            L.append("| " + " | ".join(_clean_cell(r[i] if i < len(r) else "")
                                        for i in range(len(cols))) + " |")
     for c in code_files:                              # 产出/相关代码嵌入(可检索)
         L += ["", f"## {c['fname']}", "", f"```{c['lang']}", c["text"].strip(), "```"]

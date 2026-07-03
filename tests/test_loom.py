@@ -64,6 +64,21 @@ class StoreTest(unittest.TestCase):
         lines = [json.loads(l) for l in _read(util.DATA_PATH).splitlines()]
         self.assertEqual([r["id"] for r in lines], ["y", "x"])  # 按 ts 升序落盘
 
+    def test_save_is_atomic_no_tmp_left(self):
+        store.save({"a": _entry("a", "2026-06-01", "p", "git", "commit", "x")})
+        leftovers = [f for f in os.listdir(os.path.dirname(util.DATA_PATH))
+                     if f.startswith("entries.jsonl.tmp")]
+        self.assertEqual(leftovers, [])                # 临时文件被 os.replace 掉,不残留
+
+    def test_load_skips_blank_and_corrupt_lines(self):
+        os.makedirs(os.path.dirname(util.DATA_PATH), exist_ok=True)
+        with open(util.DATA_PATH, "w", encoding="utf-8") as f:
+            f.write(json.dumps(_entry("ok", "2026-06-01", "p", "git", "commit", "好")) + "\n")
+            f.write("\n")                              # 空行
+            f.write("{坏 json\n")                       # 损坏行:跳过而非崩
+        loaded = store.load()
+        self.assertEqual(set(loaded), {"ok"})
+
 
 class RedactTest(unittest.TestCase):
     def test_masks_secret_values(self):
@@ -113,6 +128,14 @@ class RedactTest(unittest.TestCase):
 
     def test_basic_auth_masked(self):
         self.assertIn("已打码", util.redact("Authorization: Basic dXNlcjpwYXNzd29yZDEyMw=="))
+
+    def test_feishu_lark_webhook_masked(self):
+        # 飞书/Lark 机器人 webhook 是能直接发消息的凭证,必须打码(真实归档里发现的缺口)
+        fs = 'url: https://open.feishu.cn/open-apis/bot/v2/hook/c58904dd-9aca-4b92-8c5c-055c132aa420'
+        self.assertIn("已打码", util.redact(fs))
+        self.assertNotIn("c58904dd-9aca", util.redact(fs))
+        self.assertIn("已打码", util.redact(
+            "https://open.larksuite.com/open-apis/bot/v2/hook/abcDEF123456"))
 
     def test_safe_join_blocks_symlink_escape(self):
         base = tempfile.mkdtemp(prefix="loom-sj-")
@@ -263,6 +286,34 @@ class GitCollectorTest(unittest.TestCase):
         cfg = {"repos": [self.repo], "identities": {"emails": ["other@x"], "names": []}}
         self.assertEqual(git_col.collect(cfg, "2000-01-01"), [])  # 非本人 → 不抓
 
+    def test_norm_path_resolves_renames(self):
+        self.assertEqual(git_col._norm_path("old.txt => new.txt"), "new.txt")
+        self.assertEqual(git_col._norm_path("dir/{a => b}/x.txt"), "dir/b/x.txt")
+        self.assertEqual(git_col._norm_path("plain.txt"), "plain.txt")
+
+    def _g(self, *a):
+        env = dict(os.environ, GIT_AUTHOR_NAME="tester", GIT_AUTHOR_EMAIL="me@test.dev",
+                   GIT_COMMITTER_NAME="tester", GIT_COMMITTER_EMAIL="me@test.dev")
+        subprocess.run(["git", "-C", self.repo, *a], check=True, env=env, capture_output=True)
+
+    def test_rename_commit_stores_new_path_not_arrow(self):
+        self._g("mv", "a.txt", "a_renamed.txt")
+        self._g("commit", "-q", "-m", "refactor: 改名")
+        e = [x for x in git_col.collect(self.cfg, "2000-01-01")
+             if x["summary"] == "refactor: 改名"][0]
+        paths = {f["path"] for f in e["detail"]["file_list"]}
+        self.assertIn("a_renamed.txt", paths)
+        self.assertFalse(any("=>" in p for p in paths))   # 不再把 'old => new' 整个当路径
+
+    def test_distinct_same_subject_same_day_both_kept(self):
+        for name, txt in (("w1.txt", "a\n"), ("w2.txt", "a\nb\nc\n")):  # 改动量不同
+            with open(os.path.join(self.repo, name), "w") as f:
+                f.write(txt)
+            self._g("add", "-A")
+            self._g("commit", "-q", "-m", "wip")       # 同一天同标题的两个真实提交
+        out = [x for x in git_col.collect(self.cfg, "2000-01-01") if x["summary"] == "wip"]
+        self.assertEqual(len(out), 2)                  # 去重按改动量区分 → 都保留
+
 
 class ClaudeCollectorTest(unittest.TestCase):
     def setUp(self):
@@ -293,6 +344,14 @@ class ClaudeCollectorTest(unittest.TestCase):
     def test_disabled_returns_empty(self):
         cfg = {"sources": {"claude": {"enabled": False}}}
         self.assertEqual(claude_col.collect(cfg, "2000-01-01"), [])
+
+    def test_timestamps_converted_to_local(self):
+        # claude 原始是 UTC 的 Z;入库后统一成本地朴素 ISO,不残留 Z(跨源日期口径一致)
+        e = claude_col.collect(self.cfg, "2000-01-01")[0]
+        self.assertNotIn("Z", e["ts"])
+        self.assertNotIn("Z", e["detail"]["start"])
+        self.assertEqual(len(e["ts"]), 19)
+        self.assertEqual(e["date"], e["ts"][:10])
 
 
 class DocsCollectorTest(unittest.TestCase):
@@ -454,6 +513,49 @@ class DatasetTest(unittest.TestCase):
         self.assertIn("| total | int |", card)  # 数值列 + 列位置对齐
         self.assertIn("rows: 2", card)          # 跳过标题行,数据 2 行
         self.assertNotIn("报表标题", card.split("## 列")[1] if "## 列" in card else card)
+
+    def test_tsv_parsed_with_tab(self):
+        p = self._mk("t.tsv", "ad_id\tcost\tday\nA1\t10\t2026-01-01\n")
+        dest, _ = self.dataset.add(self.cfg, p, to="t")
+        card = _read(dest)
+        self.assertIn("cols: 3", card)            # 制表符分列 → 3 列,而非塌成 1 列
+        self.assertIn("| ad_id |", card)
+        self.assertIn("| cost | int |", card)
+
+    def test_xlsx_date_serial_restored(self):
+        import zipfile
+        from datetime import datetime as _dt
+        ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        d1, d2 = _dt(2026, 1, 1), _dt(2026, 1, 2)
+        s1 = (d1 - _dt(1899, 12, 30)).days        # 从目标日期反推序列号,自洽
+        s2 = (d2 - _dt(1899, 12, 30)).days
+        styles = (f'<styleSheet xmlns="{ns}"><cellXfs count="2">'
+                  '<xf numFmtId="0"/><xf numFmtId="14"/></cellXfs></styleSheet>')  # 下标1=日期格式
+
+        def c(r, v, s=None):
+            sa = f' s="{s}"' if s is not None else ""
+            return f'<c r="{r}"{sa}><v>{v}</v></c>'
+        istr = lambda r, t: f'<c r="{r}" t="inlineStr"><is><t>{t}</t></is></c>'
+        sheet = (f'<worksheet xmlns="{ns}"><sheetData>'
+                 f'<row r="1">{istr("A1", "day")}{istr("B1", "n")}</row>'
+                 f'<row r="2">{c("A2", s1, 1)}{c("B2", 5)}</row>'
+                 f'<row r="3">{c("A3", s2, 1)}{c("B3", 7)}</row>'
+                 '</sheetData></worksheet>')
+        p = os.path.join(self.src, "dates.xlsx")
+        with zipfile.ZipFile(p, "w") as z:
+            z.writestr("xl/styles.xml", styles)
+            z.writestr("xl/worksheets/sheet1.xml", sheet)
+        card = _read(self.dataset.add(self.cfg, p, to="t")[0])
+        self.assertIn("| day | date |", card)     # 日期样式的序列号列 → 识别为 date
+        self.assertIn("2026-01-01", card)          # 序列号还原成可读日期
+        self.assertIn("| n | int |", card)         # 非日期数值列不受影响
+
+    def test_sample_cell_newline_does_not_break_table(self):
+        p = self._mk("multi.csv", 'name,note\nA,"第一行\n第二行"\n')  # 引号内嵌换行
+        card = _read(self.dataset.add(self.cfg, p, to="t")[0])
+        sample = card.split("## 前")[1]
+        self.assertNotIn("\n第二行", sample)        # 换行被折叠,表格不塌
+        self.assertIn("第一行 第二行", sample)
 
     def test_rejects_non_data(self):
         p = self._mk("note.md", "# hi")
@@ -665,6 +767,15 @@ class IntakeTest(unittest.TestCase):
         r2 = self.intake.ingest(self.cfg, [b])
         self.assertNotEqual(r1[0][0], r2[0][0])              # 第二个加了 -1
 
+    def test_binary_routed_to_local_data_dir(self):
+        # 无法提取/打码的二进制(pptx 等)进本地 _data/,不落进会上云的类目目录
+        p = self._mk("deck.pptx", "PK-ish binary payload")
+        (dest, _), = self.intake.ingest(self.cfg, [p], to="refs")
+        self.assertTrue(dest.replace(os.sep, "/").endswith("refs/_data/deck.pptx"))
+        refs = os.path.join(config.notes_dir(self.cfg), "refs")
+        self.assertNotIn("deck.pptx", os.listdir(refs))     # 不在类目根(那会被推云)
+        self.assertTrue(os.path.exists(os.path.join(refs, "_data", "deck.pptx")))
+
 
 class TriageTest(unittest.TestCase):
     def setUp(self):
@@ -774,6 +885,90 @@ class SearchTest(unittest.TestCase):
         os.remove(util.INDEX_PATH)
         self.assertTrue(len(search.query("cohort")) == 2)  # ensure() 自动重建
         self.assertTrue(os.path.exists(util.INDEX_PATH))
+
+
+class TimezoneTest(unittest.TestCase):
+    def test_utc_to_local_consistent_across_notation(self):
+        z = util.iso_utc_to_local("2026-06-01T09:00:00Z")
+        off = util.iso_utc_to_local("2026-06-01T09:00:00+00:00")
+        self.assertEqual(z, off)                 # Z 与 +00:00 是同一时刻 → 同一本地时间
+        self.assertNotIn("Z", z)
+        self.assertEqual(len(z), 19)             # 朴素 ISO(无时区后缀)
+
+    def test_naive_and_empty_passthrough(self):
+        self.assertEqual(util.iso_utc_to_local("2026-06-01T09:00:00"), "2026-06-01T09:00:00")
+        self.assertEqual(util.iso_utc_to_local(""), "")
+        self.assertIsNone(util.iso_utc_to_local(None))
+
+
+class VaultGitignoreTest(unittest.TestCase):
+    def test_ensure_creates_required_and_idempotent(self):
+        from loom import cli
+        vd = tempfile.mkdtemp(prefix="loom-vg-")
+        self.assertTrue(cli._ensure_gitignore(vd))       # 首次:写入
+        content = _read(os.path.join(vd, ".gitignore"))
+        for pat in ("_data/", ".env", "*.xlsx", "*.pdf"):
+            self.assertIn(pat, content)
+        self.assertFalse(cli._ensure_gitignore(vd))      # 幂等:全都在 → 无改动
+
+    def test_preserves_user_lines(self):
+        from loom import cli
+        vd = tempfile.mkdtemp(prefix="loom-vg-")
+        with open(os.path.join(vd, ".gitignore"), "w", encoding="utf-8") as f:
+            f.write("我的自定义忽略\n_data/\n")
+        cli._ensure_gitignore(vd)
+        content = _read(os.path.join(vd, ".gitignore"))
+        self.assertIn("我的自定义忽略", content)           # 用户已有行保留
+        self.assertIn("*.xlsx", content)                  # 缺的补上
+
+    def test_untrack_ignored_removes_from_index_keeps_local(self):
+        from loom import cli
+        vd = tempfile.mkdtemp(prefix="loom-vg-")
+        for a in (["init", "-q"], ["config", "user.email", "t@t"],
+                  ["config", "user.name", "t"]):
+            subprocess.run(["git", "-C", vd, *a], check=True, capture_output=True)
+        os.makedirs(os.path.join(vd, "topic", "_data"))
+        with open(os.path.join(vd, "topic", "_data", "raw.xlsx"), "w") as f:
+            f.write("x")
+        with open(os.path.join(vd, "keep.md"), "w") as f:
+            f.write("# k")
+        subprocess.run(["git", "-C", vd, "add", "-A"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", vd, "commit", "-q", "-m", "误跟踪原始数据"],
+                       check=True, capture_output=True)
+        cli._ensure_gitignore(vd)
+        removed = cli._untrack_ignored(vd)
+        self.assertTrue(any("raw.xlsx" in f for f in removed))
+        tracked = subprocess.run(["git", "-C", vd, "ls-files"],
+                                 capture_output=True, text=True).stdout
+        self.assertIn("keep.md", tracked)                 # 正常文档仍跟踪
+        self.assertNotIn("raw.xlsx", tracked)             # 原始数据移出云端
+        self.assertTrue(os.path.exists(                   # 但本地文件仍在
+            os.path.join(vd, "topic", "_data", "raw.xlsx")))
+
+
+class DoCollectTest(unittest.TestCase):
+    def test_one_failing_collector_does_not_abort_others(self):
+        from loom import cli
+        from loom import collectors
+        for p in (util.DATA_PATH, util.INDEX_PATH):
+            if os.path.exists(p):
+                os.remove(p)
+
+        def boom(cfg, since):
+            raise RuntimeError("源坏了")
+
+        def ok(cfg, since):
+            return [_entry("ok:1", "2026-06-01", "p", "notes", "note", "还活着")]
+
+        orig = dict(collectors.REGISTRY)
+        try:
+            collectors.REGISTRY.clear()
+            collectors.REGISTRY.update({"boom": boom, "ok": ok})
+            by_id = cli.do_collect({"redact": False}, ["boom", "ok"], "2000-01-01")
+            self.assertIn("ok:1", by_id)                  # boom 抛异常但 ok 仍入库
+        finally:
+            collectors.REGISTRY.clear()
+            collectors.REGISTRY.update(orig)
 
 
 if __name__ == "__main__":

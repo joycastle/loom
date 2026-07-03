@@ -78,17 +78,21 @@ def collect(cfg, since):
         except Exception as e:
             util.log(f"  [claude] {sid[:8]} 读取失败: {e}")
             continue
-        if tmin is None or (tmax or "") < since:
+        # claude 的时间戳是 UTC(...Z);统一转本地,和 codex/cursor 的本地口径对齐,
+        # 否则午夜前后的会话会落到错误的日记(如本地早 8 点 = UTC 前一天)。
+        lmin = util.iso_utc_to_local(tmin)
+        lmax = util.iso_utc_to_local(tmax) or lmin
+        if lmin is None or (lmax or "") < since:
             continue
         project = os.path.basename(cwd.rstrip("/")) if cwd else \
             os.path.basename(os.path.dirname(fp)).split("-")[-1]
         opening = _substantive(texts)
         intent = title.strip() if title else re.sub(r"\s+", " ", opening)[:INTENT_CAP]
         entries.append({
-            "id": f"claude:{sid}", "date": tmin[:10], "ts": tmin,
+            "id": f"claude:{sid}", "date": lmin[:10], "ts": lmin,
             "project": project, "tool": "claude", "kind": "session",
             "summary": intent or "(会话)", "ref": fp,
-            "detail": {"start": tmin, "end": tmax, "user": n_user, "asst": n_asst,
+            "detail": {"start": lmin, "end": lmax, "user": n_user, "asst": n_asst,
                        "opening": opening[:OPENING_CAP]},
         })
     return entries
