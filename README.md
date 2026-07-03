@@ -41,6 +41,8 @@ loom search <词> [--project P] [--tool T] [--since D] [--until D]
 
 loom doc add <路径…> [--to 类目] [--tags a,b] [--move] [--push]
                                # 一键入库 notes/(打码;默认 inbox/)。docx/pdf 自动提取文本成可检索 .md + 留原件
+loom data add <csv|xlsx…> [--to 主题] [--code a.sql b.py] [--used-by 文档]
+                               # 数据→数据卡(列/统计/样例,上云可检索)+ 原始入 _data/(本地不上云)+ 绑产出代码
 loom repo add|rm|scan|ls [值]  # 灵活增删 git 仓(scan 自动发现)
 loom feishu add <url>|rm|ls    # 增删需求池(URL 解析 app_token/table_id)
 loom identity add <邮箱/名>|ls  # 增补 git 身份

@@ -49,7 +49,7 @@
   - **已知限制(低危)**:markdown 表格单元格里的弱密码、裸的全小写长口令 可能漏(权衡了对散文的误伤);docx/pdf 已提取文本并打码(pdf 需 pdftotext),仅 pptx/xlsx/parquet 等真二进制原样拷、不扫描(CLI 会提示)。真机密多含数字/固定前缀 → 绝大多数被覆盖。原文永远在 transcript/git,回链可查。
 - `~/.loom/data/entries.jsonl`:归一化条目(可再生,不必手改)。
 - `~/.loom/data/index.sqlite`:从 entries 派生的 FTS5 检索索引(可删可再生,`loom search` 会自动重建)。
-- `~/.loom/vault/`:**独立 git 仓** → push 私有 GitHub(`loom-vault`),Basic Memory / Obsidian 的索引对象。分区:`journal/*.md`(自动生成,勿手改)+ `notes/`(手写文档区,loom 从不碰)+ 仓根 `README.md`(说明布局)。
+- `~/.loom/vault/`:**独立 git 仓** → push 私有 GitHub(`loom-vault`),Basic Memory / Obsidian 的索引对象。分区:`journal/*.md`(自动生成,勿手改)+ `notes/`(手写/收编文档 + 数据卡)+ `notes/**/_data/`(原始数据,**`.gitignore` 本地留存不上云**)+ 仓根 `README.md`。**云端只有文本知识层**(日记/文档/数据卡/代码),原始数据只在本地。
 - 环境变量 **`LOOM_HOME`** 可覆盖 `~/.loom`(多实例 / 测试用)。
 
 ---
@@ -68,6 +68,7 @@
     store.py               # entries.jsonl 按 id upsert(load/save/upsert)
     search.py              # 从 entries.jsonl 派生的 SQLite FTS5(trigram)检索索引;可再生
     intake.py              # loom doc add:外来文档快速入库 notes/(补 frontmatter + 打码)
+    dataset.py             # loom data add:csv/xlsx→数据卡 + _data/ 本地原始 + 绑定产出代码
     render.py              # 按天渲染 markdown;自动区({date}.md)与手写区({date}.notes.md)物理分离
     util.py                # 路径/LOOM_HOME、load_env、http_json(urllib)、read_sqlite(copy-to-temp 防锁)、ms_to_iso、redact(密钥打码)
     collectors/
@@ -184,6 +185,10 @@ loom doc add <路径…> [--to 类目] [--tags a,b] [--title T] [--move] [--push
                                 #   docx→纯标准库提取文本、pdf→pdftotext 提取(有则用),都成可检索 .md + 留原件;
                                 #   pptx/xlsx 等→原样拷(CLI 提示未扫描)。
 loom doc ls                     # 列 notes/ 下所有文档
+loom data add <csv|xlsx…> [--to 主题] [--code a.sql b.py] [--used-by 文档] [--tags] [--push]
+                                # 数据文件纳入:蒸馏「数据卡」(列/类型/统计/样例,上云可检索)+
+                                #   原始拷进 主题/_data/(gitignore 本地留存、不上云)+ 存产出代码
+                                #   (sql/py…,嵌入卡片可检索)。把 数据↔代码↔文档 钉成一个分析单元。
 loom doc triage                 # 【AI 辅助归类】打印清单(现有类目/标签 + inbox 待分类文档头部,已打码)
 loom doc triage --apply <tsv>   #   应用 AI 给的映射(每行 相对路径<TAB>类目<TAB>标签),移到类目 + 更新标签
 

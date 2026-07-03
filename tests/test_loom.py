@@ -359,6 +359,53 @@ class NotesCollectorTest(unittest.TestCase):
                                            "2000-01-01"), [])
 
 
+class DatasetTest(unittest.TestCase):
+    def setUp(self):
+        from loom import dataset
+        self.dataset = dataset
+        self.cfg = {"vault": {"dir": tempfile.mkdtemp(prefix="loom-vault-")}, "redact": True}
+        self.src = tempfile.mkdtemp(prefix="loom-src-")
+
+    def _mk(self, name, content):
+        p = os.path.join(self.src, name)
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(content)
+        return p
+
+    def test_csv_datacard_and_local_raw_and_code(self):
+        csvp = self._mk("cost.csv", "ad_id,cost,day\nA1,10.5,2026-01-01\nA2,20,2026-01-02\n")
+        sqlp = self._mk("q.sql", "SELECT ad_id, cost FROM t WHERE token='sk_live_ABCDEFGHIJ1234567'")
+        dest, msg = self.dataset.add(self.cfg, csvp, to="ad-kill",
+                                     code=[sqlp], used_by="斩杀报告", tags="cost")
+        self.assertTrue(dest.endswith(".card.md"))
+        card = _read(dest)
+        self.assertIn("type: loom-datacard", card)
+        self.assertIn("| cost | float |", card)          # 类型推断
+        self.assertIn("| day | date |", card)
+        self.assertIn("rows: 2 · cols: 3", card)
+        self.assertIn("used_by: [[斩杀报告]]", card)       # 文档关联
+        self.assertIn("produced_by: [q.sql]", card)       # 代码关联
+        self.assertIn("```sql", card)                     # 代码嵌入(可检索)
+        self.assertIn("已打码", card)                      # 代码里的密钥被抹
+        nd = config.notes_dir(self.cfg)
+        self.assertTrue(os.path.exists(os.path.join(nd, "ad-kill", "_data", "cost.csv")))  # 原始入 _data
+        self.assertTrue(os.path.exists(os.path.join(nd, "ad-kill", "q.sql")))              # 代码存主题目录
+
+    def test_code_can_be_python(self):
+        csvp = self._mk("d.csv", "a,b\n1,2\n")
+        pyp = self._mk("pull.py", "import pandas as pd\ndf = pd.read_sql('...', conn)")
+        dest, _ = self.dataset.add(self.cfg, csvp, to="x", code=[pyp])
+        card = _read(dest)
+        self.assertIn("```python", card)                  # 按 .py 高亮
+        self.assertIn("produced_by: [pull.py]", card)
+
+    def test_rejects_non_data(self):
+        p = self._mk("note.md", "# hi")
+        dest, msg = self.dataset.add(self.cfg, p, to="x")
+        self.assertIsNone(dest)
+        self.assertIn("非数据文件", msg)
+
+
 class RenderNotesTest(unittest.TestCase):
     def setUp(self):
         # vault.dir → journal_dir = vault.dir + '/journal'(render 用 config.journal_dir)

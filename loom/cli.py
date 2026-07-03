@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-from . import config, intake, render, search, store, util
+from . import config, dataset, intake, render, search, store, util
 from . import collectors
 
 
@@ -181,6 +181,22 @@ def cmd_doc(cfg, a):
         vault_git(cfg, True)
 
 
+def cmd_data(cfg, a):
+    if not a.path:
+        print("用法:loom data add <csv|xlsx…> [--to 主题] [--code a.sql b.py] "
+              "[--used-by 文档标题] [--tags t]")
+        return
+    ok = 0
+    for p in a.path:
+        dest, msg = dataset.add(cfg, p, to=a.to, code=a.code, used_by=a.used_by, tags=a.tags)
+        print(("  ✓ " if dest else "  · ") + msg)
+        ok += 1 if dest else 0
+    print(f"数据入库 {ok}/{len(a.path)} 个 → {config.notes_dir(cfg)}/{a.to or 'data'}"
+          "(数据卡上云,原始留 _data/ 本地)")
+    if a.push and ok:
+        vault_git(cfg, True)
+
+
 def cmd_source(cfg, a):
     cfg["sources"].setdefault(a.name, {})["enabled"] = (a.action == "enable")
     config.save(cfg); print(f"{a.name} -> {a.action}")
@@ -290,6 +306,14 @@ def build_parser():
     sp.add_argument("--apply")            # triage:应用 AI 给的映射 TSV
     sp.add_argument("--move", action="store_true")
     sp.add_argument("--push", action="store_true")
+    sp = sub.add_parser("data")
+    sp.add_argument("action", choices=("add",))
+    sp.add_argument("path", nargs="*")    # csv/xlsx 数据文件
+    sp.add_argument("--to")
+    sp.add_argument("--code", nargs="*")  # 产出/相关代码(sql/py/…)
+    sp.add_argument("--used-by", dest="used_by")
+    sp.add_argument("--tags")
+    sp.add_argument("--push", action="store_true")
     return p
 
 
@@ -301,7 +325,7 @@ def main(argv=None):
         "sync": cmd_sync, "collect": cmd_collect, "build": cmd_build,
         "today": cmd_today, "search": cmd_search, "init": cmd_init,
         "repo": cmd_repo, "feishu": cmd_feishu, "identity": cmd_identity,
-        "source": cmd_source, "doc": cmd_doc,
+        "source": cmd_source, "doc": cmd_doc, "data": cmd_data,
     }
     handlers[args.cmd](cfg, args)
 
