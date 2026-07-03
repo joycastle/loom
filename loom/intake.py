@@ -20,6 +20,8 @@ TEXTDATA_EXT = (".json", ".yaml", ".yml", ".csv", ".tsv", ".toml")  # 原样存�
 EXTRACTABLE_EXT = (".docx", ".pdf")   # 提取文本→可检索 .md(打码)+ 留原件保真
 BINARY_EXT = (".pptx", ".xlsx", ".numbers", ".pages", ".key", ".parquet")  # 原样拷,无法提取/打码
 DOC_EXT = TEXT_EXT + TEXTDATA_EXT + EXTRACTABLE_EXT + BINARY_EXT
+SKIP_DIRS = {"node_modules", ".git", "venv", ".venv", "__pycache__", "site-packages",
+             "dist", "build", ".next", "target", "vendor", ".cache"}
 _H1 = re.compile(r"^#\s+(.+)")
 _DOCX_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
@@ -290,12 +292,16 @@ def ingest(cfg, paths, to=None, tags=None, title=None, move=False):
     redact = cfg.get("redact", True)
     tags = [t.strip() for t in (tags or "").split(",") if t.strip()]
     results = []
+    # 目录递归**只收文档类**(md/txt/docx/pdf),不扫数据文件(csv/json/xlsx…),
+    # 免得把一个分析项目里几十个数据 CSV 一起拖进来;数据文件请显式点名单个文件。
+    dir_ext = TEXT_EXT + EXTRACTABLE_EXT
     for p in paths:
         p = util.expand(p)
-        if os.path.isdir(p):                         # 目录:纳入其中的文档文件
-            for dp, _, fns in os.walk(p):
+        if os.path.isdir(p):                         # 目录:只纳入文档类文件
+            for dp, dns, fns in os.walk(p):
+                dns[:] = [d for d in dns if d not in SKIP_DIRS and not d.startswith(".")]
                 for fn in sorted(fns):
-                    if fn.lower().endswith(DOC_EXT) and not fn.startswith("."):
+                    if fn.lower().endswith(dir_ext) and not fn.startswith("."):
                         results.append(_one(cfg, os.path.join(dp, fn), to, tags,
                                             None, move, redact))
         else:

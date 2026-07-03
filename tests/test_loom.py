@@ -454,6 +454,23 @@ class IntakeTest(unittest.TestCase):
         self.assertIn("已打码", body)                        # 密钥被抹
         self.assertNotIn("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ", body)
 
+    def test_dir_recursion_only_docs_not_data(self):
+        # 目录递归只收文档(md/txt/docx/pdf),不扫数据文件(csv/json)
+        d = tempfile.mkdtemp(prefix="loom-proj-")
+        os.makedirs(os.path.join(d, "node_modules"))
+        for name, txt in (("report.md", "# 报告"), ("data.csv", "a,b\n1,2"),
+                          ("conf.json", '{"x":1}'), ("notes.txt", "hi"),
+                          ("node_modules/pkg.md", "# vendor")):
+            with open(os.path.join(d, name), "w") as f:
+                f.write(txt)
+        res = [r for r in self.intake.ingest(self.cfg, [d], to="x") if r[0]]
+        names = {os.path.basename(dest) for dest, _ in res}
+        self.assertIn("report.md", names)
+        self.assertIn("notes.md", names)       # notes.txt → notes.md
+        self.assertNotIn("data.csv", names)    # 数据文件不随目录进
+        self.assertNotIn("conf.json", names)
+        self.assertFalse(any("vendor" in _read(dest) for dest, _ in res))  # node_modules 跳过
+
     def test_default_to_inbox_and_move(self):
         p = self._mk("draft.md", "随手记")
         (dest, _), = self.intake.ingest(self.cfg, [p], move=True)
