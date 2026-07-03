@@ -82,6 +82,17 @@ def build(cfg, by_id):
                     d = e.get("detail", {})
                     lines.append(f"- `{e['ref']}` {e['summary']}  "
                                  f"(+{d.get('ins',0)}/-{d.get('del',0)}, {d.get('files',0)} 文件)")
+                    # 正文(「为什么这么改」):缩进为引用块挂在提交下
+                    body = (d.get("body") or "").strip()
+                    if body:
+                        for bl in body.splitlines():
+                            lines.append(f"  > {bl}" if bl.strip() else "  >")
+                    # 文件明细:显示前 N 个,其余折叠计数(`git show <hash>` 看完整 diff)
+                    fl = d.get("file_list") or []
+                    for f in fl[:8]:
+                        lines.append(f"    - `{f['path']}` (+{f.get('ins',0)}/-{f.get('del',0)})")
+                    if len(fl) > 8:
+                        lines.append(f"    - …及其余 {len(fl) - 8} 个文件")
                 lines.append("")
             if reqs:
                 lines.append(f"### 需求 ({len(reqs)})")

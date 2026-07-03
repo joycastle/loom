@@ -9,13 +9,18 @@ from .. import util
 US = "\x1f"
 RS = "\x1e"
 _STASH = re.compile(r"^(index on |untracked files on |WIP on )")
+_NUMSTAT = re.compile(r"^(?:\d+|-)\t(?:\d+|-)\t")
+_TRAILER = re.compile(r"^(Co-Authored-By|Signed-off-by|Change-Id):", re.I)
+BODY_CAP = 4000    # 正文封顶(极端长正文防爆;实测中位 367、最大 ~1200)
+FILES_CAP = 40     # 每提交存的文件明细上限(渲染时再截更短)
 
 
 def collect(cfg, since):
     emails = {e.lower() for e in cfg["identities"]["emails"]}
     names = {n.lower() for n in cfg["identities"]["names"]}
     entries = []
-    fmt = RS + US.join(["%H", "%aI", "%ae", "%an", "%s"])
+    # header 单行(US 分隔),换行后接 %b 正文,再由 --numstat 追加文件明细。
+    fmt = RS + US.join(["%H", "%aI", "%ae", "%an", "%s"]) + "\n%b"
     for repo in cfg["repos"]:
         repo = util.expand(repo)
         if not os.path.isdir(os.path.join(repo, ".git")):
@@ -42,18 +47,32 @@ def collect(cfg, since):
                 continue
             if _STASH.match(subj):
                 continue
+            # 剩余行:匹配 numstat 正则的是文件明细,其余(在其之前)是正文。
             ins = dele = files = 0
+            file_list, body_lines = [], []
             for nl in ls[1:]:
-                p = nl.split("\t")
-                if len(p) == 3:
-                    files += 1
-                    ins += int(p[0]) if p[0].isdigit() else 0
-                    dele += int(p[1]) if p[1].isdigit() else 0
+                if _NUMSTAT.match(nl):
+                    p = nl.split("\t")
+                    if len(p) == 3:
+                        files += 1
+                        a = int(p[0]) if p[0].isdigit() else 0
+                        d = int(p[1]) if p[1].isdigit() else 0
+                        ins += a
+                        dele += d
+                        if len(file_list) < FILES_CAP:
+                            file_list.append({"path": p[2], "ins": a, "del": d})
+                elif not file_list:  # 文件明细一旦开始,后面不再是正文
+                    body_lines.append(nl)
+            # 去掉纯噪声 trailer(个人台账里不需要)
+            body_lines = [b for b in body_lines
+                          if not _TRAILER.match(b)]
+            body = "\n".join(body_lines).strip()[:BODY_CAP]
             entries.append({
                 "id": f"git:{project}:{h[:12]}", "date": aiso[:10], "ts": aiso,
                 "project": project, "tool": "git", "kind": "commit",
                 "summary": subj, "ref": h[:12],
-                "detail": {"files": files, "ins": ins, "del": dele},
+                "detail": {"files": files, "ins": ins, "del": dele,
+                           "body": body, "file_list": file_list},
             })
     # 同 (项目,日期,标题) 只留改动最大一条(收敛 rebase/cherry-pick 重复)
     best = {}

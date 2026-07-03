@@ -106,7 +106,9 @@
 - 读:`cfg.repos` 每个仓 `git log --all --no-merges --since --numstat`。
 - 过滤:作者 email ∈ `identities.emails` 或 name ∈ `identities.names`(只抓**本人**)。
 - 去噪:滤掉 stash 内部提交(`index on/untracked files on/WIP on`);同 `(项目,日期,标题)` 只留改动最大一条(收敛 rebase/cherry-pick 重复)。
-- 产出:`kind=commit`,detail=`{files,ins,del}`。
+- 产出:`kind=commit`,detail=`{files,ins,del, body, file_list}`。**body**=提交正文(`%b`,「为什么这么改」;剥掉 Co-Authored-By/Signed-off-by 等 trailer,封顶 4000 字);**file_list**=每文件 `{path,ins,del}`(封顶 40)。渲染:正文作引用块挂在提交下,文件明细列前 8 个 + 折叠计数。
+- **解析要点**:format 为 `header\n%b`,`%b` 多行 → 用 numstat 正则(`^(\d+|-)\t(\d+|-)\t`)区分「文件明细行」与「正文行」(正文在文件明细开始前)。改这段小心别让正文里的制表符误判。
+- **不存整 diff**:行级 diff 由回链 `git show <hash>` 一跳可得(无损层),不塞进 vault —— 否则单个 +800 提交就是 ~900 行,爆 vault 且与无损层重复。
 - 坑:`--all` 会含所有分支(含 WIP 分支,期望内);跨机器多身份需把所有 email 加进 identities。
 
 ### claude(Claude Code)

@@ -16,6 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from loom import config, render, search, store, util          # noqa: E402
 from loom.collectors import cursor as cursor_col               # noqa: E402
+from loom.collectors import git as git_col                     # noqa: E402
+import subprocess                                              # noqa: E402
 
 
 def _read(path):
@@ -120,6 +122,44 @@ class CursorProjectTest(unittest.TestCase):
     def test_no_workspace_no_repos(self):
         self.assertEqual(cursor_col._project({"workspaceIdentifier": {"id": "1782980336368"}}),
                          "cursor")
+
+
+class GitCollectorTest(unittest.TestCase):
+    def setUp(self):
+        self.repo = tempfile.mkdtemp(prefix="loom-repo-")
+        env = dict(os.environ, GIT_AUTHOR_NAME="tester", GIT_AUTHOR_EMAIL="me@test.dev",
+                   GIT_COMMITTER_NAME="tester", GIT_COMMITTER_EMAIL="me@test.dev")
+        def g(*a):
+            subprocess.run(["git", "-C", self.repo, *a], check=True, env=env,
+                           capture_output=True)
+        g("init", "-q")
+        for name, txt in (("a.txt", "l1\nl2\nl3\n"), ("b.txt", "x\ny\n")):
+            with open(os.path.join(self.repo, name), "w") as f:
+                f.write(txt)
+        g("add", "-A")
+        # 带多行正文 + trailer 的提交
+        msg = ("feat: 加两个文件\n\n"
+               "这是正文第一行,解释为什么。\n第二行细节。\n\n"
+               "Co-Authored-By: bot <b@x>")
+        g("commit", "-q", "-m", msg)
+        self.cfg = {"repos": [self.repo],
+                    "identities": {"emails": ["me@test.dev"], "names": []}}
+
+    def test_captures_body_files_and_strips_trailer(self):
+        out = git_col.collect(self.cfg, "2000-01-01")
+        self.assertEqual(len(out), 1)
+        d = out[0]["detail"]
+        self.assertEqual(out[0]["summary"], "feat: 加两个文件")
+        self.assertIn("为什么", d["body"])           # 正文被抓到
+        self.assertIn("第二行细节", d["body"])
+        self.assertNotIn("Co-Authored-By", d["body"])  # trailer 被剥掉
+        self.assertEqual(d["files"], 2)               # numstat 未被正文干扰
+        paths = {f["path"] for f in d["file_list"]}
+        self.assertEqual(paths, {"a.txt", "b.txt"})
+
+    def test_filters_by_identity(self):
+        cfg = {"repos": [self.repo], "identities": {"emails": ["other@x"], "names": []}}
+        self.assertEqual(git_col.collect(cfg, "2000-01-01"), [])  # 非本人 → 不抓
 
 
 class RenderNotesTest(unittest.TestCase):
