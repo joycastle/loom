@@ -15,7 +15,7 @@ def _token(base_url):
     app_id = os.environ.get("FEISHU_APP_ID")
     app_secret = os.environ.get("FEISHU_APP_SECRET")
     if not app_id or not app_secret:
-        util.log("  [feishu] 缺 FEISHU_APP_ID/FEISHU_APP_SECRET(见 ~/.worklog/.env),跳过")
+        util.log("  [feishu] 缺 FEISHU_APP_ID/FEISHU_APP_SECRET(见 ~/.loom/.env),跳过")
         return None
     data = util.http_json("POST", f"{base_url}/auth/v3/tenant_access_token/internal",
                           body={"app_id": app_id, "app_secret": app_secret})

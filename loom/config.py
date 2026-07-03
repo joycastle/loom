@@ -22,7 +22,7 @@ DEFAULT_CONFIG = {
         "base_url": "https://open.feishu.cn/open-apis",
         "bitables": [],
     },
-    "vault": {"dir": "~/.worklog/vault", "remote": ""},
+    "vault": {"dir": "~/.loom/vault", "remote": ""},
 }
 
 

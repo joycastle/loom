@@ -9,7 +9,7 @@ import tempfile
 import urllib.request
 from datetime import datetime, timedelta
 
-HOME = os.path.expanduser(os.environ.get("WORKLOG_HOME", "~/.worklog"))
+HOME = os.path.expanduser(os.environ.get("LOOM_HOME", "~/.loom"))
 CONFIG_PATH = os.path.join(HOME, "config.json")
 ENV_PATH = os.path.join(HOME, ".env")
 DATA_PATH = os.path.join(HOME, "data", "entries.jsonl")
@@ -55,7 +55,7 @@ def read_sqlite(path, query, params=()):
     path = expand(path)
     if not os.path.exists(path):
         return []
-    tmp = tempfile.mkdtemp(prefix="worklog_sq_")
+    tmp = tempfile.mkdtemp(prefix="loom_sq_")
     try:
         base = os.path.join(tmp, "db.sqlite")
         shutil.copy2(path, base)

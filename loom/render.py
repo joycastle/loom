@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from . import config
 
-NOTES_MARK = "<!-- ✍️ 手写区(worklog sync 不会覆盖下方内容)-->"
+NOTES_MARK = "<!-- ✍️ 手写区(loom sync 不会覆盖下方内容)-->"
 
 
 def _preserve_notes(path):
@@ -28,7 +28,7 @@ def build(cfg, by_id):
         by_proj = defaultdict(list)
         for e in items:
             by_proj[e["project"]].append(e)
-        lines = ["---", f"date: {date}", "type: worklog", "tags: [worklog]", "---",
+        lines = ["---", f"date: {date}", "type: loom", "tags: [loom]", "---",
                  "", f"# {date} 工作日志", ""]
         for proj in sorted(by_proj):
             evs = by_proj[proj]

@@ -1,4 +1,4 @@
-# worklog — 跨项目 / 跨 session / 跨 AI 工具 的全量成果台账
+# loom — 跨项目 / 跨 session / 跨 AI 工具 的全量成果台账
 
 把散落在「多个 git 仓 + 多个 AI 工具会话(Claude / Codex / Cursor / CodeBuddy)+ 飞书需求池」里的**你自己**的工作,自动汇成按天的 markdown 日记,带回链、可检索、可云端同步。
 
@@ -12,35 +12,35 @@
 
 ```
 <本仓>/                     共享代码(clone 后一键装)
-  worklog/  bin/worklog  install.sh  config.example.json
+  loom/  bin/loom  install.sh  config.example.json
 
-~/.worklog/                每人自己(init 生成,不入代码仓)
+~/.loom/                每人自己(init 生成,不入代码仓)
   config.json              身份 / 仓 / 需求池 / 源开关(命令管理)
   .env                     FEISHU_APP_ID/SECRET(gitignored,绝不进 vault)
   data/entries.jsonl       归一化条目(可再生)
   vault/journal/*.md       独立 git 仓 → push 私有 GitHub
 ```
-可用环境变量 `WORKLOG_HOME` 覆盖 `~/.worklog`。
+可用环境变量 `LOOM_HOME` 覆盖 `~/.loom`。
 
 ## 安装
 
 ```bash
-git clone <本仓> ~/Documents/worklog
-cd ~/Documents/worklog && ./install.sh      # 装 CLI 到 PATH + 引导配置 + 首次同步
+git clone <本仓> ~/Documents/loom
+cd ~/Documents/loom && ./install.sh      # 装 CLI 到 PATH + 引导配置 + 首次同步
 ```
 
 ## 命令
 
 ```bash
-worklog init                      # 交互引导:身份/扫仓/飞书
-worklog sync [--push] [--since]   # 采集全部源 → 渲染 → 提交(--push 上云)。日常就这条
-worklog collect --source <name>   # 单源采集:git|claude|codex|cursor|codebuddy|feishu|all
-worklog build | today | search <词>
+loom init                      # 交互引导:身份/扫仓/飞书
+loom sync [--push] [--since]   # 采集全部源 → 渲染 → 提交(--push 上云)。日常就这条
+loom collect --source <name>   # 单源采集:git|claude|codex|cursor|codebuddy|feishu|all
+loom build | today | search <词>
 
-worklog repo add|rm|scan|ls [值]  # 灵活增删 git 仓(scan 自动发现)
-worklog feishu add <url>|rm|ls    # 增删需求池(URL 解析 app_token/table_id)
-worklog identity add <邮箱/名>|ls  # 增补 git 身份
-worklog source enable|disable <name>
+loom repo add|rm|scan|ls [值]  # 灵活增删 git 仓(scan 自动发现)
+loom feishu add <url>|rm|ls    # 增删需求池(URL 解析 app_token/table_id)
+loom identity add <邮箱/名>|ls  # 增补 git 身份
+loom source enable|disable <name>
 ```
 
 ## 各源采集说明
@@ -59,13 +59,13 @@ worklog source enable|disable <name>
 ## 云端 + 检索底座
 
 ```bash
-cd ~/.worklog/vault && gh repo create worklog-vault --private --source=. --remote=origin --push
-# 之后 worklog sync --push 自动上云
+cd ~/.loom/vault && gh repo create loom-vault --private --source=. --remote=origin --push
+# 之后 loom sync --push 自动上云
 
-uvx basic-memory project add worklog ~/.worklog/vault/journal   # 语义检索
+uvx basic-memory project add loom ~/.loom/vault/journal   # 语义检索
 # 各 AI 工具接 Basic Memory MCP:见 adapters(claude/cursor/codex 的 mcp 配置)
 ```
 
 ## 扩展新采集器
 
-在 `worklog/collectors/` 加 `xxx.py`,实现 `collect(cfg, since) -> [entry]`,在 `collectors/__init__.py` 注册即可。条目 schema:`{id, date, ts, project, tool, kind, summary, ref, detail}`。
+在 `loom/collectors/` 加 `xxx.py`,实现 `collect(cfg, since) -> [entry]`,在 `collectors/__init__.py` 注册即可。条目 schema:`{id, date, ts, project, tool, kind, summary, ref, detail}`。

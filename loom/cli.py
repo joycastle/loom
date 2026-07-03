@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""worklog CLI:采集/渲染/检索 + 配置管理 + init 引导。"""
+"""loom CLI:采集/渲染/检索 + 配置管理 + init 引导。"""
 import argparse
 import os
 import subprocess
@@ -41,7 +41,7 @@ def vault_git(cfg, push):
         subprocess.run(["git", "-C", vd, "init", "-q"])
     subprocess.run(["git", "-C", vd, "add", "-A"])
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    r = subprocess.run(["git", "-C", vd, "commit", "-q", "-m", f"worklog sync {stamp}"])
+    r = subprocess.run(["git", "-C", vd, "commit", "-q", "-m", f"loom sync {stamp}"])
     print(f"已提交 vault ({stamp})" if r.returncode == 0 else "无变更,跳过提交")
     if push:
         remote = subprocess.run(["git", "-C", vd, "remote"],
@@ -50,7 +50,7 @@ def vault_git(cfg, push):
             subprocess.run(["git", "-C", vd, "push", "-q"])
             print("已 push 到云端")
         else:
-            print("未配置 remote,跳过 push(worklog 或 gh 里配 vault.remote)")
+            print("未配置 remote,跳过 push(loom 或 gh 里配 vault.remote)")
 
 
 # ---------------------------------------------------------------- 命令
@@ -75,7 +75,7 @@ def cmd_today(cfg, a):
     today = datetime.now().strftime("%Y-%m-%d")
     fp = os.path.join(config.journal_dir(cfg), f"{today}.md")
     print(open(fp, encoding="utf-8").read() if os.path.exists(fp)
-          else f"{today} 暂无记录(先跑 worklog sync)")
+          else f"{today} 暂无记录(先跑 loom sync)")
 
 
 def cmd_search(cfg, a):
@@ -158,7 +158,7 @@ def _detect_git_emails():
 
 
 def cmd_init(cfg, a):
-    print("=== worklog init(直接回车用默认/跳过)===")
+    print("=== loom init(直接回车用默认/跳过)===")
     name = input("你的名字(如 迪仔): ").strip()
     if name:
         cfg["owner"]["name"] = name
@@ -196,7 +196,7 @@ def cmd_init(cfg, a):
                 f.write(f"FEISHU_APP_ID={aid}\nFEISHU_APP_SECRET={sec}\n")
             os.chmod(util.ENV_PATH, 0o600)
             print(f"凭证写入 {util.ENV_PATH}(gitignored)")
-        url = input("需求池多维表格 URL(可空,之后可 worklog feishu add): ").strip()
+        url = input("需求池多维表格 URL(可空,之后可 loom feishu add): ").strip()
         if url:
             app_token, table_id = config.parse_bitable_url(url)
             if not table_id:
@@ -207,12 +207,12 @@ def cmd_init(cfg, a):
     config.save(cfg)
     print(f"\n✔ 配置已写 {util.CONFIG_PATH}")
     print(f"  仓 {len(cfg['repos'])} 个,身份邮箱 {len(cfg['identities']['emails'])} 个")
-    print("  下一步:worklog sync")
+    print("  下一步:loom sync")
 
 
 # ---------------------------------------------------------------- 入口
 def build_parser():
-    p = argparse.ArgumentParser(prog="worklog", description="跨工具全量成果台账")
+    p = argparse.ArgumentParser(prog="loom", description="跨工具全量成果台账")
     sub = p.add_subparsers(dest="cmd", required=True)
     for name in ("sync", "collect"):
         sp = sub.add_parser(name)
