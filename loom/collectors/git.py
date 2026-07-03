@@ -39,7 +39,7 @@ def collect(cfg, since):
             chunk = chunk.strip("\n")
             if not chunk:
                 continue
-            msg, _, numstat = chunk.partition(GS)   # GS 之前=header+正文,之后=文件明细
+            msg, _, numstat = chunk.rpartition(GS)  # 用 rpartition:真哨兵总在最后(正文含 GS 也不误判)
             mlines = msg.split("\n")
             head = mlines[0].split(US)
             if len(head) < 5:

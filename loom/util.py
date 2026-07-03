@@ -22,10 +22,10 @@ def expand(p):
 
 
 def safe_join(base, *parts):
-    """把 parts 拼到 base 下;若结果逃出 base(绝对路径 / `..` 穿越)返回 None。
-    防止 loom doc triage 的映射、归档 path 等把文件写到/删到 vault 之外。"""
-    base = os.path.abspath(base)
-    dest = os.path.abspath(os.path.join(base, *parts))
+    """把 parts 拼到 base 下;若结果逃出 base(绝对路径 / `..` 穿越 / 符号链接)返回 None。
+    用 realpath 解析符号链接,防止 vault 内被植入 symlink 把文件写到/删到 vault 之外。"""
+    base = os.path.realpath(base)
+    dest = os.path.realpath(os.path.join(base, *parts))
     return dest if dest == base or dest.startswith(base + os.sep) else None
 
 
@@ -98,20 +98,21 @@ def ms_to_iso(ms):
 _MASK = "«已打码»"
 
 
-def _looks_secret(v):
-    """值是否像机密:排除纯散文(全小写字母/连字符、无数字),要求有熵信号。
-    降低误伤(如 `token: 见README`),同时仍抓住绝大多数真 token(几乎都带数字/混合大小写)。"""
+def _looks_secret(v, quoted=False):
+    """值是否像机密。带引号(JSON/YAML 的数据值)→ 一律抹(≥8);裸值 → 保守,排除
+    纯字母/连字符散文,要求带数字 / base64 尾 `=` / 很长,避免误伤 `token: TODO/later`。"""
     v = v.strip().strip("'\"")
     if len(v) < 8:
         return False
-    if re.fullmatch(r"[a-z][a-z\-]*", v):     # 纯小写单词/短语 → 散文,不打码
+    if quoted:
+        return True
+    if re.fullmatch(r"[A-Za-z][A-Za-z\-]*", v):   # 纯字母/连字符词 → 散文,不打码
         return False
-    return bool(re.search(r"\d", v) or re.search(r"[A-Z].*[a-z]|[a-z].*[A-Z]", v)
-                or re.search(r"[+/=]", v) or len(v) >= 24)
+    return bool(re.search(r"\d", v) or v.endswith("=") or len(v) >= 32)
 
 
-def _mask_kv(m):  # 键像密钥、值也像机密时,只替换值,保留键名做上下文
-    return m.group(0) if not _looks_secret(m.group(3)) \
+def _mask_kv(m):  # 键像密钥、值也像机密时,只替换值,保留键名做上下文(带引号更激进)
+    return m.group(0) if not _looks_secret(m.group(3), bool(m.group(2))) \
         else m.group(1) + m.group(2) + _MASK + m.group(4)
 
 
@@ -131,6 +132,7 @@ _REDACTORS = [
     (re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"), _MASK),                  # OpenAI 风格
     (re.compile(r"(?i)\bAccountKey=[A-Za-z0-9+/=]{20,}"), _MASK),     # Azure
     (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{16,}"), "bearer " + _MASK),
+    (re.compile(r"(?i)\bBasic\s+[A-Za-z0-9+/=]{16,}"), "Basic " + _MASK),   # HTTP Basic 凭证
     (re.compile(r"(://[^:/\s@]+:)([^@/\s]{3,})@"), r"\1" + _MASK + "@"),  # url 里的密码
     # 键名像密钥、后跟 =值/:值(允许键/值带引号,覆盖 JSON/YAML)—— 值也像机密才抹。
     (re.compile(r"(?i)((?:[A-Za-z0-9]+[_-])?"

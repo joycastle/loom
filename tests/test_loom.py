@@ -99,11 +99,28 @@ class RedactTest(unittest.TestCase):
             self.assertIn("已打码", util.redact(c), f"未覆盖: {c[:30]}")
 
     def test_less_over_redaction_on_prose(self):
-        # 散文/示例不该被抹(值不像机密)
+        # 散文/示例不该被抹(裸值不像机密)
         self.assertEqual(util.redact("token: 见 README 说明"), "token: 见 README 说明")
         self.assertEqual(util.redact("access_key: documentation"), "access_key: documentation")
-        # 但像机密的值仍抹
+        self.assertEqual(util.redact("secret: TODO/later"), "secret: TODO/later")  # 斜杠不再误伤
+        # 但像机密的裸值仍抹
         self.assertIn("已打码", util.redact("token: aB3xY9zQ1234"))
+
+    def test_quoted_value_masked_even_all_lowercase(self):
+        # 带引号=数据值,即使全小写也抹(裸的全小写散文才放过)
+        self.assertIn("已打码", util.redact('password: "correcthorsebattery"'))
+        self.assertNotIn("已打码", util.redact("passphrase-note: correcthorsebattery"))
+
+    def test_basic_auth_masked(self):
+        self.assertIn("已打码", util.redact("Authorization: Basic dXNlcjpwYXNzd29yZDEyMw=="))
+
+    def test_safe_join_blocks_symlink_escape(self):
+        base = tempfile.mkdtemp(prefix="loom-sj-")
+        outside = tempfile.mkdtemp(prefix="loom-out-")
+        os.symlink(outside, os.path.join(base, "escaped"))
+        self.assertIsNone(util.safe_join(base, "escaped", "x.md"))   # 符号链接逃逸被拦
+        self.assertIsNone(util.safe_join(base, "../x"))
+        self.assertIsNotNone(util.safe_join(base, "sub", "x.md"))    # 正常子路径放行
 
     def test_redact_entry_recurses_lists_and_dicts(self):
         e = _entry("d:1", "2026-06-01", "p", "docs", "doc", "标题",
