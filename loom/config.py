@@ -21,13 +21,6 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "base_url": "https://open.feishu.cn/open-apis",
         "bitables": [],
-        "im": {
-            "enabled": False,
-            "mode": "at_bot",
-            "since_days": 21,
-            "chat_allowlist": [],
-            "fetch_thread": True,
-        },
     },
     "vault": {"dir": "~/.loom/vault", "remote": ""},
 }

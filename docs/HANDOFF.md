@@ -66,7 +66,7 @@
     util.py                # 路径/LOOM_HOME、load_env、http_json(urllib)、read_sqlite(copy-to-temp 防锁)、ms_to_iso
     collectors/
       __init__.py          # REGISTRY: name -> collect(cfg,since)->[entry];加源在此注册
-      git.py claude.py codex.py cursor.py codebuddy.py feishu.py feishu_im.py
+      git.py claude.py codex.py cursor.py codebuddy.py feishu.py
 ```
 
 **统一条目 schema**(所有采集器产出同构,render/store 只认这个):
@@ -111,7 +111,8 @@
 ### cursor
 - 读:`Cursor/User/globalStorage/state.vscdb` 的 `ItemTable['composer.composerHeaders']` → `allComposers[]`(name/createdAt/lastUpdatedAt/trackedGitRepos/filesChangedCount/lines±)。**只有元数据,无对话正文**(符合隐私决策)。
 - 产出:`kind=session`,detail=`{start,end,files,add,del}`。
-- **⚠ 已知问题**:`_project_from_repos` 猜的 `trackedGitRepos` 字段名(repoPath/path/rootPath/relativePath)与真实结构不符 → 实测约 **60/80 会话落到 "cursor" 桶**而非真实项目。**待办**:摸清 composerHeaders 里 trackedGitRepos 的真实 JSON 结构(`sqlite3` 打开 globalStorage/state.vscdb 看该 key 的 value),修 `_project_from_repos`。
+- 项目归属(`_project`):首选 `workspaceIdentifier.uri.fsPath`(打开会话时的工作区根,覆盖最广),次选 `trackedGitRepos[].repoPath`,两者都跳过临时 worktree(`/private/tmp/`、`/scratchpad/`、`/wt-`)。都无 → `"cursor"` 桶(无文件夹的临时对话,合理)。
+- ✅ **已修(原「60/80 落 cursor 桶」)**:旧 `_project_from_repos` 只看 `trackedGitRepos`,而 360 个 composer 里仅 20 个有该字段;真实工作区在 `workspaceIdentifier.uri.fsPath`。改用它后实测 **79/80 正确归到真实项目**,仅 1 条为无文件夹对话。
 
 ### codebuddy(占位)
 - 读:`CodeBuddy/User/globalStorage/state.vscdb` 的 `interactive.sessions`。本机为空 → log 一句并返回 `[]`(其产出已由 git 脊柱覆盖)。
@@ -123,11 +124,9 @@
 - 产出:`kind=requirement`,summary=标题+[状态]。
 - 坑:应用须被加为该多维表格协作者;`token()` 用 env 凭证,进程内缓存。**目前 `feishu.enabled=false`,未跑通**(见 §8)。
 
-### feishu_im(主动打点,**gated off**)
-- 读:`im/v1/chats` 列 bot 所在群 → 每群 `im/v1/messages`(时间窗)→ 只留 `mentions` 含**机器人 open_id**(`bot/v3/info` 取)的消息。`chat_allowlist` 可收敛。
-- 产出:`kind=note`,summary=消息正文(截断),detail=`{chat,chat_id,thread_id,from_open_id}`;`id=feishu_im:<message_id>` 幂等。
-- 门控:`cfg.feishu.im.enabled`(默认 false)。未开或无凭证 → 安静返回 `[]`(已验 fail-safe)。
-- 坑:窄 scope 下可能只能读到「@机器人」那条本身、读不到话题里其他消息;要整条话题需宽读权限。`fetch_thread` 目前只在 detail 存 thread_id,未真正拉取兄弟消息(留待增强)。
+### ~~feishu_im~~(已退役)
+- **决策**:loom 不再直接读 IM。「话题里 @ 机器人 → 总结 → 写多维表格」交给**独立飞书机器人**(它做实时事件订阅 + AI 总结 + 写表并带原消息回链);loom 只当作普通需求池表读回来。捕获(push)与聚合(pull)解耦,loom 的飞书 scope 收敛到仅 `bitable:app:readonly`。
+- 已删:`collectors/feishu_im.py`、`REGISTRY` 注册、`config.feishu.im` 默认块、`loom feishu im on/off` 子命令。机器人蓝图见 `docs/loom-bot-design.md`。
 
 ---
 
@@ -136,7 +135,7 @@
 ```bash
 loom init                       # 交互引导:名字/飞书名、探测+补 git 邮箱、扫仓、飞书凭证与需求池 URL
 loom sync [--push] [--since]    # 采集全部源 → 渲染日记 → 提交 vault(--push 上云)。★日常就这条
-loom collect --source <name>    # 单源采集:git|claude|codex|cursor|codebuddy|feishu|feishu_im|all
+loom collect --source <name>    # 单源采集:git|claude|codex|cursor|codebuddy|feishu|all
 loom build                      # 只重渲染日记(不重新采集)
 loom today                      # 打印今天的日记
 loom search <词>                # 在条目 summary/project 里查(语义检索走 Basic Memory)
@@ -164,23 +163,22 @@ loom source enable|disable <name>
 
 ## 7. loom-bot 愿景
 
-一句话:把「个人本地拉取」升级为**托管多租户机器人**——**任何人**在飞书话题 @ 机器人一句,它读上下文、为其**建/复用仅他可读的多维表格**记事并回执。完整蓝图(运行时/API 时序/权限模型/AI 接入点/分阶段路线)见 **`docs/loom-bot-design.md`**。它是 loom 的姊妹组件;loom 的 `feishu_im` 采集器是其「只有我、本地」最小切片。
+一句话:把「个人本地拉取」升级为**托管多租户机器人**——**任何人**在飞书话题 @ 机器人一句,它读上下文、为其**建/复用仅他可读的多维表格**记事并回执。完整蓝图(运行时/API 时序/权限模型/AI 接入点/分阶段路线)见 **`docs/loom-bot-design.md`**。它是 loom 的姊妹组件:**机器人负责实时捕获+总结+写多维表格(带原消息回链),loom 只负责拉取式读表**——两侧以多维表格为契约解耦。(原 loom 内 `feishu_im` 采集器已退役,见 §4。)
 
 ---
 
 ## 8. 待办 / 开放项(逐条含状态)
 
-1. **飞书需求池 + feishu_im 未跑通**(代码就绪,gated)。需:
+1. **飞书需求池读取未跑通**(代码就绪,gated)。需:
    - `~/.loom/.env` 填 `FEISHU_APP_ID/FEISHU_APP_SECRET`;
-   - 应用被加为需求池多维表格**协作者** / 机器人被拉进目标**群**;
-   - scope:`bitable:app:readonly`(需求池)、`im:message:readonly`(或 `im:message.group_at_msg:readonly`)、`im:chat:readonly`、可选 `im:message:send_as_bot`(回执)、`contact:user.base:readonly`、可选 `docx:document:readonly`;
-   - 然后 `loom feishu add <url>` + 把 `feishu.enabled` / `feishu.im.enabled` 置 true,用一个群/一张表实拉验证(可用已知的「迪仔负责」条数交叉校验)。
-2. **cursor 项目归属修正**:`_project_from_repos` 待摸真实 `trackedGitRepos` 结构(见 §4 cursor)。
-3. **云端 / 定时 / 检索底座**(均未做,**需用户点头**):
+   - 应用被加为需求池多维表格**协作者**;scope 仅需 `bitable:app:readonly`;
+   - 然后 `loom feishu add <url>` + 把 `feishu.enabled` 置 true,用一张表实拉验证(可用已知的「迪仔负责」条数交叉校验)。
+2. **独立飞书机器人(打点写表)** — 姊妹组件,尚未实现。「话题 @ 机器人 → 总结 → 写多维表格(带原消息回链)」。蓝图见 `docs/loom-bot-design.md`;写表的字段名(负责人/日期列)须对齐上面 `feishu` collector 的 `person_field`/`date_field`。
+3. ✅ **cursor 项目归属修正(已完成)**:改用 `workspaceIdentifier.uri.fsPath`,79/80 正确归属(见 §4 cursor)。
+4. **云端 / 定时 / 检索底座**(均未做,**需用户点头**):
    - 云端:`cd ~/.loom/vault && gh repo create loom-vault --private --source=. --push`,并 `loom sync --push`;
    - 每日:crontab `0 19 * * * /opt/homebrew/bin/loom sync --push`(或 launchd);
    - Basic Memory:`uvx basic-memory project add loom ~/.loom/vault/journal` + 各 AI 工具接 MCP。
-4. **`cli.py` 缺 `loom feishu im on/off` 子命令**:目前 `feishu` 子命令只管 bitable(add/rm/ls),IM 开关需手改 config.json,待补。
 5. **codebuddy 解析**:待有本地会话数据的机器上确认结构后补(已留 TODO hook)。
 
 ---
@@ -203,4 +201,4 @@ loom source enable|disable <name>
 
 ---
 
-_最后更新:随 feishu_im + loom-bot-design 一并提交。维护时改代码后同步更新本文对应小节。_
+_最后更新:退役 feishu_im(读 IM 归独立机器人)+ 修 cursor 项目归属。维护时改代码后同步更新本文对应小节。_

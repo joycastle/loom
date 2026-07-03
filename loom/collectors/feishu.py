@@ -10,7 +10,7 @@ _token_cache = {}
 
 
 def token(base_url):
-    """取 tenant_access_token(env 凭证,进程内缓存)。供 feishu / feishu_im 复用。"""
+    """取 tenant_access_token(env 凭证,进程内缓存)。"""
     if base_url in _token_cache:
         return _token_cache[base_url]
     app_id = os.environ.get("FEISHU_APP_ID")
