@@ -87,6 +87,9 @@ def cmd_search(cfg, a):
                         tool=a.tool, since=a.since, until=a.until)
     for e in hits:
         print(f"{e['date']} [{e['project']}/{e['tool']}] {e['summary']}  ({e['ref']})")
+        snip = e.get("snip", "")
+        if snip and snip not in (e.get("summary") or ""):   # 命中片段(与标题重复则不赘)
+            print(f"    ↳ {snip}")
     print(f"\n共 {len(hits)} 条命中" + ("(达上限,--limit 调大)" if len(hits) == a.limit else ""))
 
 

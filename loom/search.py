@@ -80,8 +80,24 @@ def _cjk_len(s):
     return len(s.strip())
 
 
+def _py_snip(term, *texts, pad=42):
+    """LIKE 路径的片段:在文本里找到 term,截取前后一段(折叠空白)。"""
+    t = term.strip().lower()
+    if not t:
+        return ""
+    for tx in texts:
+        if not tx:
+            continue
+        i = tx.lower().find(t)
+        if i >= 0:
+            s, e = max(0, i - pad), min(len(tx), i + len(term) + pad)
+            frag = " ".join(tx[s:e].split())
+            return ("…" if s > 0 else "") + frag + ("…" if e < len(tx) else "")
+    return ""
+
+
 def query(term, limit=40, project=None, tool=None, since=None, until=None):
-    """返回按相关度排序的条目 dict 列表。≥3 字符走 FTS5+bm25,否则 LIKE 子串。"""
+    """返回按相关度排序的条目 dict 列表(含匹配片段 `snip`)。≥3 字符走 FTS5+bm25,否则 LIKE。"""
     ensure()
     con = sqlite3.connect(util.INDEX_PATH)
     con.row_factory = sqlite3.Row
@@ -100,29 +116,36 @@ def query(term, limit=40, project=None, tool=None, since=None, until=None):
     if _cjk_len(term) >= 3:
         # FTS5 MATCH:把查询当短语,双引号包裹并转义内部引号,避免语法错误。
         phrase = '"' + term.replace('"', '""') + '"'
-        clause = "entries MATCH ?"
-        order = "ORDER BY bm25(entries)"
-        p = [phrase] + params
-        sql = f"SELECT {cols} FROM entries WHERE {clause}"
+        # snippet(表,-1=自动选列, 前后缀空, 省略号, 最多 12 token)—— 命中片段
+        sql = (f"SELECT {cols}, snippet(entries, -1, '', '', '…', 12) AS snip "
+               f"FROM entries WHERE entries MATCH ?")
         if where:
             sql += " AND " + " AND ".join(where)
-        sql += f" {order} LIMIT ?"
+        sql += " ORDER BY bm25(entries) LIMIT ?"
         try:
-            cur = con.execute(sql, p + [limit])
-            hits = [dict(r) for r in cur.fetchall()]
+            cur = con.execute(sql, [phrase] + params + [limit])
+            hits = []
+            for r in cur.fetchall():
+                h = dict(r)
+                h["snip"] = " ".join((h.get("snip") or "").split())
+                hits.append(h)
             con.close()
             return hits
         except sqlite3.OperationalError:
             pass  # 罕见 MATCH 语法问题 → 落到 LIKE
-    # <3 字符 或 MATCH 失败:LIKE 子串(summary/project),按时间倒序。
+    # <3 字符 或 MATCH 失败:LIKE 子串(summary/project/aux),按时间倒序。
     like = f"%{term}%"
     clause = "(summary LIKE ? OR project LIKE ? OR aux LIKE ?)"
-    p = [like, like, like] + params
-    sql = f"SELECT {cols} FROM entries WHERE {clause}"
+    sql = f"SELECT {cols}, aux FROM entries WHERE {clause}"
     if where:
         sql += " AND " + " AND ".join(where)
     sql += " ORDER BY ts DESC LIMIT ?"
-    cur = con.execute(sql, p + [limit])
-    hits = [dict(r) for r in cur.fetchall()]
+    cur = con.execute(sql, [like, like, like] + params + [limit])
+    hits = []
+    for r in cur.fetchall():
+        h = dict(r)
+        aux = h.pop("aux", "")
+        h["snip"] = _py_snip(term, h.get("summary", ""), aux)
+        hits.append(h)
     con.close()
     return hits

@@ -400,6 +400,15 @@ class IntakeTest(unittest.TestCase):
         (dest, _), = self.intake.ingest(self.cfg, [p])
         self.assertEqual(_read(dest).count("---\ntitle:"), 1)  # 不重复注入
 
+    def test_data_file_kept_as_is_but_redacted(self):
+        p = self._mk("catalog.json", '{"token": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345", "n": 1}')
+        (dest, _), = self.intake.ingest(self.cfg, [p], to="refs")
+        self.assertTrue(dest.endswith(".json"))          # 保留扩展名(不转 .md)
+        body = _read(dest)
+        self.assertNotIn("---\ntitle:", body)            # 数据文件不注 frontmatter
+        self.assertIn("已打码", body)                     # 但密钥值仍被抹
+        self.assertNotIn("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ", body)
+
     def test_name_collision_gets_suffix(self):
         a = self._mk("dup.md", "一")
         r1 = self.intake.ingest(self.cfg, [a])

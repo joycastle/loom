@@ -11,8 +11,10 @@ from datetime import datetime
 
 from . import config, util
 
-TEXT_EXT = (".md", ".txt", ".rst", ".org", ".markdown")
-DOC_EXT = TEXT_EXT + (".pdf", ".docx", ".pptx", ".xlsx", ".numbers", ".pages", ".key")
+TEXT_EXT = (".md", ".txt", ".rst", ".org", ".markdown")   # 补 frontmatter + 打码 → .md
+TEXTDATA_EXT = (".json", ".yaml", ".yml", ".csv", ".tsv", ".toml")  # 原样存但打码(仍是文本,能抹密钥值)
+BINARY_EXT = (".pdf", ".docx", ".pptx", ".xlsx", ".numbers", ".pages", ".key", ".parquet")  # 原样拷,无法打码
+DOC_EXT = TEXT_EXT + TEXTDATA_EXT + BINARY_EXT
 _H1 = re.compile(r"^#\s+(.+)")
 
 
@@ -74,7 +76,13 @@ def _one(cfg, src, to, tags, title, move, redact):
                 f.write(_frontmatter(title or _title_of(body, stem), date,
                                      tags, src, status))
                 f.write(body if body.endswith("\n") else body + "\n")
-    elif ext in DOC_EXT:                             # 二进制:原样拷,不注 frontmatter
+    elif ext in TEXTDATA_EXT:                        # 数据文件:保留原扩展名,仍打码(值级)
+        dest = _uniq(os.path.join(dest_dir, _slug(os.path.basename(src))))
+        with open(src, encoding="utf-8", errors="replace") as f:
+            data = f.read()
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write(util.redact(data) if redact else data)
+    elif ext in BINARY_EXT:                          # 二进制:原样拷,无法打码
         dest = _uniq(os.path.join(dest_dir, _slug(os.path.basename(src))))
         shutil.copy2(src, dest)
     else:
