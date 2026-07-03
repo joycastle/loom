@@ -143,6 +143,16 @@ def cmd_identity(cfg, a):
 
 
 def cmd_doc(cfg, a):
+    if a.action == "triage":
+        if a.apply:
+            mapping = intake.parse_mapping_tsv(a.apply)
+            for dest, msg in intake.apply_triage(cfg, mapping):
+                print(("  ✓ " if dest else "  · ") + msg)
+            if a.push:
+                vault_git(cfg, True)
+        else:
+            print(intake.triage_manifest(cfg, subdir=a.to or "inbox"))
+        return
     if a.action == "ls":
         nd = config.notes_dir(cfg)
         if not os.path.isdir(nd):
@@ -266,11 +276,12 @@ def build_parser():
     sp.add_argument("action", choices=("enable", "disable"))
     sp.add_argument("name")
     sp = sub.add_parser("doc")
-    sp.add_argument("action", choices=("add", "ls"))
+    sp.add_argument("action", choices=("add", "ls", "triage"))
     sp.add_argument("path", nargs="*")
     sp.add_argument("--to")
     sp.add_argument("--tags")
     sp.add_argument("--title")
+    sp.add_argument("--apply")            # triage:应用 AI 给的映射 TSV
     sp.add_argument("--move", action="store_true")
     sp.add_argument("--push", action="store_true")
     return p

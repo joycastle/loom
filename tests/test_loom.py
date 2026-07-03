@@ -327,6 +327,55 @@ class IntakeTest(unittest.TestCase):
         self.assertNotEqual(r1[0][0], r2[0][0])              # 第二个加了 -1
 
 
+class TriageTest(unittest.TestCase):
+    def setUp(self):
+        from loom import intake
+        self.intake = intake
+        self.cfg = {"vault": {"dir": tempfile.mkdtemp(prefix="loom-vault-")}, "redact": True}
+        # 已有一个类目 + 标签(供 harvest / 约束)
+        self.intake.ingest(self.cfg, [self._src("旧.md", "# 旧\n正文")],
+                           to="attribution", tags="applovin,cost")
+        # 一篇待分类进 inbox
+        self.intake.ingest(self.cfg, [self._src("新下载.md", "# CPM 排查\ntoken=ghp_ABCDEFGHIJKLMNOPQRSTUV012345")])
+
+    def _src(self, name, content):
+        d = tempfile.mkdtemp(prefix="loom-src-")
+        p = os.path.join(d, name)
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(content)
+        return p
+
+    def test_harvest_taxonomy(self):
+        cats, tags = self.intake.harvest_taxonomy(self.cfg)
+        self.assertIn("attribution", cats)
+        self.assertIn("applovin", tags)
+        self.assertIn("cost", tags)
+
+    def test_manifest_lists_inbox_and_existing(self):
+        m = self.intake.triage_manifest(self.cfg)
+        self.assertIn("attribution", m)           # 现有类目喂给 AI
+        self.assertIn("新下载.md", m)              # 待分类文档
+        self.assertIn("已打码", m)                 # 清单里也不泄密
+        self.assertNotIn("ghp_ABCDEFGHIJKLMNOPQRSTUV", m)
+
+    def test_apply_moves_and_retags(self):
+        mapping = [("inbox/新下载.md", "attribution", ["cpm", "applovin"])]
+        (dest, _), = self.intake.apply_triage(self.cfg, mapping)
+        self.assertIn("notes/attribution", dest.replace(os.sep, "/"))
+        self.assertFalse(os.path.exists(
+            os.path.join(config.notes_dir(self.cfg), "inbox", "新下载.md")))
+        body = _read(dest)
+        self.assertIn("tags: [cpm, applovin]", body)   # 标签被 AI 决定更新
+        self.assertIn("status: attribution", body)
+
+    def test_parse_mapping_tsv(self):
+        p = os.path.join(tempfile.mkdtemp(), "m.tsv")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("# 注释行\ninbox/a.md\tguides\tds, guide\n\n")
+        rows = self.intake.parse_mapping_tsv(p)
+        self.assertEqual(rows, [("inbox/a.md", "guides", ["ds", "guide"])])
+
+
 class SearchTest(unittest.TestCase):
     def setUp(self):
         for p in (util.DATA_PATH, util.INDEX_PATH):

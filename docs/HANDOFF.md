@@ -164,12 +164,21 @@ loom doc add <路径…> [--to 类目] [--tags a,b] [--title T] [--move] [--push
                                 # 临时/外来文档快速入库 notes/:自动补 frontmatter + 密钥打码;
                                 #   默认进 notes/inbox/(先收后归类),--to 指定类目,目录会递归纳入。
 loom doc ls                     # 列 notes/ 下所有文档
+loom doc triage                 # 【AI 辅助归类】打印清单(现有类目/标签 + inbox 待分类文档头部,已打码)
+loom doc triage --apply <tsv>   #   应用 AI 给的映射(每行 相对路径<TAB>类目<TAB>标签),移到类目 + 更新标签
 
 loom repo add|rm|scan|ls [值]   # 增删 git 仓(scan <dir> 自动发现 .git 深度≤3)
 loom feishu add <url>|rm|ls     # 增删需求池(URL 解析 app_token/table_id;缺 table 会追问)
 loom identity add <邮箱/名>|ls   # 增补 git 身份(带 @ 入 emails 否则入 names)
 loom source enable|disable <name>
 ```
+
+**AI 辅助归类的闭环**(捕获 → AI 提议 → 人批 → loom 执行):
+1. `loom doc add <散落文档…>` → 全进 `notes/inbox/`(自动 frontmatter + 打码)。
+2. `loom doc triage` → 打印清单:**现有类目/标签词表**(约束 AI 分进已有体系,别乱造)+ 每篇待分类文档的头部(已打码)。
+3. 把清单交给已接入的 AI(Claude Code / Cursor via MCP,或直接问我)→ 它回一份 TSV(`路径<TAB>类目<TAB>标签`)。
+4. `loom doc triage --apply <tsv> [--push]` → loom 移文件到类目 + 更新 frontmatter 标签。
+> 设计取舍:loom **不内置 LLM 调用**(零依赖、隐私灵活)——AI 能力借已接入的 MCP 会话,是「AI 提议、人确认、工具执行」而非静默自动归档。同类开源方案作参考:**paperless-ngx + paperless-ai**(扫描件 DMS,本地 Ollama 打标)、**llama-fs / Local-File-Organizer**(LLM 盯 Downloads 自动分流)、**Karakeep**(AI 多标签收藏)。它们都是独立栈;loom 复用其**模式**(dropzone + AI 建议 + 多标签 + 本地/打码),不引入其栈。
 
 ---
 
