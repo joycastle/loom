@@ -415,6 +415,19 @@ class DatasetTest(unittest.TestCase):
         self.assertIn("**派生数据**", card)
         self.assertIn("[[raw_events]] —", card)            # 血缘一行
 
+    def test_many_to_many_lineage(self):
+        # 多输入 + 多代码 → 一个产出;多产出各自成卡共享血缘
+        ins = [self._mk("in_a.csv", "x\n1\n"), self._mk("in_b.csv", "y\n2\n")]
+        codes = [self._mk("e.sql", "SELECT 1"), self._mk("t.py", "merge()")]
+        out1 = self._mk("out1.csv", "a\n1\n")
+        out2 = self._mk("out2.csv", "b\n2\n")
+        for out in (out1, out2):
+            d, _ = self.dataset.add(self.cfg, out, to="t", frm=ins, code=codes)
+            card = _read(d)
+            self.assertIn("inputs: [[[in_a]], [[in_b]]]", card)     # 多输入
+            self.assertIn("produced_by: [e.sql, t.py]", card)       # 多代码
+            self.assertIn("kind: derived", card)
+
     def test_explicit_kind_override(self):
         p = self._mk("m.csv", "a\n1\n")
         d, _ = self.dataset.add(self.cfg, p, to="t", kind="derived")   # 强制 derived 即使无 from
