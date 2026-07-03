@@ -109,7 +109,7 @@ def _coltype(vals):
 def _profile(rows):
     """算每列类型 + 简单统计。跳过前置标题/说明行(报表型表格首行常是单格标题)。"""
     if not rows:
-        return [], []
+        return [], [], 0
     start = 0                                    # 表头 = 首个「≥2 非空单元格」的行
     for i, r in enumerate(rows[:50]):
         if sum(1 for x in r if x not in ("", None)) >= 2:
@@ -117,6 +117,7 @@ def _profile(rows):
             break
     header = [h or f"col{i}" for i, h in enumerate(rows[start])]
     data = rows[start + 1:]
+    ndata = len(data)
     ncol = len(header)
     cols = []
     for j in range(ncol):
@@ -131,7 +132,7 @@ def _profile(rows):
             ex = nonempty[0] if nonempty else ""
             stat = f"{distinct} 个唯一" + (f",如「{ex[:20]}」" if ex else "")
         cols.append((header[j], typ, stat))
-    return cols, data[:SAMPLE]
+    return cols, data[:SAMPLE], ndata
 
 
 _LANG = {".sql": "sql", ".py": "python", ".sh": "bash", ".r": "r", ".R": "r",
@@ -203,8 +204,7 @@ def add(cfg, datafile, to=None, code=None, used_by=None, tags=None, kind=None, f
         rows, capped = (_xlsx_rows(src) if ext == ".xlsx" else _csv_rows(src))
     except Exception as e:
         return None, f"解析失败({ext}):{e}"
-    cols, sample = _profile(rows)
-    nrows = max(0, len(rows) - 1)
+    cols, sample, nrows = _profile(rows)
     size = f"{os.path.getsize(src) / 1e6:.1f}MB" if os.path.getsize(src) >= 1e6 \
         else f"{os.path.getsize(src) // 1024}KB"
     date = datetime.fromtimestamp(os.path.getmtime(src)).strftime("%Y-%m-%d")
