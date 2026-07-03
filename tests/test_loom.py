@@ -465,6 +465,29 @@ class IntakeTest(unittest.TestCase):
         (dest, _), = self.intake.ingest(self.cfg, [p])
         self.assertEqual(_read(dest).count("---\ntitle:"), 1)  # 不重复注入
 
+    def test_docx_extracted_to_searchable_md_and_redacted(self):
+        import zipfile
+        ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        doc = (f'<?xml version="1.0"?><w:document xmlns:w="{ns}"><w:body>'
+               '<w:p><w:r><w:t>归因结论段落</w:t></w:r></w:p>'
+               '<w:p><w:r><w:t>token=sk_live_ABCDEFGHIJKLMNOP1234</w:t></w:r></w:p>'
+               '</w:body></w:document>')
+        p = os.path.join(self.src, "报告.docx")
+        with zipfile.ZipFile(p, "w") as z:
+            z.writestr("word/document.xml", doc)
+        (dest, msg), = self.intake.ingest(self.cfg, [p], to="refs")
+        self.assertTrue(dest.endswith(".md"))                 # 提取成可检索 .md
+        body = _read(dest)
+        self.assertIn("归因结论段落", body)                    # 正文提取到
+        self.assertIn("已打码", body)                          # 提取文本里的密钥被抹
+        self.assertNotIn("sk_live_ABCDEFGHIJKLMNOP1234", body)
+        files = os.listdir(os.path.join(config.notes_dir(self.cfg), "refs"))
+        self.assertTrue(any(f.endswith(".docx") for f in files))   # 原件保真也在
+
+    def test_pdf_text_graceful_without_extractor(self):
+        # _pdf_text 对非 pdf/无法解析优雅返回 ""(不崩)
+        self.assertEqual(self.intake._pdf_text(self._mk("x.pdf", "not really a pdf")), "")
+
     def test_data_file_kept_as_is_but_redacted(self):
         p = self._mk("catalog.json", '{"token": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345", "n": 1}')
         (dest, _), = self.intake.ingest(self.cfg, [p], to="refs")

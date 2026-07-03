@@ -46,7 +46,7 @@
 - `~/.loom/.env`:`FEISHU_APP_ID/SECRET` 等凭证,**永不进 vault / 代码仓**。
 - 采集入库前对自由文本(summary + detail 递归 str/list/dict)跑 `util.redact` 抹掉 token/密钥值(`cfg.redact` 默认 true;私有可信仓可设 false;`redact_entry` 递归)——`entries.jsonl` 与 vault 两处都不留机密。`safe_join`(realpath)防 triage/归档路径穿越写出 vault。
   - **覆盖**:私钥块(含 PGP)/ JWT / AWS AKIA / GitHub ghp/gho/ghs/ghu/ghr/pat / Stripe / Google AIza·ya29 / Slack token·webhook / Azure AccountKey / OpenAI sk- / bearer·Basic / URL 密码 / `键=值`(键像密钥;引号值更激进,裸值需数字/base64尾/超长以免误伤散文)。
-  - **已知限制(低危)**:markdown 表格单元格里的弱密码、裸的全小写长口令 可能漏(权衡了对散文的误伤);二进制文件(pdf/docx/xlsx)`loom doc add` 原样拷、不扫描(CLI 会提示)。真机密多含数字/固定前缀 → 绝大多数被覆盖。原文永远在 transcript/git,回链可查。
+  - **已知限制(低危)**:markdown 表格单元格里的弱密码、裸的全小写长口令 可能漏(权衡了对散文的误伤);docx/pdf 已提取文本并打码(pdf 需 pdftotext),仅 pptx/xlsx/parquet 等真二进制原样拷、不扫描(CLI 会提示)。真机密多含数字/固定前缀 → 绝大多数被覆盖。原文永远在 transcript/git,回链可查。
 - `~/.loom/data/entries.jsonl`:归一化条目(可再生,不必手改)。
 - `~/.loom/data/index.sqlite`:从 entries 派生的 FTS5 检索索引(可删可再生,`loom search` 会自动重建)。
 - `~/.loom/vault/`:**独立 git 仓** → push 私有 GitHub(`loom-vault`),Basic Memory / Obsidian 的索引对象。分区:`journal/*.md`(自动生成,勿手改)+ `notes/`(手写文档区,loom 从不碰)+ 仓根 `README.md`(说明布局)。
@@ -180,6 +180,9 @@ loom search <词> [--project P] [--tool T] [--since D] [--until D] [--limit N]
 loom doc add <路径…> [--to 类目] [--tags a,b] [--title T] [--move] [--push]
                                 # 临时/外来文档快速入库 notes/:自动补 frontmatter + 密钥打码;
                                 #   默认进 notes/inbox/(先收后归类),--to 指定类目,目录会递归纳入。
+                                #   md/txt→补 frontmatter;json/yaml/csv→存原格式仍打码;
+                                #   docx→纯标准库提取文本、pdf→pdftotext 提取(有则用),都成可检索 .md + 留原件;
+                                #   pptx/xlsx 等→原样拷(CLI 提示未扫描)。
 loom doc ls                     # 列 notes/ 下所有文档
 loom doc triage                 # 【AI 辅助归类】打印清单(现有类目/标签 + inbox 待分类文档头部,已打码)
 loom doc triage --apply <tsv>   #   应用 AI 给的映射(每行 相对路径<TAB>类目<TAB>标签),移到类目 + 更新标签

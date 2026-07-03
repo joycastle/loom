@@ -2,20 +2,55 @@
 """临时文档快速入库:`loom doc add <路径>` —— 从任意位置(下载/别处)拉进 notes/。
 
 零摩擦:自动补 frontmatter(title/date/tags/source/status)、跑密钥打码、放进
-`notes/<类目>`(默认 `inbox/`,先收后归类)。文本类抽正文,二进制(pdf/docx)原样拷。
+`notes/<类目>`(默认 `inbox/`,先收后归类)。文本类抽正文;docx/pdf 提取文本成可检索
+.md(并留原件保真);其余二进制原样拷。
 """
 import os
 import re
 import shutil
+import subprocess
+import xml.etree.ElementTree as ET
+import zipfile
 from datetime import datetime
 
 from . import config, util
 
 TEXT_EXT = (".md", ".txt", ".rst", ".org", ".markdown")   # 补 frontmatter + 打码 → .md
-TEXTDATA_EXT = (".json", ".yaml", ".yml", ".csv", ".tsv", ".toml")  # 原样存但打码(仍是文本,能抹密钥值)
-BINARY_EXT = (".pdf", ".docx", ".pptx", ".xlsx", ".numbers", ".pages", ".key", ".parquet")  # 原样拷,无法打码
-DOC_EXT = TEXT_EXT + TEXTDATA_EXT + BINARY_EXT
+TEXTDATA_EXT = (".json", ".yaml", ".yml", ".csv", ".tsv", ".toml")  # 原样存但打码(仍是文本)
+EXTRACTABLE_EXT = (".docx", ".pdf")   # 提取文本→可检索 .md(打码)+ 留原件保真
+BINARY_EXT = (".pptx", ".xlsx", ".numbers", ".pages", ".key", ".parquet")  # 原样拷,无法提取/打码
+DOC_EXT = TEXT_EXT + TEXTDATA_EXT + EXTRACTABLE_EXT + BINARY_EXT
 _H1 = re.compile(r"^#\s+(.+)")
+_DOCX_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def _docx_text(path):
+    """纯标准库提取 docx 正文(zip + xml,按段落)。失败返回 ""。"""
+    try:
+        with zipfile.ZipFile(path) as z:
+            root = ET.fromstring(z.read("word/document.xml"))
+        paras = ["".join(t.text for t in p.iter(_DOCX_NS + "t") if t.text)
+                 for p in root.iter(_DOCX_NS + "p")]
+        return "\n".join(x for x in paras).strip()
+    except Exception:
+        return ""
+
+
+def _pdf_text(path):
+    """PDF 文本:有 pdftotext(poppler)则用,否则返回 ""(优雅降级,不引入依赖)。"""
+    exe = shutil.which("pdftotext")
+    if not exe:
+        return ""
+    try:
+        out = subprocess.run([exe, "-layout", "-q", path, "-"],
+                             capture_output=True, timeout=120)
+        return out.stdout.decode("utf-8", "replace").strip()
+    except Exception:
+        return ""
+
+
+def _extract_text(path, ext):
+    return _docx_text(path) if ext == ".docx" else _pdf_text(path) if ext == ".pdf" else ""
 
 
 def _read(path):
@@ -68,6 +103,7 @@ def _one(cfg, src, to, tags, title, move, redact):
     os.makedirs(dest_dir, exist_ok=True)
     date = datetime.fromtimestamp(os.path.getmtime(src)).strftime("%Y-%m-%d")
     status = to or "inbox"
+    note = ""
 
     if ext in TEXT_EXT:
         with open(src, encoding="utf-8", errors="replace") as f:
@@ -89,7 +125,24 @@ def _one(cfg, src, to, tags, title, move, redact):
             data = f.read()
         with open(dest, "w", encoding="utf-8") as f:
             f.write(util.redact(data) if redact else data)
-    elif ext in BINARY_EXT:                          # 二进制:原样拷,无法打码
+    elif ext in EXTRACTABLE_EXT:                      # docx/pdf:提取文本→可检索 .md + 留原件
+        stem = os.path.splitext(os.path.basename(src))[0]
+        raw = _uniq(os.path.join(dest_dir, _slug(os.path.basename(src))))
+        shutil.copy2(src, raw)                        # 原件保真
+        text = _extract_text(src, ext)
+        if text:
+            if redact:
+                text = util.redact(text)
+            dest = _uniq(os.path.join(dest_dir, _slug(stem) + ".md"))
+            with open(dest, "w", encoding="utf-8") as f:
+                f.write(_frontmatter(title or stem, date, tags, src, status))
+                f.write(f"> 从 {ext[1:]} 提取的文本;原件同目录 `{os.path.basename(raw)}`\n\n")
+                f.write(text + ("" if text.endswith("\n") else "\n"))
+            note = f"(提取文本 + 原件 {os.path.basename(raw)})"
+        else:
+            dest = raw                                # 提取失败(如无 pdftotext)→ 只留原件
+            note = "(未能提取文本,仅原件;pdf 需 pdftotext)"
+    elif ext in BINARY_EXT:                          # 其余二进制:原样拷,无法提取/打码
         dest = _uniq(os.path.join(dest_dir, _slug(os.path.basename(src))))
         shutil.copy2(src, dest)
     else:
@@ -101,7 +154,7 @@ def _one(cfg, src, to, tags, title, move, redact):
         except OSError:
             pass
     verb = "移入" if move else "拷入"
-    return dest, f"{verb} {os.path.relpath(dest, config.vault_dir(cfg))}"
+    return dest, f"{verb} {os.path.relpath(dest, config.vault_dir(cfg))} {note}".rstrip()
 
 
 def _parse_frontmatter(text):
