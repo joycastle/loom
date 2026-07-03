@@ -63,6 +63,40 @@ class StoreTest(unittest.TestCase):
         self.assertEqual([r["id"] for r in lines], ["y", "x"])  # 按 ts 升序落盘
 
 
+class RedactTest(unittest.TestCase):
+    def test_masks_secret_values(self):
+        cases = [
+            "FEISHU_APP_SECRET=abcd1234efgh5678",
+            'password: "hunter2xy"',
+            "api_key = sk-ABCDEFGHIJKLMNOPQRSTUVWX",
+            "Authorization: Bearer eyJhbGciOiZAAAAAAAA.bbbbbbbbbb.cccccccccc",
+            "aws AKIAIOSFODNN7EXAMPLE key",
+            "postgres://user:s3cretpw@host:5432/db",
+            "token=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",
+        ]
+        for c in cases:
+            out = util.redact(c)
+            self.assertIn("已打码", out, f"未打码: {c} -> {out}")
+        # 关键:真正的机密子串不残留
+        self.assertNotIn("hunter2xy", util.redact('password: "hunter2xy"'))
+        self.assertNotIn("s3cretpw", util.redact("postgres://user:s3cretpw@host/db"))
+
+    def test_leaves_code_and_varnames_intact(self):
+        # 变量名/代码引用(非赋值)不该被动
+        keep = 'c = Variable.get("secret_af_audience_apl")'
+        self.assertEqual(util.redact(keep), keep)
+        self.assertEqual(util.redact("SELECT app_id FROM appsflyer"),
+                         "SELECT app_id FROM appsflyer")
+        self.assertEqual(util.redact("fix(dwb): 补 net 分支"), "fix(dwb): 补 net 分支")
+
+    def test_redact_entry_scrubs_detail(self):
+        e = _entry("codex:1", "2026-06-01", "p", "codex", "session", "跑查询",
+                   opening='conn = connect(token="sk-ABCDEFGHIJKLMNOPQRSTUV")')
+        util.redact_entry(e)
+        self.assertIn("已打码", e["detail"]["opening"])
+        self.assertNotIn("sk-ABCDEFGHIJKLMNOPQRSTUV", e["detail"]["opening"])
+
+
 class ConfigTest(unittest.TestCase):
     def test_parse_bitable_url(self):
         at, tid = config.parse_bitable_url(

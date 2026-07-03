@@ -56,7 +56,7 @@ loom source enable|disable <name>
 | codebuddy | `CodeBuddy/.../state.vscdb` | 占位;本地无缓存时由 git 兜底 |
 | feishu | 多维表格 `bitable/v1 list records` | 需求 / 记事:按「负责人=你」+ 日期筛 |
 
-隐私:vault 只存**元数据 + 意图标题**,不存完整对话、不含密钥。
+隐私:vault 只存**元数据 + 意图/正文**,不存完整对话;token/密钥值在**采集入库前自动打码**(`redact`,默认开;变量名保留,只抹「键=值」的值),推云端不泄露。完整对话/整 diff 走回链一跳回溯。
 
 ### 飞书打点走独立机器人(不在 loom 内读 IM)
 

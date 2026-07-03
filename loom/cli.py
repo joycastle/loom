@@ -17,10 +17,13 @@ def _since(cfg, arg):
 
 def do_collect(cfg, sources, since):
     by_id = store.load()
+    redact = cfg.get("redact", True)
     total = 0
     for s in sources:
         got = collectors.REGISTRY[s](cfg, since)
         if got:
+            if redact:
+                got = [util.redact_entry(e) for e in got]  # 入库前抹密钥
             store.upsert(by_id, got)
             print(f"  [{s}] 采集 {len(got)} 条")
         total += len(got)

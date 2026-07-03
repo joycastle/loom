@@ -10,6 +10,7 @@ DEFAULT_CONFIG = {
     "owner": {"name": "", "feishu_name": ""},
     "identities": {"emails": [], "names": []},
     "default_since_days": 100,
+    "redact": True,          # 采集入库前抹掉 token/密钥值(推云端/Basic Memory 防泄露);私有可信仓可设 false
     "repos": [],
     "sources": {
         "claude":    {"enabled": True, "projects_dir": "~/.claude/projects"},

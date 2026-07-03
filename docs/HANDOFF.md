@@ -44,6 +44,7 @@
 
 - `~/.loom/config.json`:身份 / 仓 / 需求池 / 源开关(靠子命令管理,免手编)。
 - `~/.loom/.env`:`FEISHU_APP_ID/SECRET` 等凭证,**永不进 vault / 代码仓**。
+- 采集入库前对自由文本(summary / detail.body / detail.opening 等)跑 `util.redact` 抹掉 token/密钥值(`cfg.redact` 默认 true;私有可信仓可设 false)——`entries.jsonl` 与 vault 两处都不留机密,推云端天然安全。覆盖:私钥块 / JWT / AWS / gh / slack / sk- / bearer / URL 密码 / `键=值`(键像密钥)。原文永远在 transcript/git,回链可查。
 - `~/.loom/data/entries.jsonl`:归一化条目(可再生,不必手改)。
 - `~/.loom/data/index.sqlite`:从 entries 派生的 FTS5 检索索引(可删可再生,`loom search` 会自动重建)。
 - `~/.loom/vault/journal/*.md`:按天日记,是**独立 git 仓** → push 私有 GitHub;也是 Basic Memory / Obsidian 的索引对象。
@@ -65,7 +66,7 @@
     store.py               # entries.jsonl 按 id upsert(load/save/upsert)
     search.py              # 从 entries.jsonl 派生的 SQLite FTS5(trigram)检索索引;可再生
     render.py              # 按天渲染 markdown;自动区({date}.md)与手写区({date}.notes.md)物理分离
-    util.py                # 路径/LOOM_HOME、load_env、http_json(urllib)、read_sqlite(copy-to-temp 防锁)、ms_to_iso
+    util.py                # 路径/LOOM_HOME、load_env、http_json(urllib)、read_sqlite(copy-to-temp 防锁)、ms_to_iso、redact(密钥打码)
     collectors/
       __init__.py          # REGISTRY: name -> collect(cfg,since)->[entry];加源在此注册
       git.py claude.py codex.py cursor.py codebuddy.py feishu.py
@@ -115,7 +116,7 @@
 - 读:`~/.claude/projects/*/*.jsonl`,每文件一个 session。取 cwd(→项目)、min/max timestamp、`ai-title` 或首条真实用户消息(意图)。
 - 产出:`kind=session`,detail=`{start,end,user,asst, opening}`。**opening**=首条实质用户消息**全文**(封顶 1200 字,保留换行)—— summary 只是 180 字短意图,opening 是「开场我要干什么」。渲染:opening 比 summary 多出的部分作引用块挂在会话下(标题前缀相同则不重复渲染)。
 - **不存完整对话**:transcript 动辄 40–120MB(单会话用户消息就 ~1MB),是无损层;`ref`=jsonl 全路径,一跳可 `cat`/打开看全。
-- 坑:意图提取过滤了系统提醒/命令包裹/tool_result;无 cwd 时从目录名兜底。opening 可能含粘贴的代码/密钥变量名 —— 推云端/Basic Memory 前留意(见 §8)。
+- 坑:意图提取过滤了系统提醒/命令包裹/tool_result;无 cwd 时从目录名兜底。opening/body 里粘贴的 token/密钥值会在**采集入库前自动打码**(`cfg.redact`,默认开;见 §3 util.redact)——变量名/代码引用保留,只抹「键=值」的值。
 
 ### codex
 - 读:`~/.codex/state_5.sqlite` 的 `threads` 表(`cwd/title/first_user_message/created_at_ms/updated_at_ms/git_branch`)。`_find_db` 兼容 `state_5/state/state_4/state*.sqlite`。
