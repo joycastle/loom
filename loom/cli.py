@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-from . import config, render, search, store, util
+from . import config, intake, render, search, store, util
 from . import collectors
 
 
@@ -142,6 +142,29 @@ def cmd_identity(cfg, a):
         config.save(cfg); print(f"已加 {bucket}: {v}")
 
 
+def cmd_doc(cfg, a):
+    if a.action == "ls":
+        nd = config.notes_dir(cfg)
+        if not os.path.isdir(nd):
+            print("(notes/ 还没有文档,用 loom doc add <路径> 添加)")
+            return
+        for dp, _, fns in sorted(os.walk(nd)):
+            for fn in sorted(fns):
+                print(os.path.relpath(os.path.join(dp, fn), nd))
+        return
+    if not a.path:
+        print("用法:loom doc add <路径…> [--to 类目] [--tags a,b] [--title T] [--move] [--push]")
+        return
+    results = intake.ingest(cfg, a.path, to=a.to, tags=a.tags, title=a.title, move=a.move)
+    ok = 0
+    for dest, msg in results:
+        print(("  ✓ " if dest else "  · ") + msg)
+        ok += 1 if dest else 0
+    print(f"入库 {ok}/{len(results)} 个 → {config.notes_dir(cfg)}/{a.to or 'inbox'}")
+    if a.push and ok:
+        vault_git(cfg, True)
+
+
 def cmd_source(cfg, a):
     cfg["sources"].setdefault(a.name, {})["enabled"] = (a.action == "enable")
     config.save(cfg); print(f"{a.name} -> {a.action}")
@@ -242,6 +265,14 @@ def build_parser():
     sp = sub.add_parser("source")
     sp.add_argument("action", choices=("enable", "disable"))
     sp.add_argument("name")
+    sp = sub.add_parser("doc")
+    sp.add_argument("action", choices=("add", "ls"))
+    sp.add_argument("path", nargs="*")
+    sp.add_argument("--to")
+    sp.add_argument("--tags")
+    sp.add_argument("--title")
+    sp.add_argument("--move", action="store_true")
+    sp.add_argument("--push", action="store_true")
     return p
 
 
@@ -253,7 +284,7 @@ def main(argv=None):
         "sync": cmd_sync, "collect": cmd_collect, "build": cmd_build,
         "today": cmd_today, "search": cmd_search, "init": cmd_init,
         "repo": cmd_repo, "feishu": cmd_feishu, "identity": cmd_identity,
-        "source": cmd_source,
+        "source": cmd_source, "doc": cmd_doc,
     }
     handlers[args.cmd](cfg, args)
 

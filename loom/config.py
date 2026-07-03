@@ -60,6 +60,10 @@ def journal_dir(cfg):
     return os.path.join(vault_dir(cfg), "journal")
 
 
+def notes_dir(cfg):
+    return os.path.join(vault_dir(cfg), "notes")
+
+
 # ---- 增删助手 ----
 def add_repo(cfg, path):
     path = os.path.abspath(util.expand(path))

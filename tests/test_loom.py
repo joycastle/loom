@@ -281,6 +281,52 @@ class RenderNotesTest(unittest.TestCase):
         self.assertIn("迁移前写的字", notes)
 
 
+class IntakeTest(unittest.TestCase):
+    def setUp(self):
+        from loom import intake
+        self.intake = intake
+        self.cfg = {"vault": {"dir": tempfile.mkdtemp(prefix="loom-vault-")}, "redact": True}
+        self.src = tempfile.mkdtemp(prefix="loom-src-")
+
+    def _mk(self, name, content):
+        p = os.path.join(self.src, name)
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(content)
+        return p
+
+    def test_add_text_stamps_frontmatter_and_redacts(self):
+        p = self._mk("我的 笔记.md", "# 归因排查\n\ntoken=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345\n正文")
+        (dest, msg), = self.intake.ingest(self.cfg, [p], to="attribution", tags="applovin, cost")
+        self.assertTrue(dest.endswith(".md"))
+        self.assertIn("notes/attribution", dest.replace(os.sep, "/"))
+        self.assertNotIn(" ", os.path.basename(dest))       # 文件名去空格
+        body = _read(dest)
+        self.assertTrue(body.startswith("---"))             # 补了 frontmatter
+        self.assertIn("title: 归因排查", body)               # 取 H1 作标题
+        self.assertIn("tags: [applovin, cost]", body)
+        self.assertIn("status: attribution", body)
+        self.assertIn("已打码", body)                        # 密钥被抹
+        self.assertNotIn("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ", body)
+
+    def test_default_to_inbox_and_move(self):
+        p = self._mk("draft.md", "随手记")
+        (dest, _), = self.intake.ingest(self.cfg, [p], move=True)
+        self.assertIn("notes/inbox", dest.replace(os.sep, "/"))
+        self.assertFalse(os.path.exists(p))                  # --move 删原件
+
+    def test_existing_frontmatter_respected(self):
+        p = self._mk("has_fm.md", "---\ntitle: 已有\n---\n正文")
+        (dest, _), = self.intake.ingest(self.cfg, [p])
+        self.assertEqual(_read(dest).count("---\ntitle:"), 1)  # 不重复注入
+
+    def test_name_collision_gets_suffix(self):
+        a = self._mk("dup.md", "一")
+        r1 = self.intake.ingest(self.cfg, [a])
+        b = self._mk("dup.md", "二")
+        r2 = self.intake.ingest(self.cfg, [b])
+        self.assertNotEqual(r1[0][0], r2[0][0])              # 第二个加了 -1
+
+
 class SearchTest(unittest.TestCase):
     def setUp(self):
         for p in (util.DATA_PATH, util.INDEX_PATH):

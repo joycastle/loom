@@ -39,6 +39,8 @@ loom build | today
 loom search <词> [--project P] [--tool T] [--since D] [--until D]
                                # SQLite FTS5(trigram):≥3 字符 bm25 排序,<3 字符回退子串;空词+过滤=浏览
 
+loom doc add <路径…> [--to 类目] [--tags a,b] [--move] [--push]
+                               # 临时/外来文档一键入库 notes/(自动补 frontmatter + 密钥打码;默认进 inbox/)
 loom repo add|rm|scan|ls [值]  # 灵活增删 git 仓(scan 自动发现)
 loom feishu add <url>|rm|ls    # 增删需求池(URL 解析 app_token/table_id)
 loom identity add <邮箱/名>|ls  # 增补 git 身份

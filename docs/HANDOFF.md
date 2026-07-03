@@ -65,6 +65,7 @@
     config.py              # 读写 config.json + 增删助手 + 飞书 URL 解析
     store.py               # entries.jsonl 按 id upsert(load/save/upsert)
     search.py              # 从 entries.jsonl 派生的 SQLite FTS5(trigram)检索索引;可再生
+    intake.py              # loom doc add:外来文档快速入库 notes/(补 frontmatter + 打码)
     render.py              # 按天渲染 markdown;自动区({date}.md)与手写区({date}.notes.md)物理分离
     util.py                # 路径/LOOM_HOME、load_env、http_json(urllib)、read_sqlite(copy-to-temp 防锁)、ms_to_iso、redact(密钥打码)
     collectors/
@@ -158,6 +159,11 @@ loom search <词> [--project P] [--tool T] [--since D] [--until D] [--limit N]
                                 # SQLite FTS5(trigram)检索:≥3 字符走 bm25 排序,<3 字符回退 LIKE 子串;
                                 #   空词 + 过滤 = 按项目/工具/日期浏览。索引随采集重建、缺失/过期自动重建。
                                 #   (更强的语义检索仍可另接 Basic Memory,见 §9)
+
+loom doc add <路径…> [--to 类目] [--tags a,b] [--title T] [--move] [--push]
+                                # 临时/外来文档快速入库 notes/:自动补 frontmatter + 密钥打码;
+                                #   默认进 notes/inbox/(先收后归类),--to 指定类目,目录会递归纳入。
+loom doc ls                     # 列 notes/ 下所有文档
 
 loom repo add|rm|scan|ls [值]   # 增删 git 仓(scan <dir> 自动发现 .git 深度≤3)
 loom feishu add <url>|rm|ls     # 增删需求池(URL 解析 app_token/table_id;缺 table 会追问)
