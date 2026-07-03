@@ -45,6 +45,7 @@
 - `~/.loom/config.json`:身份 / 仓 / 需求池 / 源开关(靠子命令管理,免手编)。
 - `~/.loom/.env`:`FEISHU_APP_ID/SECRET` 等凭证,**永不进 vault / 代码仓**。
 - `~/.loom/data/entries.jsonl`:归一化条目(可再生,不必手改)。
+- `~/.loom/data/index.sqlite`:从 entries 派生的 FTS5 检索索引(可删可再生,`loom search` 会自动重建)。
 - `~/.loom/vault/journal/*.md`:按天日记,是**独立 git 仓** → push 私有 GitHub;也是 Basic Memory / Obsidian 的索引对象。
 - 环境变量 **`LOOM_HOME`** 可覆盖 `~/.loom`(多实例 / 测试用)。
 
@@ -62,6 +63,7 @@
     cli.py                 # argparse 分发 + init 引导 + 配置子命令
     config.py              # 读写 config.json + 增删助手 + 飞书 URL 解析
     store.py               # entries.jsonl 按 id upsert(load/save/upsert)
+    search.py              # 从 entries.jsonl 派生的 SQLite FTS5(trigram)检索索引;可再生
     render.py              # 按天渲染 markdown;自动区({date}.md)与手写区({date}.notes.md)物理分离
     util.py                # 路径/LOOM_HOME、load_env、http_json(urllib)、read_sqlite(copy-to-temp 防锁)、ms_to_iso
     collectors/
@@ -144,7 +146,10 @@ loom sync [--push] [--since]    # 采集全部源 → 渲染日记 → 提交 va
 loom collect --source <name>    # 单源采集:git|claude|codex|cursor|codebuddy|feishu|all
 loom build                      # 只重渲染日记(不重新采集)
 loom today                      # 打印今天的日记
-loom search <词>                # 在条目 summary/project 里查(语义检索走 Basic Memory)
+loom search <词> [--project P] [--tool T] [--since D] [--until D] [--limit N]
+                                # SQLite FTS5(trigram)检索:≥3 字符走 bm25 排序,<3 字符回退 LIKE 子串;
+                                #   空词 + 过滤 = 按项目/工具/日期浏览。索引随采集重建、缺失/过期自动重建。
+                                #   (更强的语义检索仍可另接 Basic Memory,见 §9)
 
 loom repo add|rm|scan|ls [值]   # 增删 git 仓(scan <dir> 自动发现 .git 深度≤3)
 loom feishu add <url>|rm|ls     # 增删需求池(URL 解析 app_token/table_id;缺 table 会追问)

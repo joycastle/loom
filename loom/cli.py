@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-from . import config, render, store, util
+from . import config, render, search, store, util
 from . import collectors
 
 
@@ -25,6 +25,7 @@ def do_collect(cfg, sources, since):
             print(f"  [{s}] 采集 {len(got)} 条")
         total += len(got)
     store.save(by_id)
+    search.rebuild()  # 派生检索索引随采集同步重建
     print(f"采集完成:本轮 {total} 条,库内共 {len(by_id)} 条(since {since})")
     return by_id
 
@@ -79,12 +80,11 @@ def cmd_today(cfg, a):
 
 
 def cmd_search(cfg, a):
-    term = a.term.lower()
-    hits = [e for e in store.load().values()
-            if term in e["summary"].lower() or term in e["project"].lower()]
-    for e in sorted(hits, key=lambda x: x["ts"], reverse=True)[:a.limit]:
+    hits = search.query(a.term, limit=a.limit, project=a.project,
+                        tool=a.tool, since=a.since, until=a.until)
+    for e in hits:
         print(f"{e['date']} [{e['project']}/{e['tool']}] {e['summary']}  ({e['ref']})")
-    print(f"\n共 {len(hits)} 条命中")
+    print(f"\n共 {len(hits)} 条命中" + ("(达上限,--limit 调大)" if len(hits) == a.limit else ""))
 
 
 def cmd_repo(cfg, a):
@@ -223,7 +223,13 @@ def build_parser():
     sub.add_parser("build")
     sub.add_parser("today")
     sub.add_parser("init")
-    sp = sub.add_parser("search"); sp.add_argument("term"); sp.add_argument("--limit", type=int, default=40)
+    sp = sub.add_parser("search")
+    sp.add_argument("term")
+    sp.add_argument("--limit", type=int, default=40)
+    sp.add_argument("--project")
+    sp.add_argument("--tool", choices=collectors.names())
+    sp.add_argument("--since")
+    sp.add_argument("--until")
     for cname, acts in (("repo", ("add", "rm", "scan", "ls")),
                         ("feishu", ("add", "rm", "ls")),
                         ("identity", ("add", "ls"))):

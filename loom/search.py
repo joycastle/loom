@@ -1,0 +1,118 @@
+# -*- coding: utf-8 -*-
+"""检索:从 entries.jsonl 派生的 SQLite FTS5(trigram)索引。
+
+- **派生、可再生**:索引只是 entries 的镜像,删了自动重建,不违反「索引可再生」。
+- **零新依赖**:sqlite3 是标准库;trigram tokenizer 支持中文子串匹配。
+- **混合策略**:trigram 需 ≥3 字符,故 <3 字符的查询(如「需求」「飞书」)回退到
+  LIKE 子串匹配——保证永不弱于旧版纯子串扫描,≥3 字符时又有 bm25 排序 + 结构化过滤。
+"""
+import json
+import os
+import sqlite3
+
+from . import util
+
+# FTS5:summary/project 参与全文;其余列 UNINDEXED 仅存储/精确过滤。
+_CREATE = """
+CREATE VIRTUAL TABLE entries USING fts5(
+    id UNINDEXED, date UNINDEXED, ts UNINDEXED,
+    project, tool UNINDEXED, kind UNINDEXED,
+    summary, ref UNINDEXED,
+    tokenize='trigram'
+);
+"""
+
+
+def _stale():
+    """索引缺失或旧于 entries.jsonl → 需重建。"""
+    if not os.path.exists(util.INDEX_PATH):
+        return True
+    if not os.path.exists(util.DATA_PATH):
+        return False
+    return os.path.getmtime(util.INDEX_PATH) < os.path.getmtime(util.DATA_PATH)
+
+
+def rebuild():
+    """从 entries.jsonl 全量重建索引。快(单人规模),整体重写即可。"""
+    os.makedirs(os.path.dirname(util.INDEX_PATH), exist_ok=True)
+    tmp = util.INDEX_PATH + ".tmp"
+    if os.path.exists(tmp):
+        os.remove(tmp)
+    con = sqlite3.connect(tmp)
+    try:
+        con.execute(_CREATE)
+        rows = []
+        if os.path.exists(util.DATA_PATH):
+            for line in open(util.DATA_PATH, encoding="utf-8"):
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+                rows.append((e.get("id", ""), e.get("date", ""), e.get("ts", ""),
+                             e.get("project", ""), e.get("tool", ""), e.get("kind", ""),
+                             e.get("summary", ""), e.get("ref", "")))
+        con.executemany(
+            "INSERT INTO entries(id,date,ts,project,tool,kind,summary,ref) "
+            "VALUES (?,?,?,?,?,?,?,?)", rows)
+        con.commit()
+    finally:
+        con.close()
+    os.replace(tmp, util.INDEX_PATH)  # 原子替换,避免半截索引
+    return len(rows)
+
+
+def ensure():
+    if _stale():
+        rebuild()
+
+
+def _cjk_len(s):
+    return len(s.strip())
+
+
+def query(term, limit=40, project=None, tool=None, since=None, until=None):
+    """返回按相关度排序的条目 dict 列表。≥3 字符走 FTS5+bm25,否则 LIKE 子串。"""
+    ensure()
+    con = sqlite3.connect(util.INDEX_PATH)
+    con.row_factory = sqlite3.Row
+    cols = "id,date,ts,project,tool,kind,summary,ref"
+    where, params = [], []
+    if project:
+        where.append("project = ?"); params.append(project)
+    if tool:
+        where.append("tool = ?"); params.append(tool)
+    if since:
+        where.append("date >= ?"); params.append(since)
+    if until:
+        where.append("date <= ?"); params.append(until)
+
+    term = (term or "").strip()
+    if _cjk_len(term) >= 3:
+        # FTS5 MATCH:把查询当短语,双引号包裹并转义内部引号,避免语法错误。
+        phrase = '"' + term.replace('"', '""') + '"'
+        clause = "entries MATCH ?"
+        order = "ORDER BY bm25(entries)"
+        p = [phrase] + params
+        sql = f"SELECT {cols} FROM entries WHERE {clause}"
+        if where:
+            sql += " AND " + " AND ".join(where)
+        sql += f" {order} LIMIT ?"
+        try:
+            cur = con.execute(sql, p + [limit])
+            hits = [dict(r) for r in cur.fetchall()]
+            con.close()
+            return hits
+        except sqlite3.OperationalError:
+            pass  # 罕见 MATCH 语法问题 → 落到 LIKE
+    # <3 字符 或 MATCH 失败:LIKE 子串(summary/project),按时间倒序。
+    like = f"%{term}%"
+    clause = "(summary LIKE ? OR project LIKE ?)"
+    p = [like, like] + params
+    sql = f"SELECT {cols} FROM entries WHERE {clause}"
+    if where:
+        sql += " AND " + " AND ".join(where)
+    sql += " ORDER BY ts DESC LIMIT ?"
+    cur = con.execute(sql, p + [limit])
+    hits = [dict(r) for r in cur.fetchall()]
+    con.close()
+    return hits

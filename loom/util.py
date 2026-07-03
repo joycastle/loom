@@ -13,6 +13,7 @@ HOME = os.path.expanduser(os.environ.get("LOOM_HOME", "~/.loom"))
 CONFIG_PATH = os.path.join(HOME, "config.json")
 ENV_PATH = os.path.join(HOME, ".env")
 DATA_PATH = os.path.join(HOME, "data", "entries.jsonl")
+INDEX_PATH = os.path.join(HOME, "data", "index.sqlite")  # 派生的 FTS5 检索索引,可删可再生
 
 
 def expand(p):

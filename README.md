@@ -35,7 +35,9 @@ cd ~/Documents/loom && ./install.sh      # 装 CLI 到 PATH + 引导配置 + 首
 loom init                      # 交互引导:身份/扫仓/飞书
 loom sync [--push] [--since]   # 采集全部源 → 渲染 → 提交(--push 上云)。日常就这条
 loom collect --source <name>   # 单源采集:git|claude|codex|cursor|codebuddy|feishu|all
-loom build | today | search <词>
+loom build | today
+loom search <词> [--project P] [--tool T] [--since D] [--until D]
+                               # SQLite FTS5(trigram):≥3 字符 bm25 排序,<3 字符回退子串;空词+过滤=浏览
 
 loom repo add|rm|scan|ls [值]  # 灵活增删 git 仓(scan 自动发现)
 loom feishu add <url>|rm|ls    # 增删需求池(URL 解析 app_token/table_id)
