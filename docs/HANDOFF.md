@@ -44,7 +44,9 @@
 
 - `~/.loom/config.json`:身份 / 仓 / 需求池 / 源开关(靠子命令管理,免手编)。
 - `~/.loom/.env`:`FEISHU_APP_ID/SECRET` 等凭证,**永不进 vault / 代码仓**。
-- 采集入库前对自由文本(summary / detail.body / detail.opening 等)跑 `util.redact` 抹掉 token/密钥值(`cfg.redact` 默认 true;私有可信仓可设 false)——`entries.jsonl` 与 vault 两处都不留机密,推云端天然安全。覆盖:私钥块 / JWT / AWS / gh / slack / sk- / bearer / URL 密码 / `键=值`(键像密钥)。原文永远在 transcript/git,回链可查。
+- 采集入库前对自由文本(summary + detail 递归 str/list/dict)跑 `util.redact` 抹掉 token/密钥值(`cfg.redact` 默认 true;私有可信仓可设 false;`redact_entry` 递归)——`entries.jsonl` 与 vault 两处都不留机密。`safe_join`(realpath)防 triage/归档路径穿越写出 vault。
+  - **覆盖**:私钥块(含 PGP)/ JWT / AWS AKIA / GitHub ghp/gho/ghs/ghu/ghr/pat / Stripe / Google AIza·ya29 / Slack token·webhook / Azure AccountKey / OpenAI sk- / bearer·Basic / URL 密码 / `键=值`(键像密钥;引号值更激进,裸值需数字/base64尾/超长以免误伤散文)。
+  - **已知限制(低危)**:markdown 表格单元格里的弱密码、裸的全小写长口令 可能漏(权衡了对散文的误伤);二进制文件(pdf/docx/xlsx)`loom doc add` 原样拷、不扫描(CLI 会提示)。真机密多含数字/固定前缀 → 绝大多数被覆盖。原文永远在 transcript/git,回链可查。
 - `~/.loom/data/entries.jsonl`:归一化条目(可再生,不必手改)。
 - `~/.loom/data/index.sqlite`:从 entries 派生的 FTS5 检索索引(可删可再生,`loom search` 会自动重建)。
 - `~/.loom/vault/`:**独立 git 仓** → push 私有 GitHub(`loom-vault`),Basic Memory / Obsidian 的索引对象。分区:`journal/*.md`(自动生成,勿手改)+ `notes/`(手写文档区,loom 从不碰)+ 仓根 `README.md`(说明布局)。
