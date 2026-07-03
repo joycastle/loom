@@ -113,12 +113,13 @@
 
 ### claude(Claude Code)
 - 读:`~/.claude/projects/*/*.jsonl`,每文件一个 session。取 cwd(→项目)、min/max timestamp、`ai-title` 或首条真实用户消息(意图)。
-- 产出:`kind=session`,detail=`{start,end,user,asst}`。
-- 坑:意图提取过滤了系统提醒/命令包裹/tool_result;无 cwd 时从目录名兜底。
+- 产出:`kind=session`,detail=`{start,end,user,asst, opening}`。**opening**=首条实质用户消息**全文**(封顶 1200 字,保留换行)—— summary 只是 180 字短意图,opening 是「开场我要干什么」。渲染:opening 比 summary 多出的部分作引用块挂在会话下(标题前缀相同则不重复渲染)。
+- **不存完整对话**:transcript 动辄 40–120MB(单会话用户消息就 ~1MB),是无损层;`ref`=jsonl 全路径,一跳可 `cat`/打开看全。
+- 坑:意图提取过滤了系统提醒/命令包裹/tool_result;无 cwd 时从目录名兜底。opening 可能含粘贴的代码/密钥变量名 —— 推云端/Basic Memory 前留意(见 §8)。
 
 ### codex
 - 读:`~/.codex/state_5.sqlite` 的 `threads` 表(`cwd/title/first_user_message/created_at_ms/updated_at_ms/git_branch`)。`_find_db` 兼容 `state_5/state/state_4/state*.sqlite`。
-- 产出:`kind=session`,意图=title 或 first_user_message。
+- 产出:`kind=session`,意图=title 或 first_user_message;detail 含 **opening**=`first_user_message` 全文(封顶 1200,渲染同 claude)。
 - 坑:sqlite 先 copy-to-temp(含 -wal/-shm)防锁;表名/版本变了要调 `_CANDIDATES`。
 
 ### cursor

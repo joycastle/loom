@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from loom import config, render, search, store, util          # noqa: E402
 from loom.collectors import cursor as cursor_col               # noqa: E402
 from loom.collectors import git as git_col                     # noqa: E402
+from loom.collectors import claude as claude_col                # noqa: E402
 import subprocess                                              # noqa: E402
 
 
@@ -162,6 +163,37 @@ class GitCollectorTest(unittest.TestCase):
         self.assertEqual(git_col.collect(cfg, "2000-01-01"), [])  # 非本人 → 不抓
 
 
+class ClaudeCollectorTest(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="loom-claude-")
+        proj = os.path.join(self.root, "-Users-x-proj-z")
+        os.makedirs(proj)
+        lines = [
+            {"cwd": "/Users/x/proj-z", "timestamp": "2026-06-01T09:00:00Z",
+             "type": "user", "message": {"content": "我要重构归因管道,先梳理现状再动手"}},
+            {"timestamp": "2026-06-01T09:05:00Z", "type": "assistant",
+             "message": {"content": "好的"}},
+            {"type": "ai-title", "title": "归因管道重构"},
+        ]
+        with open(os.path.join(proj, "sid-1.jsonl"), "w", encoding="utf-8") as f:
+            for d in lines:
+                f.write(json.dumps(d, ensure_ascii=False) + "\n")
+        self.cfg = {"sources": {"claude": {"enabled": True, "projects_dir": self.root}}}
+
+    def test_captures_title_and_full_opening(self):
+        out = claude_col.collect(self.cfg, "2000-01-01")
+        self.assertEqual(len(out), 1)
+        e = out[0]
+        self.assertEqual(e["summary"], "归因管道重构")            # 标题优先
+        self.assertTrue(e["detail"]["opening"].startswith("我要重构归因管道"))  # 开场全文
+        self.assertEqual(e["project"], "proj-z")
+        self.assertEqual(e["detail"]["user"], 1)
+
+    def test_disabled_returns_empty(self):
+        cfg = {"sources": {"claude": {"enabled": False}}}
+        self.assertEqual(claude_col.collect(cfg, "2000-01-01"), [])
+
+
 class RenderNotesTest(unittest.TestCase):
     def setUp(self):
         # vault.dir → journal_dir = vault.dir + '/journal'(render 用 config.journal_dir)
@@ -190,6 +222,19 @@ class RenderNotesTest(unittest.TestCase):
         self.assertIn("我手写的重要结论", _read(notes))
         # 自动区确实更新了
         self.assertIn("又一条", _read(os.path.join(jdir, "2026-06-30.md")))
+
+    def test_session_opening_rendered_only_when_additive(self):
+        jdir = config.journal_dir(self.cfg)
+        adds = _entry("claude:1", "2026-07-01", "p", "claude", "session", "归因重构",
+                      start="2026-07-01T09:00:00", end="2026-07-01T10:00:00",
+                      opening="其实我想重构整个管道,还有一大段展开的上下文,标题没覆盖到。")
+        same = _entry("claude:2", "2026-07-01", "p", "claude", "session", "梳理现状",
+                      start="2026-07-01T11:00:00", end="2026-07-01T12:00:00",
+                      opening="梳理现状")  # opening 等于 summary → 不重复渲染
+        self._build([adds, same])
+        body = _read(os.path.join(jdir, "2026-07-01.md"))
+        self.assertIn("还有一大段展开的上下文", body)   # 追加信息被渲染
+        self.assertEqual(body.count("  > 梳理现状"), 0)  # 冗余的不渲染
 
     def test_migrates_legacy_sentinel_content(self):
         jdir = config.journal_dir(self.cfg)

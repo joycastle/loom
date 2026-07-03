@@ -112,6 +112,16 @@ def build(cfg, by_id):
                     if d.get("start") and d.get("end"):
                         span = f"{d['start'][11:16]}–{d['end'][11:16]} · "
                     lines.append(f"- **{e['tool']}** {span}{e['summary']}  \n  ↳ `{e['ref']}`")
+                    # 开场提问全文(比标题多的信息才渲染,避免和 summary 重复)
+                    op = (d.get("opening") or "").strip()
+                    op_norm = " ".join(op.split())
+                    sum_norm = " ".join((e["summary"] or "").split())
+                    if op_norm and not op_norm.startswith(sum_norm):
+                        shown = op[:600]
+                        for ol in shown.splitlines():
+                            lines.append(f"  > {ol}" if ol.strip() else "  >")
+                        if len(op) > len(shown):
+                            lines.append("  > …")
                 lines.append("")
 
         stem = _ensure_notes_file(jdir, date)

@@ -8,7 +8,12 @@ import re
 from .. import util
 
 
-def _first_intent(texts):
+INTENT_CAP = 180     # 标题行的短意图
+OPENING_CAP = 1200   # 开场提问全文(「我要干什么」),保留换行
+
+
+def _substantive(texts):
+    """返回首条实质用户消息(原文,未截断);滤掉命令/工具回传/系统提醒。"""
     for t in texts:
         s = (t or "").strip()
         if not s or s[0] in "<[":
@@ -18,8 +23,12 @@ def _first_intent(texts):
         low = s.lower()
         if low.startswith("caveat") or "tool_result" in low or "system-reminder" in low:
             continue
-        return re.sub(r"\s+", " ", s)[:180]
+        return s
     return ""
+
+
+def _first_intent(texts):
+    return re.sub(r"\s+", " ", _substantive(texts))[:INTENT_CAP]
 
 
 def _iter_text(content):
@@ -73,11 +82,13 @@ def collect(cfg, since):
             continue
         project = os.path.basename(cwd.rstrip("/")) if cwd else \
             os.path.basename(os.path.dirname(fp)).split("-")[-1]
-        intent = title.strip() if title else _first_intent(texts)
+        opening = _substantive(texts)
+        intent = title.strip() if title else re.sub(r"\s+", " ", opening)[:INTENT_CAP]
         entries.append({
             "id": f"claude:{sid}", "date": tmin[:10], "ts": tmin,
             "project": project, "tool": "claude", "kind": "session",
             "summary": intent or "(会话)", "ref": fp,
-            "detail": {"start": tmin, "end": tmax, "user": n_user, "asst": n_asst},
+            "detail": {"start": tmin, "end": tmax, "user": n_user, "asst": n_asst,
+                       "opening": opening[:OPENING_CAP]},
         })
     return entries

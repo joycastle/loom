@@ -50,8 +50,8 @@ loom source enable|disable <name>
 | 源 | 取自 | 内容 |
 |---|---|---|
 | git | 所有配置仓 `git log --all`(按你的邮箱/名字过滤) | 提交(标题 + **正文** + 每文件改动;整 diff 走回链) |
-| claude | `~/.claude/projects/*/*.jsonl` | 会话:意图标题 + 时间 + 项目 |
-| codex | `~/.codex/state_5.sqlite` threads | 会话:cwd/标题/首句意图 + 时间 |
+| claude | `~/.claude/projects/*/*.jsonl` | 会话:意图标题 + **开场提问全文** + 时间 + 项目(完整对话走回链) |
+| codex | `~/.codex/state_5.sqlite` threads | 会话:cwd/标题/**开场提问全文** + 时间 |
 | cursor | `Cursor/.../globalStorage/state.vscdb` composer 头 | 会话:标题 + 改动量(无正文) |
 | codebuddy | `CodeBuddy/.../state.vscdb` | 占位;本地无缓存时由 git 兜底 |
 | feishu | 多维表格 `bitable/v1 list records` | 需求 / 记事:按「负责人=你」+ 日期筛 |

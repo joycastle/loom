@@ -36,12 +36,14 @@ def collect(cfg, since):
             continue
         cwd = r.get("cwd") or ""
         project = os.path.basename(cwd.rstrip("/")) if cwd else "unknown"
-        intent = (r.get("title") or r.get("first_user_message") or "").strip()
+        opening = (r.get("first_user_message") or "").strip()
+        intent = (r.get("title") or opening).strip()
         intent = " ".join(intent.split())[:180] or "(会话)"
         entries.append({
             "id": f"codex:{r['id']}", "date": start[:10], "ts": start,
             "project": project, "tool": "codex", "kind": "session",
             "summary": intent, "ref": f"threads:{r['id']}",
-            "detail": {"start": start, "end": end, "git_branch": r.get("git_branch")},
+            "detail": {"start": start, "end": end, "git_branch": r.get("git_branch"),
+                       "opening": opening[:1200]},
         })
     return entries
