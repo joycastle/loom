@@ -38,7 +38,45 @@ def _csv_rows(path):
     return rows, capped
 
 
+def _col_idx(ref):
+    """单元格引用 'B3' → 列序号 1(处理稀疏单元格对齐)。"""
+    m = re.match(r"[A-Z]+", ref or "")
+    if not m:
+        return 0
+    idx = 0
+    for ch in m.group(0):
+        idx = idx * 26 + (ord(ch) - 64)
+    return idx - 1
+
+
+def _sheet_rows(root, shared):
+    rows = []
+    for row in root.iter(_XL_NS + "row"):
+        cells, maxc = {}, -1
+        for c in row.iter(_XL_NS + "c"):
+            ci = _col_idx(c.get("r"))
+            t = c.get("t")
+            if t == "inlineStr":                        # 内联字符串 <is><t>
+                is_ = c.find(_XL_NS + "is")
+                val = "".join(x.text or "" for x in is_.iter(_XL_NS + "t")) if is_ is not None else ""
+            else:
+                v = c.find(_XL_NS + "v")
+                if v is None or v.text is None:
+                    val = ""
+                elif t == "s":                          # sharedStrings 索引
+                    val = shared[int(v.text)] if v.text.isdigit() and int(v.text) < len(shared) else ""
+                else:
+                    val = v.text
+            cells[ci] = val
+            maxc = max(maxc, ci)
+        rows.append([cells.get(i, "") for i in range(maxc + 1)])
+        if len(rows) >= SCAN_CAP:
+            break
+    return rows
+
+
 def _xlsx_rows(path):
+    """解析 xlsx:处理 inlineStr/sharedStrings/数值 + 列位置;多 sheet 取数据最多的一张。"""
     with zipfile.ZipFile(path) as z:
         names = z.namelist()
         shared = []
@@ -46,28 +84,15 @@ def _xlsx_rows(path):
             root = ET.fromstring(z.read("xl/sharedStrings.xml"))
             for si in root.iter(_XL_NS + "si"):
                 shared.append("".join(t.text or "" for t in si.iter(_XL_NS + "t")))
-        sheets = sorted(n for n in names if n.startswith("xl/worksheets/sheet") and n.endswith(".xml"))
-        if not sheets:
-            return [], False
-        root = ET.fromstring(z.read(sheets[0]))
-        rows, capped = [], False
-        for i, row in enumerate(root.iter(_XL_NS + "row")):
-            if i >= SCAN_CAP:
-                capped = True
-                break
-            cells = []
-            for c in row.iter(_XL_NS + "c"):
-                v = c.find(_XL_NS + "v")
-                if v is None or v.text is None:
-                    cells.append("")
-                elif c.get("t") == "s":
-                    cells.append(shared[int(v.text)] if v.text.isdigit()
-                                 and int(v.text) < len(shared) else "")
-                else:
-                    cells.append(v.text)
-            cells = [x for x in cells]
-            rows.append(cells)
-    return rows, capped
+        sheets = sorted(n for n in names
+                        if n.startswith("xl/worksheets/sheet") and n.endswith(".xml"))
+        best, best_cells = [], -1
+        for s in sheets:
+            rows = _sheet_rows(ET.fromstring(z.read(s)), shared)
+            ncells = sum(len(r) for r in rows)          # 选单元格最多的 sheet(真数据表)
+            if ncells > best_cells:
+                best, best_cells = rows, ncells
+    return best, len(best) >= SCAN_CAP
 
 
 def _coltype(vals):
@@ -82,11 +107,16 @@ def _coltype(vals):
 
 
 def _profile(rows):
-    """从行(首行=表头)算每列类型 + 简单统计。"""
+    """算每列类型 + 简单统计。跳过前置标题/说明行(报表型表格首行常是单格标题)。"""
     if not rows:
         return [], []
-    header = [h or f"col{i}" for i, h in enumerate(rows[0])]
-    data = rows[1:]
+    start = 0                                    # 表头 = 首个「≥2 非空单元格」的行
+    for i, r in enumerate(rows[:50]):
+        if sum(1 for x in r if x not in ("", None)) >= 2:
+            start = i
+            break
+    header = [h or f"col{i}" for i, h in enumerate(rows[start])]
+    data = rows[start + 1:]
     ncol = len(header)
     cols = []
     for j in range(ncol):

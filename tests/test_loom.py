@@ -433,6 +433,28 @@ class DatasetTest(unittest.TestCase):
         d, _ = self.dataset.add(self.cfg, p, to="t", kind="derived")   # 强制 derived 即使无 from
         self.assertIn("kind: derived", _read(d))
 
+    def test_xlsx_inlinestr_columns_and_preamble_skip(self):
+        import zipfile
+        ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        def cell(r, txt, num=False):
+            return (f'<c r="{r}"><v>{txt}</v></c>' if num
+                    else f'<c r="{r}" t="inlineStr"><is><t>{txt}</t></is></c>')
+        sheet = (f'<worksheet xmlns="{ns}"><sheetData>'
+                 f'<row r="1">{cell("A1", "报表标题(单格)")}</row>'          # preamble
+                 f'<row r="2">{cell("A2", "day")}{cell("B2", "total")}</row>'  # 真表头
+                 f'<row r="3">{cell("A3", "2026-01-01")}{cell("B3", 120, True)}</row>'
+                 f'<row r="4">{cell("A4", "2026-01-02")}{cell("B4", 95, True)}</row>'
+                 '</sheetData></worksheet>')
+        p = os.path.join(self.src, "报表.xlsx")
+        with zipfile.ZipFile(p, "w") as z:
+            z.writestr("xl/worksheets/sheet1.xml", sheet)
+        dest, _ = self.dataset.add(self.cfg, p, to="t")
+        card = _read(dest)
+        self.assertIn("| day |", card)          # inlineStr 表头解析
+        self.assertIn("| total | int |", card)  # 数值列 + 列位置对齐
+        self.assertIn("rows: 2", card)          # 跳过标题行,数据 2 行
+        self.assertNotIn("报表标题", card.split("## 列")[1] if "## 列" in card else card)
+
     def test_rejects_non_data(self):
         p = self._mk("note.md", "# hi")
         dest, msg = self.dataset.add(self.cfg, p, to="x")
