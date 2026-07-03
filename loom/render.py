@@ -59,6 +59,8 @@ def build(cfg, by_id):
     os.makedirs(jdir, exist_ok=True)
     by_date = defaultdict(list)
     for e in by_id.values():
+        if e.get("kind") == "doc":      # 文档是参考,只进检索索引,不进按天日记
+            continue
         by_date[e["date"]].append(e)
     written = 0
     for date, items in by_date.items():

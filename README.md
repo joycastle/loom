@@ -56,6 +56,7 @@ loom source enable|disable <name>
 | codex | `~/.codex/state_5.sqlite` threads | 会话:cwd/标题/**开场提问全文** + 时间 |
 | cursor | `Cursor/.../globalStorage/state.vscdb` composer 头 | 会话:标题 + 改动量(无正文) |
 | codebuddy | `CodeBuddy/.../state.vscdb` | 占位;本地无缓存时由 git 兜底 |
+| docs | 各配置仓里的 `*.md` | 文档索引:标题 + 大纲 + 回链(**不搬文件、不进日记**,只供检索) |
 | feishu | 多维表格 `bitable/v1 list records` | 需求 / 记事:按「负责人=你」+ 日期筛 |
 
 隐私:vault 只存**元数据 + 意图/正文**,不存完整对话;token/密钥值在**采集入库前自动打码**(`redact`,默认开;变量名保留,只抹「键=值」的值),推云端不泄露。完整对话/整 diff 走回链一跳回溯。

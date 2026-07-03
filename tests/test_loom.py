@@ -18,6 +18,7 @@ from loom import config, render, search, store, util          # noqa: E402
 from loom.collectors import cursor as cursor_col               # noqa: E402
 from loom.collectors import git as git_col                     # noqa: E402
 from loom.collectors import claude as claude_col                # noqa: E402
+from loom.collectors import docs as docs_col                    # noqa: E402
 import subprocess                                              # noqa: E402
 
 
@@ -226,6 +227,38 @@ class ClaudeCollectorTest(unittest.TestCase):
     def test_disabled_returns_empty(self):
         cfg = {"sources": {"claude": {"enabled": False}}}
         self.assertEqual(claude_col.collect(cfg, "2000-01-01"), [])
+
+
+class DocsCollectorTest(unittest.TestCase):
+    def setUp(self):
+        self.repo = tempfile.mkdtemp(prefix="loom-docsrepo-")
+        os.makedirs(os.path.join(self.repo, "docs"))
+        os.makedirs(os.path.join(self.repo, "node_modules", "pkg"))
+        with open(os.path.join(self.repo, "README.md"), "w", encoding="utf-8") as f:
+            f.write("# 项目说明\n\n## 背景\n正文\n## 用法\n")
+        with open(os.path.join(self.repo, "docs", "design.md"), "w", encoding="utf-8") as f:
+            f.write("# 归因设计\n细节")
+        with open(os.path.join(self.repo, "node_modules", "pkg", "README.md"), "w") as f:
+            f.write("# 第三方,不该被索引")
+        self.cfg = {"sources": {"docs": {"enabled": True}}, "repos": [self.repo]}
+
+    def test_indexes_md_with_title_outline_backlink(self):
+        out = docs_col.collect(self.cfg, "2000-01-01")
+        by_rel = {e["detail"]["path"]: e for e in out}
+        self.assertIn("README.md", by_rel)
+        self.assertIn("docs/design.md", by_rel)
+        self.assertNotIn("node_modules/pkg/README.md", str(by_rel))  # 跳过 vendor
+        r = by_rel["README.md"]
+        self.assertEqual(r["summary"], "项目说明")            # 取 H1
+        self.assertIn("背景", r["detail"]["headings"])         # 大纲
+        self.assertEqual(r["kind"], "doc")
+        self.assertEqual(r["tool"], "docs")
+        self.assertTrue(r["ref"].endswith("README.md"))        # 回链到原文件
+        self.assertTrue(os.path.isabs(r["ref"]))
+
+    def test_disabled(self):
+        self.assertEqual(docs_col.collect({"sources": {"docs": {"enabled": False}}, "repos": []},
+                                          "2000-01-01"), [])
 
 
 class RenderNotesTest(unittest.TestCase):

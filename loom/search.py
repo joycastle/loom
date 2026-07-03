@@ -17,10 +17,17 @@ _CREATE = """
 CREATE VIRTUAL TABLE entries USING fts5(
     id UNINDEXED, date UNINDEXED, ts UNINDEXED,
     project, tool UNINDEXED, kind UNINDEXED,
-    summary, ref UNINDEXED,
+    summary, ref UNINDEXED, aux,
     tokenize='trigram'
 );
 """
+_AUX_CAP = 2000    # aux 索引正文/开场/大纲,让检索能进内容,不只标题
+
+
+def _aux_of(e):
+    d = e.get("detail") or {}
+    parts = [" ".join(d.get("headings") or []), d.get("body") or "", d.get("opening") or ""]
+    return " ".join(p for p in parts if p)[:_AUX_CAP]
 
 
 def _stale():
@@ -50,10 +57,10 @@ def rebuild():
                     continue
                 rows.append((e.get("id", ""), e.get("date", ""), e.get("ts", ""),
                              e.get("project", ""), e.get("tool", ""), e.get("kind", ""),
-                             e.get("summary", ""), e.get("ref", "")))
+                             e.get("summary", ""), e.get("ref", ""), _aux_of(e)))
         con.executemany(
-            "INSERT INTO entries(id,date,ts,project,tool,kind,summary,ref) "
-            "VALUES (?,?,?,?,?,?,?,?)", rows)
+            "INSERT INTO entries(id,date,ts,project,tool,kind,summary,ref,aux) "
+            "VALUES (?,?,?,?,?,?,?,?,?)", rows)
         con.commit()
     finally:
         con.close()
@@ -106,8 +113,8 @@ def query(term, limit=40, project=None, tool=None, since=None, until=None):
             pass  # 罕见 MATCH 语法问题 → 落到 LIKE
     # <3 字符 或 MATCH 失败:LIKE 子串(summary/project),按时间倒序。
     like = f"%{term}%"
-    clause = "(summary LIKE ? OR project LIKE ?)"
-    p = [like, like] + params
+    clause = "(summary LIKE ? OR project LIKE ? OR aux LIKE ?)"
+    p = [like, like, like] + params
     sql = f"SELECT {cols} FROM entries WHERE {clause}"
     if where:
         sql += " AND " + " AND ".join(where)

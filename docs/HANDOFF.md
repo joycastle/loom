@@ -70,7 +70,7 @@
     util.py                # 路径/LOOM_HOME、load_env、http_json(urllib)、read_sqlite(copy-to-temp 防锁)、ms_to_iso、redact(密钥打码)
     collectors/
       __init__.py          # REGISTRY: name -> collect(cfg,since)->[entry];加源在此注册
-      git.py claude.py codex.py cursor.py codebuddy.py feishu.py
+      git.py claude.py codex.py cursor.py codebuddy.py feishu.py docs.py
   tests/test_loom.py       # 纯标准库 unittest;跑:python3 -m unittest discover tests
 ```
 
@@ -141,6 +141,13 @@
 - 产出:`kind=requirement`,summary=标题+[状态]。
 - 坑:应用须被加为该多维表格协作者;`token()` 用 env 凭证,进程内缓存。**目前 `feishu.enabled=false`,未跑通**(见 §8)。
 
+### docs(各仓 .md 文档索引)
+- 读:每个配置仓递归扫 `*.md`(跳过 node_modules/dist/vendor 等,深度≤4)。抽标题(首个 `#`)+ 大纲(`#`~`###`,≤20)。
+- 日期:一次 `git log --all --name-only -- '*.md'` 拿每文件最近提交日期;无则 mtime。**不受 `since` 窗口限制**(文档是参考,全量索引)。
+- 产出:`kind=doc, tool=docs`,`ref`=**原文件绝对路径**(回链),detail=`{path,headings,repo}`。**不搬文件**(留仓里当唯一真相源)、**不进日记**(render 跳过 `kind=doc`)。
+- 检索:`loom search <词> --tool docs` 跨所有项目搜文档;大纲/正文经 FTS 的 `aux` 列可搜(见 §3 检索)。
+- 坑:删掉的 .md 其旧条目会滞留 entries.jsonl(可再生,重建库即清);只认 `.md`。
+
 ### ~~feishu_im~~(已退役)
 - **决策**:loom 不再直接读 IM。「话题里 @ 机器人 → 总结 → 写多维表格」交给**独立飞书机器人**(它做实时事件订阅 + AI 总结 + 写表并带原消息回链);loom 只当作普通需求池表读回来。捕获(push)与聚合(pull)解耦,loom 的飞书 scope 收敛到仅 `bitable:app:readonly`。
 - 已删:`collectors/feishu_im.py`、`REGISTRY` 注册、`config.feishu.im` 默认块、`loom feishu im on/off` 子命令。机器人蓝图见 `docs/loom-bot-design.md`。
@@ -158,6 +165,7 @@ loom today                      # 打印今天的日记
 loom search <词> [--project P] [--tool T] [--since D] [--until D] [--limit N]
                                 # SQLite FTS5(trigram)检索:≥3 字符走 bm25 排序,<3 字符回退 LIKE 子串;
                                 #   空词 + 过滤 = 按项目/工具/日期浏览。索引随采集重建、缺失/过期自动重建。
+                                #   检索不只标题:FTS 的 aux 列还索引【文档大纲 / commit 正文 / AI 开场】。
                                 #   (更强的语义检索仍可另接 Basic Memory,见 §9)
 
 loom doc add <路径…> [--to 类目] [--tags a,b] [--title T] [--move] [--push]
