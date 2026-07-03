@@ -96,11 +96,22 @@ def build(cfg, by_id):
         by_date[e["date"]].append(e)
     written = 0
     for date, items in by_date.items():
+        reports = [e for e in items if e.get("kind") == "report"]
+        items = [e for e in items if e.get("kind") != "report"]
         by_proj = defaultdict(list)
         for e in items:
             by_proj[e["project"]].append(e)
         lines = ["---", f"date: {date}", "type: loom", "tags: [loom]", "---",
                  "", f"# {date} 工作日志", ""]
+        # 日报(当天叙事:工作/思考/计划)置顶,作为一天的总述
+        for e in sorted(reports, key=lambda x: x["ts"]):
+            d = e.get("detail", {})
+            lines += ["## 📋 日报", ""]
+            for label, key in (("今日工作与进度", "work"), ("今日思考", "thinking"),
+                               ("明日计划", "plan")):
+                val = (d.get(key) or "").strip()
+                if val:
+                    lines += [f"**{label}**", "", val, ""]
         for proj in sorted(by_proj):
             evs = by_proj[proj]
             commits = [e for e in evs if e["tool"] == "git"]

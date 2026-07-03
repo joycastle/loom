@@ -818,6 +818,31 @@ class TriageTest(unittest.TestCase):
         self.assertIn("tags: [cpm, applovin]", body)   # 标签被 AI 决定更新
         self.assertIn("status: attribution", body)
 
+    def test_deprecate_moves_to_attic_out_of_search(self):
+        # 默认:移进 _attic → notes 采集器跳过 → 检索不到,但文件仍在
+        (src, _), = self.intake.ingest(self.cfg, [self._src("旧口径.md", "# 旧口径\n已作废的算法")],
+                                       to="analysis")
+        rel = os.path.join("analysis", os.path.basename(src))
+        dest, msg = self.intake.deprecate(self.cfg, rel, superseded_by="新口径")
+        self.assertIn("_attic", dest)
+        self.assertFalse(os.path.exists(src))                 # 原处已移走
+        self.assertTrue(os.path.exists(dest))                 # _attic 里还在(可溯源)
+        ncfg = dict(self.cfg, sources={"notes": {"enabled": True}})
+        paths = {e["detail"]["path"] for e in notes_col.collect(ncfg, "2000-01-01")}
+        self.assertFalse(any("_attic" in p for p in paths))   # 采集器跳过 _attic
+
+    def test_deprecate_mark_keeps_but_flags(self):
+        (src, _), = self.intake.ingest(self.cfg, [self._src("过时.md", "# 过时笔记\n轻微过时")],
+                                       to="analysis")
+        rel = os.path.join("analysis", os.path.basename(src))
+        dest, _ = self.intake.deprecate(self.cfg, rel, mark=True)
+        self.assertEqual(dest, src)                           # 留原处
+        self.assertIn("status: deprecated", _read(src))
+        ncfg = dict(self.cfg, sources={"notes": {"enabled": True}})
+        e = next(e for e in notes_col.collect(ncfg, "2000-01-01")
+                 if e["detail"]["path"] == rel)
+        self.assertTrue(e["summary"].startswith("⚠[废弃]"))    # 检索里带 ⚠ 标记
+
     def test_parse_mapping_tsv(self):
         p = os.path.join(tempfile.mkdtemp(), "m.tsv")
         with open(p, "w", encoding="utf-8") as f:
@@ -885,6 +910,60 @@ class SearchTest(unittest.TestCase):
         os.remove(util.INDEX_PATH)
         self.assertTrue(len(search.query("cohort")) == 2)  # ensure() 自动重建
         self.assertTrue(os.path.exists(util.INDEX_PATH))
+
+
+class ReportTest(unittest.TestCase):
+    def setUp(self):
+        from loom import report
+        self.report = report
+        self.src = tempfile.mkdtemp(prefix="loom-rep-")
+
+    def _mk_xlsx(self):
+        import zipfile
+        ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        istr = lambda r, t: f'<c r="{r}" t="inlineStr"><is><t>{t}</t></is></c>'
+        rows = [
+            ("提交时间", "今日工作与进度情况", "今日思考（问题与心得）", "明日工作计划"),
+            ("2026-06-30 21:39", "广告收入加 net 口径 + 回填", "口径要对齐下游", "跑历史回溯"),
+            ("2026-06-29 18:43", "素材归因落码", "", ""),
+        ]
+        cells = []
+        for ri, row in enumerate(rows, 1):
+            cs = "".join(istr(f"{chr(65+ci)}{ri}", v) for ci, v in enumerate(row) if v)
+            cells.append(f'<row r="{ri}">{cs}</row>')
+        sheet = f'<worksheet xmlns="{ns}"><sheetData>{"".join(cells)}</sheetData></worksheet>'
+        p = os.path.join(self.src, "日报.xlsx")
+        with zipfile.ZipFile(p, "w") as z:
+            z.writestr("xl/worksheets/sheet1.xml", sheet)
+        return p
+
+    def test_import_parses_reports(self):
+        entries = self.report.import_xlsx({}, self._mk_xlsx())
+        self.assertEqual(len(entries), 2)
+        e = {x["id"]: x for x in entries}["report:2026-06-30"]
+        self.assertEqual(e["kind"], "report")
+        self.assertEqual(e["ts"], "2026-06-30T21:39")       # 提交时间 → ts
+        self.assertEqual(e["project"], "日报")
+        self.assertIn("net 口径", e["detail"]["work"])
+        self.assertIn("跑历史回溯", e["detail"]["plan"])
+        self.assertIn("口径要对齐", e["detail"]["content"])   # content 供检索
+
+    def test_import_idempotent(self):
+        p = self._mk_xlsx()
+        a = self.report.import_xlsx({}, p)
+        b = self.report.import_xlsx({}, p)
+        self.assertEqual({x["id"] for x in a}, {x["id"] for x in b})  # 同 id → upsert 幂等
+
+    def test_report_rendered_into_journal(self):
+        cfg = {"vault": {"dir": tempfile.mkdtemp(prefix="loom-vault-")}}
+        entries = self.report.import_xlsx({}, self._mk_xlsx())
+        render.build(cfg, {e["id"]: e for e in entries})
+        jp = os.path.join(config.journal_dir(cfg), "2026-06-30.md")
+        body = _read(jp)
+        self.assertIn("## 📋 日报", body)
+        self.assertIn("今日工作与进度", body)
+        self.assertIn("广告收入加 net 口径", body)
+        self.assertIn("明日计划", body)
 
 
 class TimezoneTest(unittest.TestCase):

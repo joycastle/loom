@@ -337,6 +337,33 @@ def apply_triage(cfg, mapping):
     return results
 
 
+def deprecate(cfg, relpath, superseded_by=None, mark=False):
+    """把已知过时/判错的 notes 内容降级。
+
+    默认:移进 `notes/_attic/`(采集器跳过 → 移出检索/Basic Memory,本地+git 历史仍在,可溯源)。
+    --mark:留原处只打 `status: deprecated`(+superseded_by),检索里带 ⚠ 标记(用于轻微过时)。
+    """
+    nd = config.notes_dir(cfg)
+    src = util.safe_join(nd, relpath)
+    if src is None or not os.path.isfile(src):
+        return None, f"跳过(不存在/路径越界):{relpath}"
+    updates = {"status": "deprecated", "deprecated": "true"}
+    if superseded_by:
+        updates["superseded_by"] = f"[[{superseded_by}]]"
+    if src.endswith(".md"):                       # 只有 .md 能写 frontmatter 墓碑
+        with open(src, "w", encoding="utf-8") as f:
+            f.write(_set_fm_fields(_read(src), updates))
+    if mark:
+        return src, f"标记 deprecated(留原处,检索标 ⚠):{relpath}"
+    dest = util.safe_join(nd, "_attic", relpath)  # 保留子路径,溯源清晰
+    if dest is None:
+        return None, f"跳过(路径越界):{relpath}"
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    dest = _uniq(dest)
+    shutil.move(src, dest)
+    return dest, f"移入 _attic(移出检索,本地/历史仍在):{relpath} → {os.path.relpath(dest, nd)}"
+
+
 def parse_mapping_tsv(path):
     rows = []
     for line in _read(path).splitlines():

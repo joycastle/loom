@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-from . import config, dataset, intake, render, search, store, util
+from . import config, dataset, intake, render, report, search, store, util
 from . import collectors
 
 
@@ -245,6 +245,58 @@ def cmd_data(cfg, a):
         vault_git(cfg, True)
 
 
+def cmd_report(cfg, a):
+    if a.action != "import" or not a.path:
+        print("用法:loom report import <日报.xlsx> [--push]")
+        return
+    entries = report.import_xlsx(cfg, a.path)
+    if not entries:
+        print("没解析到日报(检查列名:提交时间/今日工作…)")
+        return
+    if cfg.get("redact", True):
+        entries = [util.redact_entry(e) for e in entries]
+    by_id = store.load()
+    store.upsert(by_id, entries)
+    store.save(by_id)
+    search.rebuild()
+    n = render.build(cfg, by_id)
+    dates = sorted(e["date"] for e in entries)
+    print(f"导入 {len(entries)} 篇日报({dates[0]}–{dates[-1]})→ 并入 {n} 个日记,已可检索")
+    if a.push:
+        vault_git(cfg, True)
+
+
+def cmd_deprecate(cfg, a):
+    if not a.path:
+        print("用法:loom deprecate <notes 相对路径…> [--superseded-by 标题] [--mark] [--push]")
+        return
+    ok = 0
+    for p in a.path:
+        dest, msg = intake.deprecate(cfg, p, superseded_by=a.superseded_by, mark=a.mark)
+        print(("  ✓ " if dest else "  · ") + msg)
+        ok += 1 if dest else 0
+    if not ok:
+        return
+    # 刷新索引:删掉指向已消失文件的 note 旧条目(移进 _attic 的),再重采 notes 让 ⚠ 标记入库
+    by_id = store.load()
+    nd = config.notes_dir(cfg)
+    for eid in list(by_id):
+        e = by_id[eid]
+        relp = (e.get("detail") or {}).get("path")
+        if e.get("tool") == "notes" and relp and not os.path.exists(os.path.join(nd, relp)):
+            del by_id[eid]                       # 文件没了(移走/删了)→ 清残留条目(不再被搜到)
+    fresh = collectors.REGISTRY["notes"](cfg, util.since_date(36500))
+    if cfg.get("redact", True):
+        fresh = [util.redact_entry(e) for e in fresh]
+    store.upsert(by_id, fresh)
+    store.save(by_id)
+    search.rebuild()
+    render.build(cfg, by_id)
+    print(f"已处理 {ok} 项;索引已刷新(废弃内容移出检索)")
+    if a.push:
+        vault_git(cfg, True)
+
+
 def cmd_source(cfg, a):
     cfg["sources"].setdefault(a.name, {})["enabled"] = (a.action == "enable")
     config.save(cfg); print(f"{a.name} -> {a.action}")
@@ -354,6 +406,15 @@ def build_parser():
     sp.add_argument("--apply")            # triage:应用 AI 给的映射 TSV
     sp.add_argument("--move", action="store_true")
     sp.add_argument("--push", action="store_true")
+    sp = sub.add_parser("report")
+    sp.add_argument("action", choices=("import",))
+    sp.add_argument("path", nargs="?")
+    sp.add_argument("--push", action="store_true")
+    sp = sub.add_parser("deprecate")
+    sp.add_argument("path", nargs="*")            # notes 相对路径
+    sp.add_argument("--superseded-by", dest="superseded_by")
+    sp.add_argument("--mark", action="store_true")   # 留原处只标记(默认移入 _attic)
+    sp.add_argument("--push", action="store_true")
     sp = sub.add_parser("data")
     sp.add_argument("action", choices=("add",))
     sp.add_argument("path", nargs="*")    # csv/xlsx 数据文件
@@ -375,7 +436,8 @@ def main(argv=None):
         "sync": cmd_sync, "collect": cmd_collect, "build": cmd_build,
         "today": cmd_today, "search": cmd_search, "init": cmd_init,
         "repo": cmd_repo, "feishu": cmd_feishu, "identity": cmd_identity,
-        "source": cmd_source, "doc": cmd_doc, "data": cmd_data,
+        "source": cmd_source, "doc": cmd_doc, "data": cmd_data, "report": cmd_report,
+        "deprecate": cmd_deprecate,
     }
     handlers[args.cmd](cfg, args)
 

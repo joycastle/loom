@@ -27,7 +27,8 @@ def collect(cfg, since):
         return []
     entries = []
     for dp, dns, fns in os.walk(nd):
-        dns[:] = [d for d in dns if d != "_archive" and not d.startswith(".")]
+        # _archive:docs 源全文镜像;_attic:已废弃/判错内容(loom deprecate 移入)——都不进检索
+        dns[:] = [d for d in dns if d not in ("_archive", "_attic") and not d.startswith(".")]
         for fn in fns:
             if not fn.lower().endswith(INDEX_EXT):
                 continue
@@ -40,6 +41,8 @@ def collect(cfg, since):
                 continue
             fm, body_at = _parse_frontmatter(text)
             title = fm.get("title") or os.path.splitext(fn)[0]
+            if fm.get("status") == "deprecated" or fm.get("deprecated", "").lower() == "true":
+                title = "⚠[废弃] " + title      # 就地标记的废弃项:检索里显式标出,避免误信
             d = fm.get("date", "").strip()
             if _DATE.match(d):
                 date10, ts = d[:10], d[:10] + "T12:00:00"
