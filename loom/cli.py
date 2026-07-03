@@ -173,6 +173,8 @@ def cmd_doc(cfg, a):
     ok = 0
     for dest, msg in results:
         print(("  ✓ " if dest else "  · ") + msg)
+        if dest and os.path.splitext(dest)[1].lower() in intake.BINARY_EXT:
+            print("      ⚠ 二进制文件原样拷入,未做密钥扫描——确认不含机密再上云")
         ok += 1 if dest else 0
     print(f"入库 {ok}/{len(results)} 个 → {config.notes_dir(cfg)}/{a.to or 'inbox'}")
     if a.push and ok:

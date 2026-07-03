@@ -18,6 +18,11 @@ DOC_EXT = TEXT_EXT + TEXTDATA_EXT + BINARY_EXT
 _H1 = re.compile(r"^#\s+(.+)")
 
 
+def _read(path):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
 def _slug(name):
     return re.sub(r"\s+", "-", name.strip())
 
@@ -57,7 +62,9 @@ def _one(cfg, src, to, tags, title, move, redact):
     if not os.path.isfile(src):
         return None, f"跳过(非文件):{src}"
     ext = os.path.splitext(src)[1].lower()
-    dest_dir = os.path.join(config.notes_dir(cfg), to or "inbox")
+    dest_dir = util.safe_join(config.notes_dir(cfg), to or "inbox")   # --to 越界防护
+    if dest_dir is None:
+        return None, f"跳过(类目路径越界):{to}"
     os.makedirs(dest_dir, exist_ok=True)
     date = datetime.fromtimestamp(os.path.getmtime(src)).strftime("%Y-%m-%d")
     status = to or "inbox"
@@ -107,7 +114,7 @@ def _parse_frontmatter(text):
         if lines[i].strip() == "---":
             end = i
             break
-        m = re.match(r"([A-Za-z_]+):\s*(.*)", lines[i])
+        m = re.match(r"([A-Za-z0-9_-]+):\s*(.*)", lines[i])
         if m:
             out[m.group(1)] = m.group(2).strip()
     if end is None:
@@ -128,8 +135,7 @@ def harvest_taxonomy(cfg):
             cats.add(rel)
         for fn in fns:
             if fn.lower().endswith(TEXT_EXT):
-                fm, _ = _parse_frontmatter(open(os.path.join(dp, fn),
-                                                encoding="utf-8", errors="replace").read())
+                fm, _ = _parse_frontmatter(_read(os.path.join(dp, fn)))
                 for t in re.findall(r"[^\[\],\s]+", fm.get("tags", "")):
                     tags.add(t)
     return sorted(cats), sorted(tags)
@@ -151,7 +157,7 @@ def triage_manifest(cfg, subdir="inbox", head=14):
             if not os.path.isfile(fp) or not fn.lower().endswith(TEXT_EXT):
                 continue
             docs.append(fn)
-            txt = util.redact(open(fp, encoding="utf-8", errors="replace").read())
+            txt = util.redact(_read(fp))
             fm, body_at = _parse_frontmatter(txt)
             body = txt[body_at:].strip().splitlines()[:head]
             rel = os.path.relpath(fp, nd)
@@ -170,14 +176,16 @@ def triage_manifest(cfg, subdir="inbox", head=14):
 def _set_fm_fields(text, updates):
     """更新/插入 frontmatter 字段;无 fm 则新建。updates: {key: value}。"""
     fm, body_at = _parse_frontmatter(text)
-    if body_at == 0:  # 无 frontmatter → 造一个
-        lines = [f"{k}: {v}" for k, v in updates.items()]
+    if body_at == 0:
+        if text.lstrip().startswith("---"):
+            return text          # 疑似残缺 frontmatter(无收尾 ---)→ 别再包一层污染
+        lines = [f"{k}: {v}" for k, v in updates.items()]   # 无 fm → 新建
         return "---\n" + "\n".join(lines) + "\n---\n\n" + text.lstrip()
     head = text[:body_at].splitlines()
     body = text[body_at:]
     keys_done = set()
     for i, ln in enumerate(head):
-        m = re.match(r"([A-Za-z_]+):", ln)
+        m = re.match(r"([A-Za-z0-9_-]+):", ln)
         if m and m.group(1) in updates:
             head[i] = f"{m.group(1)}: {updates[m.group(1)]}"
             keys_done.add(m.group(1))
@@ -191,15 +199,17 @@ def apply_triage(cfg, mapping):
     nd = config.notes_dir(cfg)
     results = []
     for rel, cat, tags in mapping:
-        src = os.path.join(nd, rel)
+        src = util.safe_join(nd, rel)          # 拒绝 .. / 绝对路径穿越(否则会删/写 vault 外)
+        dest_dir = util.safe_join(nd, cat)
+        if src is None or dest_dir is None:
+            results.append((None, f"跳过(路径越界):{rel} → {cat}"))
+            continue
         if not os.path.isfile(src):
             results.append((None, f"跳过(不存在):{rel}"))
             continue
-        dest_dir = os.path.join(nd, cat)
         os.makedirs(dest_dir, exist_ok=True)
         dest = _uniq(os.path.join(dest_dir, os.path.basename(src)))
-        txt = open(src, encoding="utf-8", errors="replace").read()
-        txt = _set_fm_fields(txt, {"tags": "[" + ", ".join(tags) + "]", "status": cat})
+        txt = _set_fm_fields(_read(src), {"tags": "[" + ", ".join(tags) + "]", "status": cat})
         with open(dest, "w", encoding="utf-8") as f:
             f.write(txt)
         os.remove(src)
@@ -209,7 +219,7 @@ def apply_triage(cfg, mapping):
 
 def parse_mapping_tsv(path):
     rows = []
-    for line in open(path, encoding="utf-8"):
+    for line in _read(path).splitlines():
         line = line.rstrip("\n")
         if not line.strip() or line.startswith("#"):
             continue

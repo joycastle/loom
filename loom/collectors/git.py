@@ -8,6 +8,7 @@ from .. import util
 
 US = "\x1f"
 RS = "\x1e"
+GS = "\x1d"      # 消息(header+%b)与 numstat 之间的哨兵,防正文里的 numstat 样式行被误判
 _STASH = re.compile(r"^(index on |untracked files on |WIP on )")
 _NUMSTAT = re.compile(r"^(?:\d+|-)\t(?:\d+|-)\t")
 _TRAILER = re.compile(r"^(Co-Authored-By|Signed-off-by|Change-Id):", re.I)
@@ -19,8 +20,8 @@ def collect(cfg, since):
     emails = {e.lower() for e in cfg["identities"]["emails"]}
     names = {n.lower() for n in cfg["identities"]["names"]}
     entries = []
-    # header 单行(US 分隔),换行后接 %b 正文,再由 --numstat 追加文件明细。
-    fmt = RS + US.join(["%H", "%aI", "%ae", "%an", "%s"]) + "\n%b"
+    # header 单行(US 分隔)+ 换行 %b 正文 + GS 哨兵;GS 之后才是 --numstat 文件明细。
+    fmt = RS + US.join(["%H", "%aI", "%ae", "%an", "%s"]) + "\n%b" + GS
     for repo in cfg["repos"]:
         repo = util.expand(repo)
         if not os.path.isdir(os.path.join(repo, ".git")):
@@ -38,8 +39,9 @@ def collect(cfg, since):
             chunk = chunk.strip("\n")
             if not chunk:
                 continue
-            ls = chunk.split("\n")
-            head = ls[0].split(US)
+            msg, _, numstat = chunk.partition(GS)   # GS 之前=header+正文,之后=文件明细
+            mlines = msg.split("\n")
+            head = mlines[0].split(US)
             if len(head) < 5:
                 continue
             h, aiso, ae, an, subj = head[:5]
@@ -47,25 +49,23 @@ def collect(cfg, since):
                 continue
             if _STASH.match(subj):
                 continue
-            # 剩余行:匹配 numstat 正则的是文件明细,其余(在其之前)是正文。
+            # 文件明细:只在 GS 之后解析,正文里的 numstat 样式行不会被误判。
             ins = dele = files = 0
-            file_list, body_lines = [], []
-            for nl in ls[1:]:
-                if _NUMSTAT.match(nl):
-                    p = nl.split("\t")
-                    if len(p) == 3:
-                        files += 1
-                        a = int(p[0]) if p[0].isdigit() else 0
-                        d = int(p[1]) if p[1].isdigit() else 0
-                        ins += a
-                        dele += d
-                        if len(file_list) < FILES_CAP:
-                            file_list.append({"path": p[2], "ins": a, "del": d})
-                elif not file_list:  # 文件明细一旦开始,后面不再是正文
-                    body_lines.append(nl)
-            # 去掉纯噪声 trailer(个人台账里不需要)
-            body_lines = [b for b in body_lines
-                          if not _TRAILER.match(b)]
+            file_list = []
+            for nl in numstat.split("\n"):
+                if not _NUMSTAT.match(nl):
+                    continue
+                p = nl.split("\t")
+                if len(p) == 3:
+                    files += 1
+                    a = int(p[0]) if p[0].isdigit() else 0
+                    d = int(p[1]) if p[1].isdigit() else 0
+                    ins += a
+                    dele += d
+                    if len(file_list) < FILES_CAP:
+                        file_list.append({"path": p[2], "ins": a, "del": d})
+            # 正文 = 消息里除首行 header 外的部分;去掉纯噪声 trailer。
+            body_lines = [b for b in mlines[1:] if not _TRAILER.match(b)]
             body = "\n".join(body_lines).strip()[:BODY_CAP]
             entries.append({
                 "id": f"git:{project}:{h[:12]}", "date": aiso[:10], "ts": aiso,

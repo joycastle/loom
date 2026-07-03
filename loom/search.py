@@ -8,6 +8,7 @@
 """
 import json
 import os
+import re
 import sqlite3
 
 from . import util
@@ -39,13 +40,14 @@ def _stale():
         return True
     if not os.path.exists(util.DATA_PATH):
         return False
-    return os.path.getmtime(util.INDEX_PATH) < os.path.getmtime(util.DATA_PATH)
+    # <=:同一秒内改动也重建(mtime 常为秒级,严格 < 会漏)
+    return os.path.getmtime(util.INDEX_PATH) <= os.path.getmtime(util.DATA_PATH)
 
 
 def rebuild():
     """从 entries.jsonl 全量重建索引。快(单人规模),整体重写即可。"""
     os.makedirs(os.path.dirname(util.INDEX_PATH), exist_ok=True)
-    tmp = util.INDEX_PATH + ".tmp"
+    tmp = f"{util.INDEX_PATH}.tmp.{os.getpid()}"   # 进程独占临时名,避免并发重建互撞
     if os.path.exists(tmp):
         os.remove(tmp)
     con = sqlite3.connect(tmp)
@@ -77,7 +79,7 @@ def ensure():
 
 
 def _cjk_len(s):
-    return len(s.strip())
+    return len(re.sub(r"\s", "", s))   # 只数非空白字符:"a b" 算 2 → 走 LIKE 而非死 FTS 短语
 
 
 def _py_snip(term, *texts, pad=42):
@@ -96,12 +98,24 @@ def _py_snip(term, *texts, pad=42):
     return ""
 
 
+def _finish(cur, term):
+    """统一收尾:取行 → 用 Python 提片段(避免 SQL snippet 跨列串味)→ 去掉 aux。"""
+    hits = []
+    for r in cur.fetchall():
+        h = dict(r)
+        aux = h.pop("aux", "")
+        h["snip"] = _py_snip(term, h.get("summary", ""), aux)
+        hits.append(h)
+    return hits
+
+
 def query(term, limit=40, project=None, tool=None, since=None, until=None):
     """返回按相关度排序的条目 dict 列表(含匹配片段 `snip`)。≥3 字符走 FTS5+bm25,否则 LIKE。"""
     ensure()
+    limit = max(1, int(limit))     # 负数→SQLite 视为无限;0→空结果 —— 都夹住
     con = sqlite3.connect(util.INDEX_PATH)
     con.row_factory = sqlite3.Row
-    cols = "id,date,ts,project,tool,kind,summary,ref"
+    cols = "id,date,ts,project,tool,kind,summary,ref,aux"   # 带 aux,片段用
     where, params = [], []
     if project:
         where.append("project = ?"); params.append(project)
@@ -113,39 +127,26 @@ def query(term, limit=40, project=None, tool=None, since=None, until=None):
         where.append("date <= ?"); params.append(until)
 
     term = (term or "").strip()
-    if _cjk_len(term) >= 3:
-        # FTS5 MATCH:把查询当短语,双引号包裹并转义内部引号,避免语法错误。
-        phrase = '"' + term.replace('"', '""') + '"'
-        # snippet(表,-1=自动选列, 前后缀空, 省略号, 最多 12 token)—— 命中片段
-        sql = (f"SELECT {cols}, snippet(entries, -1, '', '', '…', 12) AS snip "
-               f"FROM entries WHERE entries MATCH ?")
+    try:
+        if _cjk_len(term) >= 3:
+            # FTS5 MATCH:把查询当短语,双引号包裹并转义内部引号,避免语法错误/注入。
+            phrase = '"' + term.replace('"', '""') + '"'
+            sql = f"SELECT {cols} FROM entries WHERE entries MATCH ?"
+            if where:
+                sql += " AND " + " AND ".join(where)
+            sql += " ORDER BY bm25(entries) LIMIT ?"
+            try:
+                return _finish(con.execute(sql, [phrase] + params + [limit]), term)
+            except sqlite3.OperationalError:
+                pass  # 罕见 MATCH 语法问题 → 落到 LIKE
+        # <3 字符 或 MATCH 失败:LIKE 子串(转义 % _ \ 元字符),按时间倒序。
+        esc = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{esc}%"
+        clause = "(summary LIKE ? ESCAPE '\\' OR project LIKE ? ESCAPE '\\' OR aux LIKE ? ESCAPE '\\')"
+        sql = f"SELECT {cols} FROM entries WHERE {clause}"
         if where:
             sql += " AND " + " AND ".join(where)
-        sql += " ORDER BY bm25(entries) LIMIT ?"
-        try:
-            cur = con.execute(sql, [phrase] + params + [limit])
-            hits = []
-            for r in cur.fetchall():
-                h = dict(r)
-                h["snip"] = " ".join((h.get("snip") or "").split())
-                hits.append(h)
-            con.close()
-            return hits
-        except sqlite3.OperationalError:
-            pass  # 罕见 MATCH 语法问题 → 落到 LIKE
-    # <3 字符 或 MATCH 失败:LIKE 子串(summary/project/aux),按时间倒序。
-    like = f"%{term}%"
-    clause = "(summary LIKE ? OR project LIKE ? OR aux LIKE ?)"
-    sql = f"SELECT {cols}, aux FROM entries WHERE {clause}"
-    if where:
-        sql += " AND " + " AND ".join(where)
-    sql += " ORDER BY ts DESC LIMIT ?"
-    cur = con.execute(sql, [like, like, like] + params + [limit])
-    hits = []
-    for r in cur.fetchall():
-        h = dict(r)
-        aux = h.pop("aux", "")
-        h["snip"] = _py_snip(term, h.get("summary", ""), aux)
-        hits.append(h)
-    con.close()
-    return hits
+        sql += " ORDER BY ts DESC LIMIT ?"
+        return _finish(con.execute(sql, [like, like, like] + params + [limit]), term)
+    finally:
+        con.close()

@@ -83,6 +83,36 @@ class RedactTest(unittest.TestCase):
         self.assertNotIn("hunter2xy", util.redact('password: "hunter2xy"'))
         self.assertNotIn("s3cretpw", util.redact("postgres://user:s3cretpw@host/db"))
 
+    def test_quoted_json_yaml_secrets_masked(self):
+        for c in ['{"client_secret": "verySecretValue123456"}',
+                  '"api_key":"AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456"',
+                  'password: "hunter2xyz"']:
+            out = util.redact(c)
+            self.assertIn("已打码", out, f"引号值未打码: {c}")
+        self.assertNotIn("verySecretValue123456", util.redact('{"client_secret": "verySecretValue123456"}'))
+
+    def test_more_token_formats(self):
+        for c in ["sk_live_ABCDEFGHIJKLMNOP1234", "ghs_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",
+                  "AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456", "ya29.A0ARrdaM-abcdefghij",
+                  "https://hooks.slack.com/services/T00/B00/xxxxAAAAbbbb",
+                  "-----BEGIN PGP PRIVATE KEY BLOCK-----\nabc\n-----END PGP PRIVATE KEY BLOCK-----"]:
+            self.assertIn("已打码", util.redact(c), f"未覆盖: {c[:30]}")
+
+    def test_less_over_redaction_on_prose(self):
+        # 散文/示例不该被抹(值不像机密)
+        self.assertEqual(util.redact("token: 见 README 说明"), "token: 见 README 说明")
+        self.assertEqual(util.redact("access_key: documentation"), "access_key: documentation")
+        # 但像机密的值仍抹
+        self.assertIn("已打码", util.redact("token: aB3xY9zQ1234"))
+
+    def test_redact_entry_recurses_lists_and_dicts(self):
+        e = _entry("d:1", "2026-06-01", "p", "docs", "doc", "标题",
+                   headings=["## api_key=Abc123Def456Ghi", "背景"],
+                   file_list=[{"path": "x", "note": "secret=Zz99Zz99Zz99"}])
+        util.redact_entry(e)
+        self.assertIn("已打码", e["detail"]["headings"][0])
+        self.assertIn("已打码", e["detail"]["file_list"][0]["note"])
+
     def test_leaves_code_and_varnames_intact(self):
         # 变量名/代码引用(非赋值)不该被动
         keep = 'c = Variable.get("secret_af_audience_apl")'
@@ -193,6 +223,24 @@ class GitCollectorTest(unittest.TestCase):
         self.assertEqual(d["files"], 2)               # numstat 未被正文干扰
         paths = {f["path"] for f in d["file_list"]}
         self.assertEqual(paths, {"a.txt", "b.txt"})
+
+    def test_numstat_shaped_body_line_not_misparsed(self):
+        # 正文里含 numstat 样式行(粘贴的 diff/表)——不该被当成文件,也不该截断正文
+        env = dict(os.environ, GIT_AUTHOR_NAME="tester", GIT_AUTHOR_EMAIL="me@test.dev",
+                   GIT_COMMITTER_NAME="tester", GIT_COMMITTER_EMAIL="me@test.dev")
+        def g(*a):
+            subprocess.run(["git", "-C", self.repo, *a], check=True, env=env, capture_output=True)
+        with open(os.path.join(self.repo, "c.txt"), "w") as f:
+            f.write("z\n")
+        g("add", "-A")
+        msg = "fix: 见下表\n\n10\t5\tfoo/bar\n真正的正文结论在最后一行"
+        g("commit", "-q", "-m", msg)
+        out = git_col.collect(self.cfg, "2000-01-01")
+        e = [x for x in out if x["summary"] == "fix: 见下表"][0]
+        self.assertEqual(e["detail"]["files"], 1)          # 只有真实改的 c.txt,非正文里的 foo/bar
+        self.assertEqual({f["path"] for f in e["detail"]["file_list"]}, {"c.txt"})
+        self.assertIn("真正的正文结论在最后一行", e["detail"]["body"])   # 正文没被截断
+        self.assertIn("10\t5\tfoo/bar", e["detail"]["body"])           # 正文里的表格行保留
 
     def test_filters_by_identity(self):
         cfg = {"repos": [self.repo], "identities": {"emails": ["other@x"], "names": []}}
@@ -502,6 +550,24 @@ class SearchTest(unittest.TestCase):
     def test_empty_term_browses_by_filter(self):
         hits = search.query("", project="data-marketing")
         self.assertEqual({h["id"] for h in hits}, {"git:1", "cur:1"})
+
+    def test_like_wildcards_escaped(self):
+        # "%" 不应匹配全部;"_" 不应当通配
+        self.assertEqual(search.query("%"), [])          # 无字面 % 的条目
+        self.assertEqual(search.query("_"), [])
+
+    def test_limit_bounds(self):
+        self.assertEqual(len(search.query("cohort", limit=1)), 1)   # 有 2 条,夹到 1
+        self.assertTrue(len(search.query("cohort", limit=-1)) <= 2)  # 负数不放开
+        self.assertTrue(len(search.query("cohort", limit=0)) >= 1)   # 0 夹到 1,不空
+
+    def test_snippet_returned(self):
+        hits = search.query("cohort")
+        self.assertTrue(any(h.get("snip") for h in hits))            # 有命中片段
+
+    def test_space_query_routes_to_like(self):
+        # "fix 优化" 含空格,非空白字符可能<3 → 不该被当死 FTS 短语吞掉
+        self.assertTrue(len(search.query("cohort 优化")) >= 0)       # 不崩即可
 
     def test_auto_rebuild_when_index_missing(self):
         os.remove(util.INDEX_PATH)

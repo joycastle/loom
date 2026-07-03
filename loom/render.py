@@ -10,7 +10,7 @@
 import os
 from collections import defaultdict
 
-from . import config
+from . import config, util
 
 # 旧版:手写正文曾内联在 {date}.md 的此哨兵之下。保留用于一次性迁移。
 LEGACY_MARK = "<!-- ✍️ 手写区(loom sync 不会覆盖下方内容)-->"
@@ -70,7 +70,9 @@ def _write_archives(cfg, by_id):
         if not content:
             continue
         rel = d.get("path") or (e["id"].split(":", 2)[-1])
-        dest = os.path.join(adir, d.get("repo", "misc"), rel)
+        dest = util.safe_join(adir, d.get("repo", "misc"), rel)   # 防 .. 穿越写出 vault
+        if dest is None:
+            continue
         if not dest.endswith(".md"):
             dest += ".md"
         os.makedirs(os.path.dirname(dest), exist_ok=True)
