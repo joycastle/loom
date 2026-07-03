@@ -53,8 +53,23 @@ loom source enable|disable <name>
 | cursor | `Cursor/.../globalStorage/state.vscdb` composer 头 | 会话:标题 + 改动量(无正文) |
 | codebuddy | `CodeBuddy/.../state.vscdb` | 占位;本地无缓存时由 git 兜底 |
 | feishu | 多维表格 `bitable/v1 list records` | 需求:按「负责人=你」+ 日期筛 |
+| feishu_im | 群消息 `im/v1/messages`(仅「@机器人」的) | 记事:在话题里 @ 机器人的一句,主动打点 |
 
 隐私:vault 只存**元数据 + 意图标题**,不存完整对话、不含密钥。
+
+### feishu_im(主动打点,默认关闭)
+
+在飞书任何话题里 @ 机器人写一句,下次 `loom sync` 就把它记进当天日记(`kind=note`)。
+只读「@了机器人」的消息 → 量小、隐私轻、显式打点(不与需求池冲)。开启:
+
+```jsonc
+"feishu": { "im": { "enabled": true, "mode": "at_bot",
+                     "since_days": 21, "chat_allowlist": [], "fetch_thread": true } }
+```
+所需 scope:`im:message:readonly`(或 `im:message.group_at_msg:readonly`)、
+`im:chat:readonly`、可选 `im:message:send_as_bot`(回执)、`contact:user.base:readonly`。
+机器人须先被拉进目标群;凭证同 feishu(`~/.loom/.env` 的 `FEISHU_APP_ID/SECRET`)。
+把「任何人 @ → 建其私有多维表格记事」做成托管服务的完整蓝图见 `docs/loom-bot-design.md`。
 
 ## 云端 + 检索底座
 

@@ -9,7 +9,8 @@ from .. import util
 _token_cache = {}
 
 
-def _token(base_url):
+def token(base_url):
+    """取 tenant_access_token(env 凭证,进程内缓存)。供 feishu / feishu_im 复用。"""
     if base_url in _token_cache:
         return _token_cache[base_url]
     app_id = os.environ.get("FEISHU_APP_ID")
@@ -84,8 +85,8 @@ def collect(cfg, since):
         return []
     util.load_env()
     base_url = fs.get("base_url", "https://open.feishu.cn/open-apis")
-    token = _token(base_url)
-    if not token:
+    tok = token(base_url)
+    if not tok:
         return []
     who = (cfg.get("owner", {}) or {}).get("feishu_name", "").strip()
     entries = []
@@ -93,7 +94,7 @@ def collect(cfg, since):
         if not bt.get("app_token") or not bt.get("table_id"):
             util.log(f"  [feishu] {bt.get('name')} 缺 app_token/table_id,跳过")
             continue
-        recs = _list_records(base_url, token, bt["app_token"], bt["table_id"])
+        recs = _list_records(base_url, tok, bt["app_token"], bt["table_id"])
         for r in recs:
             f = r.get("fields", {})
             people = _field_people(f.get(bt["person_field"]))

@@ -34,7 +34,9 @@ def build(cfg, by_id):
             evs = by_proj[proj]
             commits = [e for e in evs if e["tool"] == "git"]
             reqs = [e for e in evs if e["kind"] == "requirement"]
-            sessions = [e for e in evs if e["tool"] != "git" and e["kind"] != "requirement"]
+            notes = [e for e in evs if e["kind"] == "note"]
+            sessions = [e for e in evs if e["tool"] != "git"
+                        and e["kind"] not in ("requirement", "note")]
             lines.append(f"## [[{proj}]]")
             lines.append("")
             if commits:
@@ -47,6 +49,11 @@ def build(cfg, by_id):
             if reqs:
                 lines.append(f"### 需求 ({len(reqs)})")
                 for e in sorted(reqs, key=lambda x: x["ts"]):
+                    lines.append(f"- {e['summary']}  \n  ↳ {e['ref']}")
+                lines.append("")
+            if notes:
+                lines.append(f"### 飞书记事 ({len(notes)})")
+                for e in sorted(notes, key=lambda x: x["ts"]):
                     lines.append(f"- {e['summary']}  \n  ↳ {e['ref']}")
                 lines.append("")
             if sessions:
