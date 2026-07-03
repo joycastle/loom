@@ -21,7 +21,9 @@ CREATE VIRTUAL TABLE entries USING fts5(
     tokenize='trigram'
 );
 """
-_AUX_CAP = 2000    # aux 索引正文/开场/大纲,让检索能进内容,不只标题
+_AUX_CAP = 100_000    # aux 索引正文/开场/大纲/文档全文;调大以便大参考文档也能全文检索
+                      # (只有 docs/notes 会有长 aux;git 正文/AI 开场本就短。trigram 索引
+                      #  约为文本长度的数倍,单人规模下体积无压力)
 
 
 def _aux_of(e):
