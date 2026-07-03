@@ -158,7 +158,8 @@ def cmd_doc(cfg, a):
         if not os.path.isdir(nd):
             print("(notes/ 还没有文档,用 loom doc add <路径> 添加)")
             return
-        for dp, _, fns in sorted(os.walk(nd)):
+        for dp, dns, fns in sorted(os.walk(nd)):
+            dns[:] = [d for d in dns if d != "_archive"]   # 档案区不在此列(量大)
             for fn in sorted(fns):
                 print(os.path.relpath(os.path.join(dp, fn), nd))
         return

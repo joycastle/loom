@@ -26,7 +26,8 @@ _AUX_CAP = 2000    # aux 索引正文/开场/大纲,让检索能进内容,不只
 
 def _aux_of(e):
     d = e.get("detail") or {}
-    parts = [" ".join(d.get("headings") or []), d.get("body") or "", d.get("opening") or ""]
+    parts = [" ".join(d.get("headings") or []), d.get("body") or "",
+             d.get("opening") or "", d.get("content") or ""]
     return " ".join(p for p in parts if p)[:_AUX_CAP]
 
 

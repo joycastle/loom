@@ -141,12 +141,13 @@
 - 产出:`kind=requirement`,summary=标题+[状态]。
 - 坑:应用须被加为该多维表格协作者;`token()` 用 env 凭证,进程内缓存。**目前 `feishu.enabled=false`,未跑通**(见 §8)。
 
-### docs(各仓 .md 文档索引)
-- 读:每个配置仓递归扫 `*.md`(跳过 node_modules/dist/vendor 等,深度≤4)。抽标题(首个 `#`)+ 大纲(`#`~`###`,≤20)。
-- 日期:一次 `git log --all --name-only -- '*.md'` 拿每文件最近提交日期;无则 mtime。**不受 `since` 窗口限制**(文档是参考,全量索引)。
-- 产出:`kind=doc, tool=docs`,`ref`=**原文件绝对路径**(回链),detail=`{path,headings,repo}`。**不搬文件**(留仓里当唯一真相源)、**不进日记**(render 跳过 `kind=doc`)。
-- 检索:`loom search <词> --tool docs` 跨所有项目搜文档;大纲/正文经 FTS 的 `aux` 列可搜(见 §3 检索)。
-- 坑:删掉的 .md 其旧条目会滞留 entries.jsonl(可再生,重建库即清);只认 `.md`。
+### docs(各仓 .md 全文归档 + 索引)
+- 读:每个配置仓递归扫 `*.md`(跳过 node_modules/dist/vendor 等,深度≤4)。抽标题(首个 `#`)+ 大纲(≤20)+ **全文**(封顶 200KB)。
+- 日期:一次 `git log --all --name-only -- '*.md'` 拿每文件最近提交日期;无则 mtime。**不受 `since` 窗口限制**(全量索引)。
+- 产出:`kind=doc, tool=docs`,`ref`=原文件绝对路径,detail=`{path,headings,repo,content}`。**不进日记**(render 跳过 `kind=doc`)。
+- **全文归档(解决"不敢删")**:`render._write_archives` 把全文(打码)写进 `vault/notes/_archive/<repo>/<相对路径>`,带 `type: loom-archive` frontmatter。**永不裁剪**——entries 只 upsert 不 prune,删了源文件其条目仍在→归档仍写;即便清空 entries.jsonl,已落盘的归档文件也不动。**故删任何源 .md 都安全**(实测:删源+重建后归档全文仍在)。归档随 vault 上 GitHub、被 Basic Memory 检索。
+- 检索:`loom search <词> --tool docs` 跨项目搜;标题/大纲/全文经 FTS `aux` 列(见 §3)。
+- 坑:只认 `.md`;`_archive` 是派生镜像(live 文件每次 sync 刷新为当前版;已删源保留最后一版),`harvest_taxonomy`/`loom doc ls`/triage 都跳过它。
 
 ### ~~feishu_im~~(已退役)
 - **决策**:loom 不再直接读 IM。「话题里 @ 机器人 → 总结 → 写多维表格」交给**独立飞书机器人**(它做实时事件订阅 + AI 总结 + 写表并带原消息回链);loom 只当作普通需求池表读回来。捕获(push)与聚合(pull)解耦,loom 的飞书 scope 收敛到仅 `bitable:app:readonly`。

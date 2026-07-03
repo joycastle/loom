@@ -13,6 +13,7 @@ from .. import util
 SKIP = {"node_modules", ".git", "venv", ".venv", "__pycache__", "site-packages",
         "dist", "build", ".next", "target", "vendor", ".cache", ".loom", "vault"}
 MAXDEPTH = 4
+CONTENT_CAP = 200_000    # 单文档全文封顶(防个别超大 md 撑爆)
 _H = re.compile(r"^(#{1,3})\s+(.+)")
 
 
@@ -76,6 +77,11 @@ def collect(cfg, since):
                 fp = os.path.join(dp, fn)
                 rel = os.path.relpath(fp, repo)
                 title, heads = _outline(fp)
+                try:
+                    with open(fp, encoding="utf-8", errors="replace") as f:
+                        content = f.read()[:CONTENT_CAP]
+                except Exception:
+                    content = ""
                 # 日期:git 最近提交,否则文件 mtime(仅用于排序/--since,不进日记)
                 iso = dates.get(rel)
                 if not iso:
@@ -85,6 +91,7 @@ def collect(cfg, since):
                     "date": (iso or "")[:10], "ts": iso or "",
                     "project": project, "tool": "docs", "kind": "doc",
                     "summary": title or rel, "ref": fp,
-                    "detail": {"path": rel, "headings": heads, "repo": project},
+                    "detail": {"path": rel, "headings": heads, "repo": project,
+                               "content": content},
                 })
     return entries

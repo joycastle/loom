@@ -303,6 +303,21 @@ class RenderNotesTest(unittest.TestCase):
         self.assertIn("还有一大段展开的上下文", body)   # 追加信息被渲染
         self.assertEqual(body.count("  > 梳理现状"), 0)  # 冗余的不渲染
 
+    def test_doc_fulltext_archived_survives_source_deletion(self):
+        # doc 条目带全文,ref 指向不存在的文件(模拟源已删)→ 快照仍落 _archive
+        doc = _entry("doc:proj:notes/x.md", "2026-06-01", "proj", "docs", "doc", "重要标题",
+                     ref="/nonexistent/x.md", path="notes/x.md", repo="proj",
+                     content="# 重要标题\n源删了也要留住的内容。")
+        render.build(self.cfg, {doc["id"]: doc})
+        arch = os.path.join(config.notes_dir(self.cfg), "_archive", "proj", "notes", "x.md")
+        self.assertTrue(os.path.exists(arch))
+        body = _read(arch)
+        self.assertIn("源删了也要留住的内容", body)      # 全文进 vault
+        self.assertIn("archived: true", body)
+        # 且不进按天日记
+        jp = os.path.join(config.journal_dir(self.cfg), "2026-06-01.md")
+        self.assertFalse(os.path.exists(jp))
+
     def test_migrates_legacy_sentinel_content(self):
         jdir = config.journal_dir(self.cfg)
         os.makedirs(jdir, exist_ok=True)

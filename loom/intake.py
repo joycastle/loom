@@ -114,9 +114,9 @@ def harvest_taxonomy(cfg):
     if not os.path.isdir(nd):
         return [], []
     for dp, dns, fns in os.walk(nd):
-        dns[:] = [d for d in dns if not d.startswith(".")]
+        dns[:] = [d for d in dns if not d.startswith((".", "_"))]  # 跳过 _archive 等
         rel = os.path.relpath(dp, nd)
-        if rel != "." and rel != "inbox":
+        if rel not in (".", "inbox") and not rel.startswith("_"):
             cats.add(rel)
         for fn in fns:
             if fn.lower().endswith(TEXT_EXT):

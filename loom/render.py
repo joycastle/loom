@@ -54,12 +54,42 @@ def _ensure_notes_file(jdir, date):
     return stem
 
 
+def _write_archives(cfg, by_id):
+    """把 kind=doc 的全文快照写进 vault/notes/_archive/,**永不裁剪**。
+
+    源文件删了也留最后一版(entries 只 upsert 不 prune → 条目在 → 快照在;
+    即使 entries.jsonl 被清,已落盘的快照文件也不动)。故删源安全。
+    """
+    adir = os.path.join(config.notes_dir(cfg), "_archive")
+    n = 0
+    for e in by_id.values():
+        if e.get("kind") != "doc":
+            continue
+        d = e.get("detail") or {}
+        content = d.get("content")
+        if not content:
+            continue
+        rel = d.get("path") or (e["id"].split(":", 2)[-1])
+        dest = os.path.join(adir, d.get("repo", "misc"), rel)
+        if not dest.endswith(".md"):
+            dest += ".md"
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        fm = (f"---\ntitle: {e.get('summary', '')}\nsource: {e.get('ref', '')}\n"
+              f"project: {d.get('repo', '')}\npath: {rel}\n"
+              f"archived: true\ntype: loom-archive\n---\n\n")
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write(fm + (content if content.endswith("\n") else content + "\n"))
+        n += 1
+    return n
+
+
 def build(cfg, by_id):
     jdir = config.journal_dir(cfg)
     os.makedirs(jdir, exist_ok=True)
+    _write_archives(cfg, by_id)         # 全文档案(可安全删源)
     by_date = defaultdict(list)
     for e in by_id.values():
-        if e.get("kind") == "doc":      # 文档是参考,只进检索索引,不进按天日记
+        if e.get("kind") == "doc":      # 文档不进按天日记(参考,不是当天活动)
             continue
         by_date[e["date"]].append(e)
     written = 0
