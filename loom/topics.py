@@ -190,6 +190,8 @@ def gather(cfg, by_id, query=None, project=None, since=None, limit=60):
     for eid, e in by_id.items():
         if eid in mapped or e.get("kind") == "doc":
             continue
+        if (e.get("detail") or {}).get("path","").startswith("topics/"):
+            continue   # 主题页自身不参与分类(防自指)
         if project and e.get("project") != project:
             continue
         if since and e.get("date", "") < since:
@@ -225,7 +227,8 @@ def gather(cfg, by_id, query=None, project=None, since=None, limit=60):
 
 # ---- 「一件事」全景(上卷渲染)----
 _TYPE_ORDER = [("report", "📋 日报"), ("session", "💬 对话"),
-               ("commit", "💻 提交"), ("note", "📎 数据/代码/文档")]
+               ("commit", "💻 提交"), ("doc", "📄 文档"),
+               ("note", "📎 数据/代码/资料")]
 
 
 def show(cfg, topic, by_id):
