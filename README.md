@@ -2,6 +2,12 @@
 
 把散落在「多个 git 仓 + 多个 AI 工具会话(Claude / Codex / Cursor / CodeBuddy)+ 飞书需求池」里的**你自己**的工作,自动汇成按天的 markdown 日记,带回链、可检索、可云端同步。
 
+> 🤖 **第一次上手?让你的 AI 助手带你走。** 无论用 Cursor / Claude Code / Codex / CodeBuddy,
+> 它都会自动读到本仓的 `AGENTS.md`(CodeBuddy/Codex/Cursor…)或 `CLAUDE.md`(Claude Code),
+> 里面会指引它打开 **[`ONBOARDING.md`](./ONBOARDING.md)** —— 一份面向 AI 的执行剧本,
+> 一步步带你完成配置、把历史资料(git/对话/文档/数据)整理好、跑主题分类。
+> 或直接对你的 AI 说:「读 ONBOARDING.md,带我一步步配置并整理历史」。
+
 ## 为什么
 
 - **无损原文层(零维护)**:git 提交 + 各 AI 工具 transcript + 飞书需求池,本来就在,自动产生。
