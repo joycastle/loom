@@ -156,6 +156,31 @@ def _frontmatter(title, date, tags, source, status):
             f"source: {source}\nstatus: {status}\ntype: loom-note\n---\n\n")
 
 
+def note(cfg, text, to=None, tags=None, title=None):
+    """随手信息:把一段文本写成 notes/<类目>(默认 inbox)下一条 note(打码 + frontmatter)。
+
+    通用的「零碎信息」入口——不只飞书,任何来源(随手记/链接/结论/别处喂来)都走这条,
+    统一成 note:进检索、进日记、可被主题层打标。外部来源写个薄脚本循环调它即可。
+    """
+    text = (text or "").strip()
+    if not text:
+        return None, "空内容"
+    dest_dir = util.safe_join(config.notes_dir(cfg), to or "inbox")   # --to 越界防护
+    if dest_dir is None:
+        return None, f"跳过(类目越界):{to}"
+    os.makedirs(dest_dir, exist_ok=True)
+    first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "note")
+    ttl = (title or " ".join(first.split()))[:40]
+    fname = re.sub(r"[/\\:]", "-", _slug(ttl)) or "note"
+    date = datetime.now().strftime("%Y-%m-%d")
+    body = util.redact(text) if cfg.get("redact", True) else text
+    dest = _uniq(os.path.join(dest_dir, fname + ".md"))
+    with open(dest, "w", encoding="utf-8") as f:
+        f.write(_frontmatter(ttl, date, tags or [], "loom note", to or "inbox"))
+        f.write(body if body.endswith("\n") else body + "\n")
+    return dest, f"记入 {os.path.relpath(dest, config.vault_dir(cfg))}"
+
+
 def _one(cfg, src, to, tags, title, move, redact):
     src = os.path.abspath(util.expand(src))
     if not os.path.isfile(src):

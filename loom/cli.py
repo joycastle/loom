@@ -295,6 +295,19 @@ def cmd_report(cfg, a):
         vault_git(cfg, True)
 
 
+def cmd_note(cfg, a):
+    if not a.text:
+        print('用法:loom note "<文本>" [--to 类目] [--tags a,b] [--title T] [--push]')
+        return
+    tags = [t.strip() for t in (a.tags or "").split(",") if t.strip()]
+    dest, msg = intake.note(cfg, a.text, to=a.to, tags=tags, title=a.title)
+    print(("  ✓ " if dest else "  · ") + msg)
+    if dest:
+        print("  (下次 loom sync 后进检索 / 可被 loom topic 打标)")
+        if a.push:
+            vault_git(cfg, True)
+
+
 def cmd_topic(cfg, a):
     if a.action == "ls":
         print(topics.tree(cfg))
@@ -466,6 +479,12 @@ def build_parser():
     sp.add_argument("path", nargs="?")
     sp.add_argument("--file")                      # report set:AI 写好的日报文件
     sp.add_argument("--push", action="store_true")
+    sp = sub.add_parser("note")
+    sp.add_argument("text")                        # 随手信息文本
+    sp.add_argument("--to")
+    sp.add_argument("--tags")
+    sp.add_argument("--title")
+    sp.add_argument("--push", action="store_true")
     sp = sub.add_parser("topic")
     sp.add_argument("action", choices=("ls", "gather", "apply", "show"))
     sp.add_argument("query", nargs="?")           # show:主题名;gather:关键词
@@ -501,7 +520,7 @@ def main(argv=None):
         "today": cmd_today, "search": cmd_search, "init": cmd_init,
         "repo": cmd_repo, "feishu": cmd_feishu, "identity": cmd_identity,
         "source": cmd_source, "doc": cmd_doc, "data": cmd_data, "report": cmd_report,
-        "deprecate": cmd_deprecate, "topic": cmd_topic,
+        "deprecate": cmd_deprecate, "topic": cmd_topic, "note": cmd_note,
     }
     handlers[args.cmd](cfg, args)
 

@@ -919,6 +919,25 @@ class IntakeTest(unittest.TestCase):
         r2 = self.intake.ingest(self.cfg, [b])
         self.assertNotEqual(r1[0][0], r2[0][0])              # 第二个加了 -1
 
+    def test_note_captures_loose_info_redacted(self):
+        # 通用散信息:一段文本 → notes/inbox 一条 note(打码 + frontmatter),不限来源
+        dest, msg = self.intake.note(
+            self.cfg, "口径对齐结论:net 按订单精算\ntoken=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",
+            tags=["飞书", "口径"])
+        self.assertTrue(dest.replace(os.sep, "/").endswith(".md"))
+        self.assertIn("notes/inbox", dest.replace(os.sep, "/"))
+        body = _read(dest)
+        self.assertTrue(body.startswith("---"))              # 有 frontmatter
+        self.assertIn("tags: [飞书, 口径]", body)
+        self.assertIn("口径对齐结论", body)                   # 正文
+        self.assertIn("已打码", body)                         # 密钥被抹
+        self.assertNotIn("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ", body)
+
+    def test_note_empty_and_to_category(self):
+        self.assertIsNone(self.intake.note(self.cfg, "   ")[0])   # 空内容
+        dest, _ = self.intake.note(self.cfg, "放到指定类目", to="refs")
+        self.assertIn("notes/refs", dest.replace(os.sep, "/"))
+
     def test_binary_routed_to_local_data_dir(self):
         # 无法提取/打码的二进制(pptx 等)进本地 _data/,不落进会上云的类目目录
         p = self._mk("deck.pptx", "PK-ish binary payload")
