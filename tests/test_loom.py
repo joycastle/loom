@@ -750,16 +750,20 @@ class RenderNotesTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(jdir, "2026-07-04.md")))  # 无日期→不建当天
         self.assertIn("数据卡", _read(os.path.join(jdir, "2026-06-30.md")))     # 有日期→进日记
 
-    def test_repo_doc_mirror_still_excluded_from_journal(self):
-        # kind=doc(仓库 .md 镜像)仍不进日记
-        doc = _entry("doc:p:r.md", "2026-06-30", "p", "docs", "doc", "仓库文档",
-                     path="r.md", repo="p", content="正文")
-        self._build([doc])
-        jp = os.path.join(config.journal_dir(self.cfg), "2026-06-30.md")
-        self.assertFalse(os.path.exists(jp))   # 只有 doc → 当天无活动日记
+    def test_dated_doc_in_journal_undated_excluded(self):
+        # 有 git 日期的文档(dated=True)进当天「📄 文档」区;未提交/无日期的(dated=False)不进,仅检索
+        dated = _entry("doc:p:design.md", "2026-06-30", "p", "docs", "doc", "架构设计文档",
+                       path="design.md", repo="p", content="正文", dated=True)
+        undated = _entry("doc:p:draft.md", "2026-06-30", "p", "docs", "doc", "未提交草稿",
+                         path="draft.md", repo="p", content="草", dated=False)
+        self._build([dated, undated])
+        body = _read(os.path.join(config.journal_dir(self.cfg), "2026-06-30.md"))
+        self.assertIn("📄 文档", body)
+        self.assertIn("架构设计文档", body)          # 当天改过的文档进日记
+        self.assertNotIn("未提交草稿", body)         # 无 git 日期的不塞
 
     def test_doc_fulltext_archived_survives_source_deletion(self):
-        # doc 条目带全文,ref 指向不存在的文件(模拟源已删)→ 快照仍落 _archive
+        # doc 条目带全文,ref 指向不存在的文件(模拟源已删)→ 快照仍落 _archive(永不裁剪)
         doc = _entry("doc:proj:notes/x.md", "2026-06-01", "proj", "docs", "doc", "重要标题",
                      ref="/nonexistent/x.md", path="notes/x.md", repo="proj",
                      content="# 重要标题\n源删了也要留住的内容。")
@@ -767,11 +771,8 @@ class RenderNotesTest(unittest.TestCase):
         arch = os.path.join(config.notes_dir(self.cfg), "_archive", "proj", "notes", "x.md")
         self.assertTrue(os.path.exists(arch))
         body = _read(arch)
-        self.assertIn("源删了也要留住的内容", body)      # 全文进 vault
+        self.assertIn("源删了也要留住的内容", body)      # 全文进 vault(与是否进日记无关)
         self.assertIn("archived: true", body)
-        # 且不进按天日记
-        jp = os.path.join(config.journal_dir(self.cfg), "2026-06-01.md")
-        self.assertFalse(os.path.exists(jp))
 
     def test_migrates_legacy_sentinel_content(self):
         jdir = config.journal_dir(self.cfg)
@@ -1216,6 +1217,17 @@ class TopicTest(unittest.TestCase):
         self._page("claude", aliases="[anthropic, claude-code]")
         pgs = self.topics.pages(self.cfg)
         self.assertEqual(self.topics.resolve("Anthropic", pgs), "claude")
+
+    def test_gather_shows_full_session_body_not_just_first(self):
+        # 会话候选要带当天【全部】提问,让 AI 判得准(教训:只看首句会误判"太泛")
+        by = {"claude:s:2026-06-24": _entry(
+            "claude:s:2026-06-24", "2026-06-24", "data-marketing", "claude", "session",
+            "今天继续昨天的工作梳理",   # 首句很泛
+            body="今天继续昨天的工作梳理 / 什么叫素材归因主题域 / AppLovin 的 af_ad_id creative_set 归因 / player 表 adset ad 粒度",
+            opening="今天继续昨天的工作梳理")}
+        out = self.topics.gather(self.cfg, by)
+        self.assertIn("素材归因主题域", out)     # 首句之外的真信号也进了候选清单
+        self.assertIn("creative_set", out)
 
     def test_apply_creates_page_and_maps_members_rollup(self):
         self._page("素材")

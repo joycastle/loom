@@ -91,13 +91,12 @@ def build(cfg, by_id):
     _write_archives(cfg, by_id)         # 全文档案(可安全删源)
     by_date = defaultdict(list)
     for e in by_id.values():
-        if e.get("kind") == "doc":   # 仓库 .md 全文镜像是纯参考,不进按天日记(量大)
-            continue
-        # 无可靠日期的笔记/代码(只有入库 mtime)不塞进日记,免得一堆挤在导入当天;仍可检索
-        if e.get("kind") == "note" and e.get("tool") == "notes" \
+        # 无可靠日期的文档/代码(未提交、只有入库 mtime)不塞进日记,免得挤在导入当天;仍可检索。
+        # 有可靠日期的(文档=git 提交日期 / 数据卡=frontmatter / 代码=文件名日期)按那天进当天。
+        if e.get("kind") in ("doc", "note") and e.get("tool") in ("docs", "notes") \
                 and not (e.get("detail") or {}).get("dated", True):
             continue
-        by_date[e["date"]].append(e)   # 数据卡/带日期代码(kind=note)按各自日期进当天
+        by_date[e["date"]].append(e)
     written = 0
     for date, items in by_date.items():
         reports = [e for e in items if e.get("kind") == "report"]
@@ -122,8 +121,9 @@ def build(cfg, by_id):
             reqs = [e for e in evs if e["kind"] == "requirement"]
             assets = [e for e in evs if e["kind"] == "note" and e["tool"] == "notes"]
             notes = [e for e in evs if e["kind"] == "note" and e["tool"] != "notes"]
+            docs_ = [e for e in evs if e["kind"] == "doc"]
             sessions = [e for e in evs if e["tool"] != "git"
-                        and e["kind"] not in ("requirement", "note")]
+                        and e["kind"] not in ("requirement", "note", "doc")]
             lines.append(f"## [[{proj}]]")
             lines.append("")
             if commits:
@@ -161,6 +161,13 @@ def build(cfg, by_id):
                     lines.append(f"- [{tag}] {e['summary']}  \n  ↳ `{p}`")
                 if len(assets) > 12:
                     lines.append(f"- …及其余 {len(assets) - 12} 项(见 notes/ 或 loom search)")
+                lines.append("")
+            if docs_:
+                lines.append(f"### 📄 文档 ({len(docs_)})")
+                for e in sorted(docs_, key=lambda x: x["ts"])[:10]:
+                    lines.append(f"- {e['summary']}  \n  ↳ `{(e.get('detail') or {}).get('path','')}`")
+                if len(docs_) > 10:
+                    lines.append(f"- …及其余 {len(docs_) - 10} 篇(loom search --tool docs)")
                 lines.append("")
             if notes:
                 lines.append(f"### 飞书记事 ({len(notes)})")

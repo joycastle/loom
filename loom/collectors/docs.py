@@ -82,8 +82,9 @@ def collect(cfg, since):
                         content = f.read()[:CONTENT_CAP]
                 except Exception:
                     content = ""
-                # 日期:git 最近提交,否则文件 mtime(仅用于排序/--since,不进日记)
+                # 日期:git 最近提交(可靠→可进日记),否则文件 mtime(未提交→仅检索)
                 iso = dates.get(rel)
+                dated = bool(iso)     # 有 git 提交日期才算"这天改过",可进当天日记
                 if not iso:
                     iso = util.ms_to_iso(os.path.getmtime(fp) * 1000)
                 entries.append({
@@ -92,6 +93,6 @@ def collect(cfg, since):
                     "project": project, "tool": "docs", "kind": "doc",
                     "summary": title or rel, "ref": fp,
                     "detail": {"path": rel, "headings": heads, "repo": project,
-                               "content": content},
+                               "dated": dated, "content": content},
                 })
     return entries

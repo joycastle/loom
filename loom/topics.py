@@ -210,12 +210,16 @@ def gather(cfg, by_id, query=None, project=None, since=None, limit=60):
             out.append(f"- {tid}{par}")
     else:
         out.append("(还没有主题,可新建)")
+    # 给 AI 足够内部信息判断——尤其会话:带当天【全部】提问,不只首句(否则"继续梳理"这种
+    # 首句会让人误判"太泛"。提交带完整改动理由,文档/数据带正文/schema)。
+    _CAP = {"session": 800, "commit": 500, "report": 500}
     out += ["", f"## 待归类条目({len(cand)})"]
     for e in cand:
         d = e.get("detail") or {}
         out.append(f"- `{e['id']}`  [{e['tool']}/{e['kind']}] {e['date']} "
                    f"{e.get('summary','')[:60]}")
-        snip = " ".join((d.get("body") or d.get("opening") or "").split())[:140]
+        raw = d.get("body") or d.get("opening") or d.get("content") or ""
+        snip = " ".join(raw.split())[:_CAP.get(e.get("kind"), 220)]
         if snip:
             out.append(f"    ↳ {snip}")
     out += ["", "---",
