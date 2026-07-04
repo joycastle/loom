@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Claude Code 采集器:~/.claude/projects/*/*.jsonl 每文件一个 session。"""
+"""Claude Code 采集器:~/.claude/projects/*/*.jsonl。
+
+按【消息的真实本地日期】把一个 session 拆到各天:跨天续聊的长 session,每个有活动的
+天都单独出一条,带那天的第一句真实提问——避免长 session 只挂在开聊那天、后面几天看不见。
+"""
 import glob
 import json
 import os
 import re
+from collections import defaultdict
 
 from .. import util
 
@@ -48,11 +53,10 @@ def collect(cfg, since):
     entries = []
     for fp in glob.glob(os.path.join(root, "*", "*.jsonl")):
         cwd = None
-        tmin = tmax = None
         title = ""
-        texts = []
-        n_user = n_asst = 0
         sid = os.path.splitext(os.path.basename(fp))[0]
+        # 每条消息:(本地时间, 类型, 用户文本);按天分桶
+        by_day = defaultdict(lambda: {"ts": [], "users": [], "n_user": 0, "n_asst": 0})
         try:
             with open(fp, encoding="utf-8") as f:
                 for line in f:
@@ -62,37 +66,43 @@ def collect(cfg, since):
                         continue
                     if not cwd and d.get("cwd"):
                         cwd = d["cwd"]
-                    ts = d.get("timestamp")
-                    if ts:
-                        tmin = ts if tmin is None or ts < tmin else tmin
-                        tmax = ts if tmax is None or ts > tmax else tmax
                     typ = d.get("type")
                     if typ == "ai-title":
                         title = d.get("title") or (d.get("message") or {}).get("content") or title
-                    elif typ == "user":
-                        n_user += 1
-                        if len(texts) < 8:
-                            texts.extend(_iter_text((d.get("message") or {}).get("content")))
+                        continue
+                    lts = util.iso_utc_to_local(d.get("timestamp"))  # UTC→本地,按本地日期分桶
+                    if not lts:
+                        continue
+                    bucket = by_day[lts[:10]]
+                    bucket["ts"].append(lts)
+                    if typ == "user":
+                        bucket["n_user"] += 1
+                        bucket["users"].extend(_iter_text((d.get("message") or {}).get("content")))
                     elif typ == "assistant":
-                        n_asst += 1
+                        bucket["n_asst"] += 1
         except Exception as e:
             util.log(f"  [claude] {sid[:8]} 读取失败: {e}")
             continue
-        # claude 的时间戳是 UTC(...Z);统一转本地,和 codex/cursor 的本地口径对齐,
-        # 否则午夜前后的会话会落到错误的日记(如本地早 8 点 = UTC 前一天)。
-        lmin = util.iso_utc_to_local(tmin)
-        lmax = util.iso_utc_to_local(tmax) or lmin
-        if lmin is None or (lmax or "") < since:
+        if not by_day:
             continue
         project = os.path.basename(cwd.rstrip("/")) if cwd else \
             os.path.basename(os.path.dirname(fp)).split("-")[-1]
-        opening = _substantive(texts)
-        intent = title.strip() if title else re.sub(r"\s+", " ", opening)[:INTENT_CAP]
-        entries.append({
-            "id": f"claude:{sid}", "date": lmin[:10], "ts": lmin,
-            "project": project, "tool": "claude", "kind": "session",
-            "summary": intent or "(会话)", "ref": fp,
-            "detail": {"start": lmin, "end": lmax, "user": n_user, "asst": n_asst,
-                       "opening": opening[:OPENING_CAP]},
-        })
+        earliest = min(by_day)
+        for day in sorted(by_day):
+            if day < since:
+                continue
+            b = by_day[day]
+            b["ts"].sort()
+            opening = _substantive(b["users"])
+            intent = re.sub(r"\s+", " ", opening)[:INTENT_CAP]
+            if day == earliest and title:      # 开聊那天用 AI 生成的整会话标题;续聊天用当天首问
+                intent = title.strip()
+            entries.append({
+                "id": f"claude:{sid}:{day}", "date": day, "ts": b["ts"][0],
+                "project": project, "tool": "claude", "kind": "session",
+                "summary": intent or "(续聊)", "ref": fp,
+                "detail": {"start": b["ts"][0], "end": b["ts"][-1],
+                           "user": b["n_user"], "asst": b["n_asst"],
+                           "opening": opening[:OPENING_CAP]},
+            })
     return entries

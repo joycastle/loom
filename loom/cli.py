@@ -245,9 +245,38 @@ def cmd_data(cfg, a):
         vault_git(cfg, True)
 
 
+def _store_reports(cfg, entries, push):
+    if cfg.get("redact", True):
+        entries = [util.redact_entry(e) for e in entries]
+    by_id = store.load()
+    store.upsert(by_id, entries)
+    store.save(by_id)
+    search.rebuild()
+    render.build(cfg, by_id)
+    if push:
+        vault_git(cfg, True)
+
+
 def cmd_report(cfg, a):
+    if a.action == "gen":
+        if not a.path:
+            print("用法:loom report gen <日期>(YYYY-MM-DD)")
+            return
+        print(report.gen_material(cfg, a.path))
+        return
+    if a.action == "set":
+        if not a.path:
+            print("用法:loom report set <日期> [--file 日报.md](无 --file 则读 stdin)")
+            return
+        text = open(util.expand(a.file), encoding="utf-8").read() if a.file else sys.stdin.read()
+        if not text.strip():
+            print("没有日报内容")
+            return
+        _store_reports(cfg, [report.set_from_text(cfg, a.path, text)], a.push)
+        print(f"已写入 {a.path} 日报(AI 生成)→ 渲染进日记,已可检索")
+        return
     if a.action != "import" or not a.path:
-        print("用法:loom report import <日报.xlsx> [--push]")
+        print("用法:loom report <import 日报.xlsx | gen 日期 | set 日期> [--push]")
         return
     entries = report.import_xlsx(cfg, a.path)
     if not entries:
@@ -407,8 +436,9 @@ def build_parser():
     sp.add_argument("--move", action="store_true")
     sp.add_argument("--push", action="store_true")
     sp = sub.add_parser("report")
-    sp.add_argument("action", choices=("import",))
+    sp.add_argument("action", choices=("import", "gen", "set"))
     sp.add_argument("path", nargs="?")
+    sp.add_argument("--file")                      # report set:AI 写好的日报文件
     sp.add_argument("--push", action="store_true")
     sp = sub.add_parser("deprecate")
     sp.add_argument("path", nargs="*")            # notes 相对路径

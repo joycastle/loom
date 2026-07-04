@@ -231,6 +231,48 @@ class CursorProjectTest(unittest.TestCase):
                          "cursor")
 
 
+class CursorCollectorTest(unittest.TestCase):
+    def _headers(self, tmpbase, composers):
+        import sqlite3
+        d = os.path.join(tmpbase, "User", "globalStorage")
+        os.makedirs(d)
+        db = os.path.join(d, "state.vscdb")
+        con = sqlite3.connect(db)
+        con.execute("CREATE TABLE ItemTable (key TEXT, value TEXT)")
+        con.execute("INSERT INTO ItemTable VALUES (?,?)",
+                    ("composer.composerHeaders",
+                     json.dumps({"allComposers": composers})))
+        con.commit(); con.close()
+
+    def test_cross_day_session_on_both_ends(self):
+        base = tempfile.mkdtemp(prefix="loom-cur-")
+        # createdAt 2026-06-01, lastUpdatedAt 2026-06-03(本地毫秒时间戳)
+        import datetime as _dt
+        def ms(y, mo, dd):
+            return int(_dt.datetime(y, mo, dd, 12, 0).timestamp() * 1000)
+        self._headers(base, [{
+            "composerId": "cmp1", "name": "跨天会话",
+            "workspaceIdentifier": {"uri": {"fsPath": "/Users/x/proj-a"}},
+            "createdAt": ms(2026, 6, 1), "lastUpdatedAt": ms(2026, 6, 3)}])
+        cfg = {"sources": {"cursor": {"enabled": True, "app_support": base}}}
+        out = cursor_col.collect(cfg, "2000-01-01")
+        by_date = {e["date"]: e for e in out}
+        self.assertEqual(set(by_date), {"2026-06-01", "2026-06-03"})   # 开始日 + 最后活跃日
+        self.assertEqual(by_date["2026-06-01"]["project"], "proj-a")
+        self.assertTrue(all("cmp1" in e["id"] for e in out))
+
+    def test_same_day_session_single_entry(self):
+        base = tempfile.mkdtemp(prefix="loom-cur-")
+        import datetime as _dt
+        t = int(_dt.datetime(2026, 6, 1, 12, 0).timestamp() * 1000)
+        self._headers(base, [{"composerId": "c2", "name": "当天会话",
+                              "workspaceIdentifier": {"uri": {"fsPath": "/Users/x/p"}},
+                              "createdAt": t, "lastUpdatedAt": t + 3600000}])
+        cfg = {"sources": {"cursor": {"enabled": True, "app_support": base}}}
+        out = cursor_col.collect(cfg, "2000-01-01")
+        self.assertEqual(len(out), 1)   # 同一天只出一条
+
+
 class GitCollectorTest(unittest.TestCase):
     def setUp(self):
         self.repo = tempfile.mkdtemp(prefix="loom-repo-")
@@ -352,6 +394,30 @@ class ClaudeCollectorTest(unittest.TestCase):
         self.assertNotIn("Z", e["detail"]["start"])
         self.assertEqual(len(e["ts"]), 19)
         self.assertEqual(e["date"], e["ts"][:10])
+
+    def test_multiday_session_split_per_day(self):
+        # 跨天续聊:同一 session 每个有活动的天各出一条,带那天的首问
+        proj = os.path.join(self.root, "-Users-x-proj-z")
+        # 用早上的 UTC 时间避免本地时区把日期推到前后天(09:00Z 在 UTC-9~+14 都还是当天)
+        lines = [
+            {"cwd": "/Users/x/proj-z", "timestamp": "2026-06-01T09:00:00Z",
+             "type": "user", "message": {"content": "第一天:搭归因管道"}},
+            {"timestamp": "2026-06-01T10:00:00Z", "type": "assistant", "message": {"content": "ok"}},
+            {"timestamp": "2026-06-02T09:30:00Z", "type": "user",
+             "message": {"content": "第二天:继续修 cohort 口径"}},
+            {"timestamp": "2026-06-02T11:00:00Z", "type": "assistant", "message": {"content": "ok"}},
+            {"type": "ai-title", "title": "归因管道"},
+        ]
+        with open(os.path.join(proj, "sid-multi.jsonl"), "w", encoding="utf-8") as f:
+            for d in lines:
+                f.write(json.dumps(d, ensure_ascii=False) + "\n")
+        out = [e for e in claude_col.collect(self.cfg, "2000-01-01")
+               if "sid-multi" in e["id"]]
+        by_date = {e["date"]: e for e in out}
+        self.assertEqual(set(by_date), {"2026-06-01", "2026-06-02"})     # 拆成两天
+        self.assertEqual(by_date["2026-06-01"]["summary"], "归因管道")     # 首日用整会话标题
+        self.assertTrue(by_date["2026-06-02"]["summary"].startswith("第二天"))  # 续日用当天首问
+        self.assertEqual(by_date["2026-06-02"]["detail"]["user"], 1)     # 只算当天的消息
 
 
 class DocsCollectorTest(unittest.TestCase):

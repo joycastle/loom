@@ -56,16 +56,20 @@ def collect(cfg, since):
         cid = c.get("composerId")
         end = util.ms_to_iso(c.get("lastUpdatedAt"))
         start = util.ms_to_iso(c.get("createdAt")) or end
-        if not cid or not end or end[:10] < since:
+        if not cid or not end:
             continue
+        start = start or end
         intent = " ".join((c.get("name") or "").split())[:180] or "(会话)"
-        entries.append({
-            "id": f"cursor:{cid}", "date": (start or end)[:10], "ts": start or end,
-            "project": _project(c), "tool": "cursor", "kind": "session",
-            "summary": intent, "ref": f"composer:{cid}",
-            "detail": {"start": start, "end": end,
-                       "files": c.get("filesChangedCount", 0),
-                       "add": c.get("totalLinesAdded", 0),
-                       "del": c.get("totalLinesRemoved", 0)},
-        })
+        detail = {"start": start, "end": end, "files": c.get("filesChangedCount", 0),
+                  "add": c.get("totalLinesAdded", 0), "del": c.get("totalLinesRemoved", 0)}
+        # 无逐条消息时间 → 按【开始日 + 最后活跃日】两端归属(跨天 session 两天都出现)
+        for day in sorted({start[:10], end[:10]}):
+            if day < since:
+                continue
+            ts = start if day == start[:10] else end
+            entries.append({
+                "id": f"cursor:{cid}:{day}", "date": day, "ts": ts,
+                "project": _project(c), "tool": "cursor", "kind": "session",
+                "summary": intent, "ref": f"composer:{cid}", "detail": detail,
+            })
     return entries
