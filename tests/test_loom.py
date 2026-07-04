@@ -1058,6 +1058,21 @@ class SearchTest(unittest.TestCase):
         # "fix 优化" 含空格,非空白字符可能<3 → 不该被当死 FTS 短语吞掉
         self.assertTrue(len(search.query("cohort 优化")) >= 0)       # 不崩即可
 
+    def test_body_only_term_is_searchable_end_to_end(self):
+        # 端到端过 FTS:只在 detail.body(整段对话)出现、summary 里没有的词也能搜到。
+        # 这条才真正证明「整段可检索」——从 rebuild 索引到 query 命中,不是断言自己塞的字符串。
+        e = _entry("claude:sx:2026-06-07", "2026-06-07", "p2", "claude", "session",
+                   "搭归因管道", ts="2026-06-07T09:00:00",
+                   opening="搭归因管道", body="搭归因管道 排查 tapjoyfraud 作弊订单")
+        store.save({e["id"]: e})
+        search.rebuild()
+        self.assertIn("claude:sx:2026-06-07",
+                      {h["id"] for h in search.query("tapjoyfraud")})   # 英文深处词
+        self.assertIn("claude:sx:2026-06-07",
+                      {h["id"] for h in search.query("作弊订单")})        # 中文深处词
+        self.assertNotIn("搭归因管道", "tapjoyfraud")                     # 词确实不在标题里
+        self.assertEqual(search.query("tapjoyfraud", project="nope"), [])  # 过滤生效→非空转
+
     def test_auto_rebuild_when_index_missing(self):
         os.remove(util.INDEX_PATH)
         self.assertTrue(len(search.query("cohort")) == 2)  # ensure() 自动重建
