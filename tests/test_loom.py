@@ -387,6 +387,24 @@ class ClaudeCollectorTest(unittest.TestCase):
         cfg = {"sources": {"claude": {"enabled": False}}}
         self.assertEqual(claude_col.collect(cfg, "2000-01-01"), [])
 
+    def test_skips_compaction_summary_as_opening(self):
+        # 压缩续接摘要不该被当成"当天首问",应取下一句真实提问
+        proj = os.path.join(self.root, "-Users-x-proj-z")
+        lines = [
+            {"cwd": "/Users/x/proj-z", "timestamp": "2026-06-05T09:00:00Z", "type": "user",
+             "message": {"content": "This session is being continued from a previous "
+                         "conversation that ran out of context. Summary: ..."}},
+            {"cwd": "/Users/x/proj-z", "timestamp": "2026-06-05T09:01:00Z", "type": "user",
+             "message": {"content": "真实问题:帮我修 cohort 口径"}},
+        ]
+        with open(os.path.join(proj, "sid-compact.jsonl"), "w", encoding="utf-8") as f:
+            for d in lines:
+                f.write(json.dumps(d, ensure_ascii=False) + "\n")
+        e = [x for x in claude_col.collect(self.cfg, "2000-01-01")
+             if "sid-compact" in x["id"]][0]
+        self.assertTrue(e["detail"]["opening"].startswith("真实问题"))   # 跳过摘要取真问题
+        self.assertNotIn("continued from", e["detail"]["opening"])
+
     def test_timestamps_converted_to_local(self):
         # claude 原始是 UTC 的 Z;入库后统一成本地朴素 ISO,不残留 Z(跨源日期口径一致)
         e = claude_col.collect(self.cfg, "2000-01-01")[0]

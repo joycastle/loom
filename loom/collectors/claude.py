@@ -28,6 +28,11 @@ def _substantive(texts):
         low = s.lower()
         if low.startswith("caveat") or "tool_result" in low or "system-reminder" in low:
             continue
+        # 上下文压缩/续接时自动注入的摘要,不是用户真实提问,跳过取下一句
+        if low.startswith("this session is being continued") \
+                or "that ran out of context" in low \
+                or low.startswith("请继续") or low.startswith("continue from where"):
+            continue
         return s
     return ""
 
