@@ -387,6 +387,24 @@ class ClaudeCollectorTest(unittest.TestCase):
         cfg = {"sources": {"claude": {"enabled": False}}}
         self.assertEqual(claude_col.collect(cfg, "2000-01-01"), [])
 
+    def test_all_user_questions_indexed_not_just_opening(self):
+        # 整段对话的话题都进 body(可检索),不止开场那句
+        proj = os.path.join(self.root, "-Users-x-proj-z")
+        lines = [
+            {"cwd": "/Users/x/proj-z", "timestamp": "2026-06-07T09:00:00Z", "type": "user",
+             "message": {"content": "先帮我搭个归因管道"}},
+            {"timestamp": "2026-06-07T09:30:00Z", "type": "assistant", "message": {"content": "ok"}},
+            {"timestamp": "2026-06-07T10:00:00Z", "type": "user",
+             "message": {"content": "顺便排查一下 tapjoy 作弊订单"}},
+        ]
+        with open(os.path.join(proj, "sid-body.jsonl"), "w", encoding="utf-8") as f:
+            for d in lines:
+                f.write(json.dumps(d, ensure_ascii=False) + "\n")
+        e = [x for x in claude_col.collect(self.cfg, "2000-01-01") if "sid-body" in x["id"]][0]
+        self.assertTrue(e["summary"].startswith("先帮我搭"))          # 开场做标题
+        self.assertIn("tapjoy 作弊订单", e["detail"]["body"])         # 后面的话题也进 body(可搜)
+        self.assertIn("归因管道", e["detail"]["body"])
+
     def test_skips_compaction_summary_as_opening(self):
         # 压缩续接摘要不该被当成"当天首问",应取下一句真实提问
         proj = os.path.join(self.root, "-Users-x-proj-z")
