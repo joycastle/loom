@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-from . import config, dataset, intake, render, report, search, store, util
+from . import config, dataset, intake, render, report, search, store, topics, util
 from . import collectors
 
 
@@ -295,6 +295,32 @@ def cmd_report(cfg, a):
         vault_git(cfg, True)
 
 
+def cmd_topic(cfg, a):
+    if a.action == "ls":
+        print(topics.tree(cfg))
+        return
+    if a.action == "gather":
+        print(topics.gather(cfg, store.load(), query=a.query, project=a.project,
+                            since=a.since, limit=a.limit or 60))
+        return
+    if a.action == "apply":
+        if not a.file:
+            print("用法:loom topic apply --file <映射.tsv>")
+            return
+        n, created = topics.apply(cfg, topics.parse_mapping_tsv(a.file))
+        print(f"已归类 {n} 条" + (f";新建主题 {len(created)}:{', '.join(created)}" if created else ""))
+        search.rebuild()
+        if a.push:
+            vault_git(cfg, True)
+        return
+    if a.action == "show":
+        if not a.query:
+            print("用法:loom topic show <主题>")
+            return
+        print(topics.show(cfg, a.query, store.load()))
+        return
+
+
 def cmd_deprecate(cfg, a):
     if not a.path:
         print("用法:loom deprecate <notes 相对路径…> [--superseded-by 标题] [--mark] [--push]")
@@ -440,6 +466,14 @@ def build_parser():
     sp.add_argument("path", nargs="?")
     sp.add_argument("--file")                      # report set:AI 写好的日报文件
     sp.add_argument("--push", action="store_true")
+    sp = sub.add_parser("topic")
+    sp.add_argument("action", choices=("ls", "gather", "apply", "show"))
+    sp.add_argument("query", nargs="?")           # show:主题名;gather:关键词
+    sp.add_argument("--project")
+    sp.add_argument("--since")
+    sp.add_argument("--limit", type=int)
+    sp.add_argument("--file")                      # apply:AI 给的映射 TSV
+    sp.add_argument("--push", action="store_true")
     sp = sub.add_parser("deprecate")
     sp.add_argument("path", nargs="*")            # notes 相对路径
     sp.add_argument("--superseded-by", dest="superseded_by")
@@ -467,7 +501,7 @@ def main(argv=None):
         "today": cmd_today, "search": cmd_search, "init": cmd_init,
         "repo": cmd_repo, "feishu": cmd_feishu, "identity": cmd_identity,
         "source": cmd_source, "doc": cmd_doc, "data": cmd_data, "report": cmd_report,
-        "deprecate": cmd_deprecate,
+        "deprecate": cmd_deprecate, "topic": cmd_topic,
     }
     handlers[args.cmd](cfg, args)
 

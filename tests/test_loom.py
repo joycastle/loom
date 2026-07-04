@@ -1157,6 +1157,63 @@ class ReportTest(unittest.TestCase):
         self.assertIn("明日计划", body)
 
 
+class TopicTest(unittest.TestCase):
+    def setUp(self):
+        from loom import topics
+        self.topics = topics
+        self.cfg = {"vault": {"dir": tempfile.mkdtemp(prefix="loom-vault-")}}
+        for p in (topics._map_path(), topics._audit_path()):
+            if os.path.exists(p):
+                os.remove(p)
+
+    def _page(self, tid, parent="", aliases=""):
+        d = self.topics.topics_dir(self.cfg)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, tid + ".md"), "w", encoding="utf-8") as f:
+            f.write(f"---\ntitle: {tid}\ntype: loom-topic\n"
+                    f"parent: {parent}\naliases: {aliases}\n---\n\n正文")
+
+    def test_canon(self):
+        self.assertEqual(self.topics.canon(" [[Serial Fallback]] "), "serial-fallback")
+        self.assertEqual(self.topics.canon("素材匹配重构"), "素材匹配重构")
+
+    def test_descendants_rollup_and_multiparent(self):
+        self._page("素材")
+        self._page("素材匹配重构", parent="[[素材]]")
+        self._page("serial兜底", parent="[[素材匹配重构]]")
+        self._page("净额", parent="[[bf三方支付]], [[素材匹配重构]]")  # 多父
+        pgs = self.topics.pages(self.cfg)
+        sub = self.topics.descendants("素材", pgs)
+        self.assertEqual(sub, {"素材", "素材匹配重构", "serial兜底", "净额"})  # 整棵子树上卷
+        self.assertIn("净额", self.topics.descendants("bf三方支付", pgs))     # 多父:另一棵也含它
+
+    def test_descendants_cycle_safe(self):
+        self._page("a", parent="[[b]]")
+        self._page("b", parent="[[a]]")   # 环
+        sub = self.topics.descendants("a", self.topics.pages(self.cfg))
+        self.assertEqual(sub, {"a", "b"})   # 不死循环
+
+    def test_alias_resolve(self):
+        self._page("claude", aliases="[anthropic, claude-code]")
+        pgs = self.topics.pages(self.cfg)
+        self.assertEqual(self.topics.resolve("Anthropic", pgs), "claude")
+
+    def test_apply_creates_page_and_maps_members_rollup(self):
+        self._page("素材")
+        mapping = [("git:1", ["素材匹配重构"]), ("claude:2", ["serial兜底"]),
+                   ("git:3", ["none-of-these"])]   # none-of-these 忽略
+        n, created = self.topics.apply(self.cfg, mapping)
+        self.assertEqual(n, 2)
+        self.assertIn("素材匹配重构", created)        # 新叶子自动建页
+        # 但新建的没挂到 素材 下(层级要人维护)→ 手动挂上再验上卷
+        self._page("素材匹配重构", parent="[[素材]]")
+        self._page("serial兜底", parent="[[素材匹配重构]]")
+        by_id = {"git:1": _entry("git:1", "2026-06-30", "p", "git", "commit", "改"),
+                 "claude:2": _entry("claude:2", "2026-07-01", "p", "claude", "session", "聊")}
+        ids = {e["id"] for e in self.topics.members(self.cfg, "素材", by_id)}
+        self.assertEqual(ids, {"git:1", "claude:2"})   # 父主题上卷到两个后代的条目
+
+
 class TimezoneTest(unittest.TestCase):
     def test_utc_to_local_consistent_across_notation(self):
         z = util.iso_utc_to_local("2026-06-01T09:00:00Z")
