@@ -16,6 +16,19 @@ from ..intake import _parse_frontmatter, CODE_EXT
 CONTENT_CAP = 200_000
 INDEX_EXT = (".md",) + CODE_EXT     # 索引 markdown + 代码/脚本(sql/py…),让 pull recipe 可检索
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+# 从文件名/路径里抠日期(代码文件无 frontmatter、入库 mtime 又都落在导入当天,靠名字定日更准)
+_NAME_DATE = re.compile(r"(20\d{2})[-_]?(0[1-9]|1[0-2])[-_]?(0[1-9]|[12]\d|3[01])")
+_NAME_YM = re.compile(r"(20\d{2})(0[1-9]|1[0-2])(?!\d)")   # 只到月的(如 202605)→ 当月 1 号
+
+
+def _date_from_name(s):
+    m = _NAME_DATE.search(s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    m = _NAME_YM.search(s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-01"
+    return None
 
 
 def collect(cfg, since):
@@ -44,11 +57,16 @@ def collect(cfg, since):
             if fm.get("status") == "deprecated" or fm.get("deprecated", "").lower() == "true":
                 title = "⚠[废弃] " + title      # 就地标记的废弃项:检索里显式标出,避免误信
             d = fm.get("date", "").strip()
-            if _DATE.match(d):
-                date10, ts = d[:10], d[:10] + "T12:00:00"
-            else:
+            name_d = _date_from_name(rel)             # 文件名/路径里的日期
+            # dated=有真实日期(数据卡 frontmatter / 名字带日期)→ 可进当天日记;
+            # 否则只有入库 mtime,不可靠 → 仅进检索,不塞进任意一天日记(避免虚胖)。
+            if _DATE.match(d):                        # ① frontmatter 日期(数据卡有,最准)
+                date10, ts, dated = d[:10], d[:10] + "T12:00:00", True
+            elif name_d:                              # ② 文件名里的日期(代码文件常带)
+                date10, ts, dated = name_d, name_d + "T12:00:00", True
+            else:                                     # ③ 兜底:文件 mtime(不进日记)
                 ts = util.ms_to_iso(os.path.getmtime(fp) * 1000) or ""
-                date10 = ts[:10]
+                date10, dated = ts[:10], False
             parts = rel.split(os.sep)
             project = parts[0] if len(parts) > 1 else "notes"
             entries.append({
@@ -56,6 +74,6 @@ def collect(cfg, since):
                 "project": project, "tool": "notes", "kind": "note",
                 "summary": title, "ref": fp,
                 "detail": {"path": rel, "tags": fm.get("tags", ""),
-                           "content": text[body_at:]},
+                           "dated": dated, "content": text[body_at:]},
             })
     return entries

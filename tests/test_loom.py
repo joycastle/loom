@@ -501,6 +501,24 @@ class NotesCollectorTest(unittest.TestCase):
                                             "sources": {"notes": {"enabled": False}}},
                                            "2000-01-01"), [])
 
+    def test_date_from_name(self):
+        self.assertEqual(notes_col._date_from_name("check_2026_03_12_gap.sql"), "2026-03-12")
+        self.assertEqual(notes_col._date_from_name("dryrun_material_20260702.sql"), "2026-07-02")
+        self.assertEqual(notes_col._date_from_name("bf_channel_impact_202605.sql"), "2026-05-01")
+        self.assertIsNone(notes_col._date_from_name("bf_ads_vs_dws_recon.sql"))   # 无日期→None(退回mtime)
+        self.assertIsNone(notes_col._date_from_name("260129_bf.sql"))             # YYMMDD 太歧义,不认
+
+    def test_code_file_dated_from_name_not_mtime(self):
+        from loom import intake
+        src = tempfile.mkdtemp()
+        with open(os.path.join(src, "cost_split_dryrun_ms_20260501.sql"), "w") as f:
+            f.write("SELECT 1")
+        intake.ingest(self.cfg, [os.path.join(src, "cost_split_dryrun_ms_20260501.sql")],
+                      to="scratch")
+        e = next(e for e in notes_col.collect(self.cfg, "2000-01-01")
+                 if "cost_split_dryrun" in e["detail"]["path"])
+        self.assertEqual(e["date"], "2026-05-01")   # 用文件名日期,而非入库当天 mtime
+
 
 class DatasetTest(unittest.TestCase):
     def setUp(self):
@@ -702,6 +720,17 @@ class RenderNotesTest(unittest.TestCase):
         self.assertIn("📎 数据/代码/资料", body)
         self.assertIn("[数据卡] BV 付费对比", body)
         self.assertIn("[代码] 作弊排查", body)
+
+    def test_undated_code_note_excluded_from_journal(self):
+        # 无日期的代码笔记(dated=False,只有 mtime)不进日记(仍可检索)
+        undated = _entry("note:scratch/q.sql", "2026-07-04", "scratch", "notes", "note",
+                         "无日期查询", path="scratch/q.sql", dated=False)
+        dated = _entry("note:data/x.card.md", "2026-06-30", "data", "notes", "note",
+                       "数据卡", path="data/x.card.md", dated=True)
+        self._build([undated, dated])
+        jdir = config.journal_dir(self.cfg)
+        self.assertFalse(os.path.exists(os.path.join(jdir, "2026-07-04.md")))  # 无日期→不建当天
+        self.assertIn("数据卡", _read(os.path.join(jdir, "2026-06-30.md")))     # 有日期→进日记
 
     def test_repo_doc_mirror_still_excluded_from_journal(self):
         # kind=doc(仓库 .md 镜像)仍不进日记

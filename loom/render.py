@@ -93,7 +93,11 @@ def build(cfg, by_id):
     for e in by_id.values():
         if e.get("kind") == "doc":   # 仓库 .md 全文镜像是纯参考,不进按天日记(量大)
             continue
-        by_date[e["date"]].append(e)   # 数据卡/代码/笔记(kind=note)按各自日期进当天
+        # 无可靠日期的笔记/代码(只有入库 mtime)不塞进日记,免得一堆挤在导入当天;仍可检索
+        if e.get("kind") == "note" and e.get("tool") == "notes" \
+                and not (e.get("detail") or {}).get("dated", True):
+            continue
+        by_date[e["date"]].append(e)   # 数据卡/带日期代码(kind=note)按各自日期进当天
     written = 0
     for date, items in by_date.items():
         reports = [e for e in items if e.get("kind") == "report"]
