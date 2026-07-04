@@ -606,6 +606,27 @@ class RenderNotesTest(unittest.TestCase):
         self.assertIn("还有一大段展开的上下文", body)   # 追加信息被渲染
         self.assertEqual(body.count("  > 梳理现状"), 0)  # 冗余的不渲染
 
+    def test_data_and_code_notes_appear_in_journal(self):
+        # 数据卡/代码(kind=note, tool=notes)按各自日期进当天日记的「📎 数据/代码/资料」区
+        card = _entry("note:data/bv/x.card.md", "2026-06-30", "data", "notes", "note",
+                      "BV 付费对比", path="data/bv/x.card.md")
+        code = _entry("note:scratch/q.sql", "2026-06-30", "scratch", "notes", "note",
+                      "作弊排查", path="scratch/q.sql")
+        self._build([card, code,
+                     _entry("git:1", "2026-06-30", "data", "git", "commit", "改了")])
+        body = _read(os.path.join(config.journal_dir(self.cfg), "2026-06-30.md"))
+        self.assertIn("📎 数据/代码/资料", body)
+        self.assertIn("[数据卡] BV 付费对比", body)
+        self.assertIn("[代码] 作弊排查", body)
+
+    def test_repo_doc_mirror_still_excluded_from_journal(self):
+        # kind=doc(仓库 .md 镜像)仍不进日记
+        doc = _entry("doc:p:r.md", "2026-06-30", "p", "docs", "doc", "仓库文档",
+                     path="r.md", repo="p", content="正文")
+        self._build([doc])
+        jp = os.path.join(config.journal_dir(self.cfg), "2026-06-30.md")
+        self.assertFalse(os.path.exists(jp))   # 只有 doc → 当天无活动日记
+
     def test_doc_fulltext_archived_survives_source_deletion(self):
         # doc 条目带全文,ref 指向不存在的文件(模拟源已删)→ 快照仍落 _archive
         doc = _entry("doc:proj:notes/x.md", "2026-06-01", "proj", "docs", "doc", "重要标题",

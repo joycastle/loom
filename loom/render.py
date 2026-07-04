@@ -91,9 +91,9 @@ def build(cfg, by_id):
     _write_archives(cfg, by_id)         # 全文档案(可安全删源)
     by_date = defaultdict(list)
     for e in by_id.values():
-        if e.get("kind") in ("doc", "note"):   # 文档/笔记是参考,不进按天日记
+        if e.get("kind") == "doc":   # 仓库 .md 全文镜像是纯参考,不进按天日记(量大)
             continue
-        by_date[e["date"]].append(e)
+        by_date[e["date"]].append(e)   # 数据卡/代码/笔记(kind=note)按各自日期进当天
     written = 0
     for date, items in by_date.items():
         reports = [e for e in items if e.get("kind") == "report"]
@@ -116,7 +116,8 @@ def build(cfg, by_id):
             evs = by_proj[proj]
             commits = [e for e in evs if e["tool"] == "git"]
             reqs = [e for e in evs if e["kind"] == "requirement"]
-            notes = [e for e in evs if e["kind"] == "note"]
+            assets = [e for e in evs if e["kind"] == "note" and e["tool"] == "notes"]
+            notes = [e for e in evs if e["kind"] == "note" and e["tool"] != "notes"]
             sessions = [e for e in evs if e["tool"] != "git"
                         and e["kind"] not in ("requirement", "note")]
             lines.append(f"## [[{proj}]]")
@@ -143,6 +144,19 @@ def build(cfg, by_id):
                 lines.append(f"### 需求 ({len(reqs)})")
                 for e in sorted(reqs, key=lambda x: x["ts"]):
                     lines.append(f"- {e['summary']}  \n  ↳ {e['ref']}")
+                lines.append("")
+            if assets:
+                lines.append(f"### 📎 数据/代码/资料 ({len(assets)})")
+                for e in sorted(assets, key=lambda x: x["ts"])[:12]:
+                    p = (e.get("detail") or {}).get("path", "")
+                    ext = os.path.splitext(p)[1].lower()
+                    tag = ("数据卡" if p.endswith(".card.md")
+                           else "代码" if ext in (".sql", ".py", ".sh", ".r",
+                                                 ".js", ".ts", ".scala")
+                           else "资料")
+                    lines.append(f"- [{tag}] {e['summary']}  \n  ↳ `{p}`")
+                if len(assets) > 12:
+                    lines.append(f"- …及其余 {len(assets) - 12} 项(见 notes/ 或 loom search)")
                 lines.append("")
             if notes:
                 lines.append(f"### 飞书记事 ({len(notes)})")
