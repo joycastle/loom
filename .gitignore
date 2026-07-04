@@ -1,6 +1,6 @@
 __pycache__/
 *.pyc
 .DS_Store
-# 个人配置/数据/凭证从不进产品仓(它们在 ~/.worklog/)
-.worklog/
+# 个人配置/数据/凭证从不进产品仓(它们在 ~/.loom/,与代码物理分离)
+.loom/
 .env
