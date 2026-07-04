@@ -948,6 +948,30 @@ class ReportTest(unittest.TestCase):
         self.assertIn("跑历史回溯", e["detail"]["plan"])
         self.assertIn("口径要对齐", e["detail"]["content"])   # content 供检索
 
+    def test_same_day_reports_merged_not_overwritten(self):
+        import zipfile
+        ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        istr = lambda r, t: f'<c r="{r}" t="inlineStr"><is><t>{t}</t></is></c>'
+        rows = [
+            ("提交时间", "今日工作与进度情况", "今日思考（问题与心得）", "明日工作计划"),
+            ("2026-06-25 22:11", "cohort 回填", "", "素材上线"),
+            ("2026-06-25 09:00", "商业报告调整", "现状调研", ""),   # 同一天第二条
+        ]
+        cells = []
+        for ri, row in enumerate(rows, 1):
+            cs = "".join(istr(f"{chr(65+ci)}{ri}", v) for ci, v in enumerate(row) if v)
+            cells.append(f'<row r="{ri}">{cs}</row>')
+        sheet = f'<worksheet xmlns="{ns}"><sheetData>{"".join(cells)}</sheetData></worksheet>'
+        p = os.path.join(self.src, "dup.xlsx")
+        with zipfile.ZipFile(p, "w") as z:
+            z.writestr("xl/worksheets/sheet1.xml", sheet)
+        out = self.report.import_xlsx({}, p)
+        self.assertEqual(len(out), 1)                      # 同天合并为一条
+        e = out[0]
+        self.assertIn("cohort 回填", e["detail"]["work"])   # 两条内容都在,谁都没被覆盖
+        self.assertIn("商业报告调整", e["detail"]["work"])
+        self.assertEqual(e["ts"], "2026-06-25T09:00")      # 取最早提交时刻
+
     def test_import_idempotent(self):
         p = self._mk_xlsx()
         a = self.report.import_xlsx({}, p)

@@ -37,10 +37,12 @@ def import_xlsx(cfg, path):
         i = idx.get(key)
         return (r[i].strip() if i is not None and i < len(r) and r[i] else "")
 
-    out = []
+    # 同一天可能有多条(改稿重交 / 一天交两次)——按日期聚合合并,绝不让后一条覆盖前一条
+    # (id=report:date 幂等,但同天多条必须合并而非丢弃)。
+    agg = {}
+    order = []
     for r in rows[1:]:
-        raw = cell(r, "date")
-        m = re.match(r"(\d{4}-\d{2}-\d{2})[ T]?(\d{2}:\d{2})?", raw)
+        m = re.match(r"(\d{4}-\d{2}-\d{2})[ T]?(\d{2}:\d{2})?", cell(r, "date"))
         if not m:
             continue
         date = m.group(1)
@@ -48,12 +50,26 @@ def import_xlsx(cfg, path):
         work, thinking, plan = cell(r, "work"), cell(r, "thinking"), cell(r, "plan")
         if not (work or thinking or plan):
             continue
-        summary = " ".join(work.split())[:80] or "日报"
+        if date not in agg:
+            agg[date] = {"ts": ts, "work": [], "thinking": [], "plan": []}
+            order.append(date)
+        a = agg[date]
+        a["ts"] = min(a["ts"], ts)                      # 一天多条取最早提交时刻
+        for k, v in (("work", work), ("thinking", thinking), ("plan", plan)):
+            if v and v not in a[k]:                     # 去重后按出现顺序拼接
+                a[k].append(v)
+
+    out = []
+    for date in order:
+        a = agg[date]
+        work = "\n\n".join(a["work"])
+        thinking = "\n\n".join(a["thinking"])
+        plan = "\n\n".join(a["plan"])
         content = "\n".join(x for x in (work, thinking, plan) if x)  # search 用(_aux_of 读 content)
         out.append({
-            "id": f"report:{date}", "date": date, "ts": ts,
+            "id": f"report:{date}", "date": date, "ts": a["ts"],
             "project": "日报", "tool": "日报", "kind": "report",
-            "summary": summary, "ref": f"日报:{date}",
+            "summary": " ".join(work.split())[:80] or "日报", "ref": f"日报:{date}",
             "detail": {"work": work, "thinking": thinking, "plan": plan, "content": content},
         })
     return out
