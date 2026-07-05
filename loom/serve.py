@@ -82,7 +82,12 @@ def api_topics(cfg):
     roots = sorted((t for t in pgs if t not in has_parent),
                    key=lambda t: -rolls.get(t, 0))
     unfiled = [t for t in direct if t not in pgs]           # 有条目但没建页的散主题
+    nodes = [{"name": t, "count": rolls.get(t, 0), "direct": direct.get(t, 0),
+              "multi": len(pgs[t]["parents"]) > 1} for t in pgs]
+    edges = [[topics.resolve(par, pgs), t]                  # 图视图:扁平节点+边(DAG 全边)
+             for t, p in pgs.items() for par in p["parents"]]
     return {"tree": [node(r, set()) for r in roots],
+            "nodes": nodes, "edges": edges,
             "loose": sorted(unfiled, key=lambda t: -direct[t]),
             "total_tagged": len(m)}
 
