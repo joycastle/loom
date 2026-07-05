@@ -37,7 +37,8 @@ nav button.on{color:var(--warm);border-color:var(--warm)}
   background:linear-gradient(92deg,var(--warm),var(--cool));-webkit-background-clip:text;background-clip:text;color:transparent}
 .stat .l{font-size:11.5px;color:var(--mut);margin-top:2px;letter-spacing:.08em}
 .fab{background:linear-gradient(180deg,#12161e,#0d1117);border:1px solid var(--line);border-radius:14px;
-  padding:16px 18px 12px;margin-bottom:22px;overflow-x:auto}
+  padding:16px 18px 12px;max-width:760px;margin:0 auto 22px;overflow-x:auto}
+.fab svg{width:100%;height:auto;display:block}
 .fab .ft{font-size:12px;color:var(--mut);letter-spacing:.08em;margin-bottom:10px}
 .fab .ft b{color:var(--warm);font-weight:600}
 .fcell{cursor:pointer}
@@ -233,7 +234,7 @@ async function loadDash(){
     cells.push({w:25-w,r,ds,c:cnt[ds]||0})}
   const CW=15,CH=15,PAD=2,W=26*CW+30,H=7*CH+22;
   const al=c=>c>=10?0.95:c>=6?0.72:c>=3?0.5:c>=1?0.28:0;
-  let svg=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">`;
+  let svg=`<svg viewBox="0 0 ${W} ${H}">`;
   const mseen={};
   for(const c of cells){
     const x=30+c.w*CW,y=16+c.r*CH;

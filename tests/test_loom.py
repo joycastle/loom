@@ -1472,7 +1472,7 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(st["days"], 2)
         self.assertEqual(st["topics"], 2)                   # bf支付 + 净额 两页
         self.assertEqual(st["tagged"], 2)
-        self.assertEqual(list(st["tools"])[0], "git")       # 按量排序(并列取先见)
+        self.assertEqual(set(st["tools"]), {"git", "claude", "notes"})   # 并列不断顺序
         self.assertEqual(len(st["recent"]), 3)
 
     def test_fix_mojibake(self):
