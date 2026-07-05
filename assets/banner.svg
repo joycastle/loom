@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="loom: weave scattered work traces into one ledger">
+  <defs>
+    <linearGradient id="th" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#E0A84E"/><stop offset="1" stop-color="#5AA9A0"/>
+    </linearGradient>
+    <linearGradient id="warp" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F0C270"/><stop offset="1" stop-color="#D89A3C"/>
+    </linearGradient>
+    <linearGradient id="weft" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#69C2B8"/><stop offset="1" stop-color="#4E9B92"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#5AA9A0" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#5AA9A0" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="300" rx="18" fill="#0F1218"/>
+  <ellipse cx="600" cy="150" rx="330" ry="180" fill="url(#glow)"/>
+
+  <!-- 左:六股来源线,汇入织机 -->
+  <g fill="none" stroke="url(#th)" stroke-width="2" opacity="0.8">
+    <path d="M190,55  C330,55  430,150 508,150"/>
+    <path d="M190,93  C330,93  440,150 508,150"/>
+    <path d="M190,131 C340,131 450,150 508,150"/>
+    <path d="M190,169 C340,169 450,150 508,150"/>
+    <path d="M190,207 C330,207 440,150 508,150"/>
+    <path d="M190,245 C330,245 430,150 508,150"/>
+  </g>
+  <g font-family="ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#8A93A3" text-anchor="end">
+    <text x="180" y="60">git commits</text>
+    <text x="180" y="98">claude sessions</text>
+    <text x="180" y="136">cursor · codex</text>
+    <text x="180" y="174">docs (.md)</text>
+    <text x="180" y="212">data · code</text>
+    <text x="180" y="250">feishu · notes</text>
+  </g>
+
+  <!-- 中:织机(编织纹,同 logo) -->
+  <g transform="translate(546,96)">
+    <rect x="0" y="0" width="108" height="108" rx="24" fill="#141821" stroke="#2A313D" stroke-width="1.5"/>
+    <g fill="url(#weft)">
+      <rect x="13.5" y="21.9" width="81" height="10.1" rx="5"/>
+      <rect x="13.5" y="48.9" width="81" height="10.1" rx="5"/>
+      <rect x="13.5" y="75.9" width="81" height="10.1" rx="5"/>
+    </g>
+    <g fill="url(#warp)">
+      <rect x="21.9" y="13.5" width="10.1" height="81" rx="5"/>
+      <rect x="48.9" y="13.5" width="10.1" height="81" rx="5"/>
+      <rect x="75.9" y="13.5" width="10.1" height="81" rx="5"/>
+    </g>
+    <g fill="url(#weft)">
+      <rect x="48.9" y="21.9" width="10.1" height="10.1" rx="2.8"/>
+      <rect x="21.9" y="48.9" width="10.1" height="10.1" rx="2.8"/>
+      <rect x="75.9" y="48.9" width="10.1" height="10.1" rx="2.8"/>
+      <rect x="48.9" y="75.9" width="10.1" height="10.1" rx="2.8"/>
+    </g>
+  </g>
+  <text x="600" y="238" font-family="system-ui,-apple-system,sans-serif" font-size="17" font-weight="650"
+        fill="#E8EAED" text-anchor="middle">one flat truth · redacted · back-linked</text>
+
+  <!-- 右:五股产出线 -->
+  <g fill="none" stroke="url(#th)" stroke-width="2" opacity="0.8">
+    <path d="M692,150 C770,150 870,64  1052,64"/>
+    <path d="M692,150 C760,150 860,107 1052,107"/>
+    <path d="M692,150 C750,150 850,150 1052,150"/>
+    <path d="M692,150 C760,150 860,193 1052,193"/>
+    <path d="M692,150 C770,150 870,236 1052,236"/>
+  </g>
+  <g font-family="ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#8A93A3">
+    <text x="1060" y="69">search (FTS)</text>
+    <text x="1060" y="112">daily journal</text>
+    <text x="1060" y="155">topic DAG</text>
+    <text x="1060" y="198">browse UI</text>
+    <text x="1060" y="241">cloud backup</text>
+  </g>
+
+  <!-- 汇/散接点 -->
+  <circle cx="508" cy="150" r="3.5" fill="#E0A84E"/>
+  <circle cx="692" cy="150" r="3.5" fill="#5AA9A0"/>
+</svg>

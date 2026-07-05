@@ -26,6 +26,8 @@ One flat source of truth → daily journals · full-text search · topic graph �
 
 [简体中文](./README.md) | **English**
 
+<br><img src="assets/banner.svg" width="100%" alt="loom banner" />
+
 </div>
 
 ---
@@ -106,10 +108,6 @@ Drop `xxx.py` into `loom/collectors/` implementing `collect(cfg, since) -> [entr
 
 Issues / PRs welcome: new collectors (just implement `collect(cfg, since)`), docs in other languages, pitfall notes.
 Run `python3 -m pytest tests/test_loom.py` after changes (zero deps, should stay green).
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=joycastle/loom&type=Date)](https://star-history.com/#joycastle/loom&Date)
 
 
 ---
