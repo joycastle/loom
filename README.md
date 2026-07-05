@@ -31,7 +31,7 @@
 loom 自带**跨工具的 AI 入口文件**,不挑助手。你几乎不用读文档——把项目交给 AI,它自己知道怎么带你。
 
 ```bash
-git clone https://github.com/dizai6266/loom.git ~/Documents/loom
+git clone https://github.com/joycastle/loom.git ~/Documents/loom
 ```
 
 然后**用你惯用的 AI 编码助手打开这个目录**,说一句:
@@ -115,7 +115,7 @@ Codex 会话      │   (归一·打码)     一份真相         │ 日报(AI 
 ## 安装(手动路径)
 
 ```bash
-git clone https://github.com/dizai6266/loom.git ~/Documents/loom
+git clone https://github.com/joycastle/loom.git ~/Documents/loom
 cd ~/Documents/loom && ./install.sh      # 装 CLI 到 PATH + 引导配置 + 首次同步
 ```
 
