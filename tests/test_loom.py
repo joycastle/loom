@@ -1329,5 +1329,88 @@ class DoCollectTest(unittest.TestCase):
             collectors.REGISTRY.update(orig)
 
 
+class DigestTest(unittest.TestCase):
+    """AI 会话摘要:生成原材料(含答)、回写校验、叠加覆盖、重采不丢、可检索。"""
+
+    def setUp(self):
+        from loom import digest
+        self.digest = digest
+        for p in (util.DATA_PATH, util.INDEX_PATH, digest.DIGEST_PATH):
+            if os.path.exists(p):
+                os.remove(p)
+        self.root = tempfile.mkdtemp(prefix="loom-dg-")
+        proj = os.path.join(self.root, "proj-x")
+        os.makedirs(proj)
+        # 开场首问故意含糊("继续吧"),真正主题("分层匹配 + serial 兜底")只在助手回答里
+        rows = [
+            {"cwd": "/Users/x/data-mkt", "timestamp": "2026-06-10T09:00:00Z",
+             "type": "user", "message": {"content": "继续吧"}},
+            {"timestamp": "2026-06-10T09:02:00Z", "type": "assistant",
+             "message": {"content": "我们把素材匹配改成分层匹配加 serial 兜底,脏数据分离。"}},
+            {"timestamp": "2026-06-10T09:30:00Z", "type": "user",
+             "message": {"content": "那脏数据怎么隔离?"}},
+        ]
+        with open(os.path.join(proj, "sid-dg.jsonl"), "w", encoding="utf-8") as f:
+            for r in rows:
+                f.write(json.dumps(r) + "\n")
+        self.cfg = {"redact": False,
+                    "sources": {"claude": {"enabled": True, "projects_dir": self.root}}}
+        ents = claude_col.collect(self.cfg, "2000-01-01")
+        self.e = [x for x in ents if "sid-dg" in x["id"]][0]
+        self.day = self.e["date"]
+        self.eid = self.e["id"]
+        store.save({x["id"]: x for x in ents})
+
+    def test_material_includes_questions_and_answers(self):
+        mat = self.digest.gen_material(self.cfg, self.day)
+        self.assertIn(self.eid, mat)                       # 会话 id 可被 AI 照抄
+        self.assertIn("[我] 继续吧", mat)
+        self.assertIn("分层匹配加 serial 兜底", mat)         # 答案侧内容也进原材料(关键)
+        self.assertIn("那脏数据怎么隔离", mat)
+
+    def test_set_rejects_fabricated_id(self):
+        tsv = (f"{self.eid}\t素材匹配分层重构\t把匹配改为分层+serial兜底,并隔离脏数据。\n"
+               "claude:编造:2026-06-10\t假的\t不该被接受\n")
+        applied = self.digest.set_from_text(self.cfg, self.day, tsv)
+        self.assertEqual(applied, [self.eid])              # 只收当天真实会话,幻觉 id 丢弃
+        self.assertIn(self.eid, self.digest.load())
+        self.assertNotIn("claude:编造:2026-06-10", self.digest.load())
+
+    def test_apply_overlays_and_keeps_raw(self):
+        self.digest.set_from_text(self.cfg, self.day,
+                                  f"{self.eid}\t素材匹配分层重构\t分层+serial兜底。")
+        by_id = store.load()
+        raw = by_id[self.eid]["summary"]
+        n = self.digest.apply_all(by_id)
+        self.assertEqual(n, 1)
+        self.assertEqual(by_id[self.eid]["summary"], "素材匹配分层重构")   # 标题被覆盖
+        self.assertEqual(by_id[self.eid]["detail"]["summary_raw"], raw)   # 原判保留
+        self.assertIn("serial", by_id[self.eid]["detail"]["digest"])
+        self.assertTrue(by_id[self.eid]["detail"]["ai_digest"])
+
+    def test_survives_recollect_and_is_searchable(self):
+        self.digest.set_from_text(self.cfg, self.day,
+                                  f"{self.eid}\t素材匹配分层重构\t分层匹配加 serial 兜底,脏数据隔离。")
+        # 首次叠加 + 建索引
+        by_id = store.load()
+        self.digest.apply_all(by_id)
+        store.save(by_id)
+        search.rebuild()
+        hits = {h["id"] for h in search.query("serial 兜底")}
+        self.assertIn(self.eid, hits)                      # 摘要进检索(答案侧词也搜得到)
+        # 模拟重采:采集器把 summary 打回"继续吧",再 apply_all 应恢复真实标题
+        fresh = claude_col.collect(self.cfg, "2000-01-01")
+        store.upsert(by_id, fresh)
+        self.assertEqual(by_id[self.eid]["summary"], "继续吧")   # 采集器重建=糊标题
+        self.digest.apply_all(by_id)
+        self.assertEqual(by_id[self.eid]["summary"], "素材匹配分层重构")  # 摘要救回
+
+    def test_redaction_on_set(self):
+        cfg = dict(self.cfg, redact=True)
+        self.digest.set_from_text(cfg, self.day,
+                                  f"{self.eid}\t配置密钥\tpassword=SuperSecret123 别泄露")
+        self.assertNotIn("SuperSecret123", self.digest.load()[self.eid]["abstract"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

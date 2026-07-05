@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-from . import config, dataset, intake, render, report, search, store, topics, util
+from . import config, dataset, digest, intake, render, report, search, store, topics, util
 from . import collectors
 
 
@@ -31,6 +31,9 @@ def do_collect(cfg, sources, since):
             store.upsert(by_id, got)
             print(f"  [{s}] 采集 {len(got)} 条")
         total += len(got)
+    nd = digest.apply_all(by_id)         # 会话摘要叠加回条目(采集器重建后再覆盖,不丢)
+    if nd:
+        print(f"  [digest] 覆盖 {nd} 条会话摘要")
     store.save(by_id)
     search.rebuild()  # 派生检索索引随采集同步重建
     print(f"采集完成:本轮 {total} 条,库内共 {len(by_id)} 条(since {since})")
@@ -295,6 +298,38 @@ def cmd_report(cfg, a):
         vault_git(cfg, True)
 
 
+def cmd_session(cfg, a):
+    if a.action == "gen":
+        if not a.path:
+            print("用法:loom session gen <日期>(YYYY-MM-DD)")
+            return
+        print(digest.gen_material(cfg, a.path))
+        return
+    if a.action == "set":
+        if not a.path:
+            print("用法:loom session set <日期> [--file 摘要.tsv](无 --file 则读 stdin)")
+            return
+        text = open(util.expand(a.file), encoding="utf-8").read() if a.file else sys.stdin.read()
+        applied = digest.set_from_text(cfg, a.path, text)
+        if not applied:
+            print("没写入摘要(检查 TSV:id<TAB>标题<TAB>摘要;id 需为当天真实会话)")
+            return
+        by_id = store.load()
+        digest.apply_all(by_id)          # 立即叠加,无需等下次 sync
+        store.save(by_id)
+        search.rebuild()
+        render.build(cfg, by_id)
+        print(f"已写入 {len(applied)} 条会话摘要 → 覆盖标题、进检索、渲染进日记")
+        if a.push:
+            vault_git(cfg, True)
+        return
+    if a.action == "ls":
+        d = digest.load()
+        for eid in sorted(d, key=lambda k: (d[k].get("date", ""), k)):
+            print(f"{d[eid].get('date','?')}  {eid}\n    {d[eid].get('title','')}")
+        print(f"\n共 {len(d)} 条会话摘要")
+
+
 def cmd_note(cfg, a):
     if not a.text:
         print('用法:loom note "<文本>" [--to 类目] [--tags a,b] [--title T] [--push]')
@@ -479,6 +514,11 @@ def build_parser():
     sp.add_argument("path", nargs="?")
     sp.add_argument("--file")                      # report set:AI 写好的日报文件
     sp.add_argument("--push", action="store_true")
+    sp = sub.add_parser("session")
+    sp.add_argument("action", choices=("gen", "set", "ls"))
+    sp.add_argument("path", nargs="?")             # 日期 YYYY-MM-DD
+    sp.add_argument("--file")                       # session set:AI 写好的摘要 TSV
+    sp.add_argument("--push", action="store_true")
     sp = sub.add_parser("note")
     sp.add_argument("text")                        # 随手信息文本
     sp.add_argument("--to")
@@ -521,6 +561,7 @@ def main(argv=None):
         "repo": cmd_repo, "feishu": cmd_feishu, "identity": cmd_identity,
         "source": cmd_source, "doc": cmd_doc, "data": cmd_data, "report": cmd_report,
         "deprecate": cmd_deprecate, "topic": cmd_topic, "note": cmd_note,
+        "session": cmd_session,
     }
     handlers[args.cmd](cfg, args)
 

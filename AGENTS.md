@@ -8,7 +8,7 @@
 (Claude·Cursor·Codex·CodeBuddy)/ 文档 / 代码 / 数据 / 日报,归一成一份扁平记录,派生出
 检索索引、按天日记、主题关联、私有云备份。
 - **代码**在本仓;**用户数据**在 `~/.loom/`(config/.env/data/vault),两者物理分离。
-- 命令:`loom sync | search | doc add | data add | note | report | topic | deprecate | init`。
+- 命令:`loom sync | search | doc add | data add | note | report | session | topic | deprecate | init`。
 
 ## ⭐ 首次上手 / 整理历史 → 读 ONBOARDING.md
 如果用户是**刚拿到本项目**、要你带他完成配置并把历史资料整理好,

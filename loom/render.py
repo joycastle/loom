@@ -181,17 +181,23 @@ def build(cfg, by_id):
                     span = ""
                     if d.get("start") and d.get("end"):
                         span = f"{d['start'][11:16]}–{d['end'][11:16]} · "
-                    lines.append(f"- **{e['tool']}** {span}{e['summary']}  \n  ↳ `{e['ref']}`")
-                    # 开场提问全文(比标题多的信息才渲染,避免和 summary 重复)
-                    op = (d.get("opening") or "").strip()
-                    op_norm = " ".join(op.split())
-                    sum_norm = " ".join((e["summary"] or "").split())
-                    if op_norm and not op_norm.startswith(sum_norm):
-                        shown = op[:600]
-                        for ol in shown.splitlines():
-                            lines.append(f"  > {ol}" if ol.strip() else "  >")
-                        if len(op) > len(shown):
-                            lines.append("  > …")
+                    tag = " ✦" if d.get("ai_digest") else ""   # ✦ = AI 摘要过的标题
+                    lines.append(f"- **{e['tool']}** {span}{e['summary']}{tag}  \n  ↳ `{e['ref']}`")
+                    # 优先展示 AI 会话摘要(读了问+答);没有则回退到开场提问全文。
+                    dg = (d.get("digest") or "").strip()
+                    if dg:
+                        for dl in dg.splitlines():
+                            lines.append(f"  > {dl}" if dl.strip() else "  >")
+                    else:
+                        op = (d.get("opening") or "").strip()
+                        op_norm = " ".join(op.split())
+                        sum_norm = " ".join((e["summary"] or "").split())
+                        if op_norm and not op_norm.startswith(sum_norm):
+                            shown = op[:600]
+                            for ol in shown.splitlines():
+                                lines.append(f"  > {ol}" if ol.strip() else "  >")
+                            if len(op) > len(shown):
+                                lines.append("  > …")
                 lines.append("")
 
         stem = _ensure_notes_file(jdir, date)
