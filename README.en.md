@@ -26,7 +26,7 @@ One flat source of truth → daily journals · full-text search · topic graph �
 
 [简体中文](./README.md) | **English**
 
-[📊 Tour](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_tour.html) · [📘 Deep dive](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_showcase.html)
+[📊 Tour](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_tour.html)
 
 <br><img src="assets/banner.svg" width="100%" alt="loom banner" />
 

@@ -26,7 +26,7 @@
 
 **简体中文** | [English](./README.en.md)
 
-[**⚡ 快速落地**](#-5-分钟落地让你的-ai-助手带你走推荐) · [🎨 设计亮点](#-设计亮点为什么是这样) · [📊 展示页](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_tour.html) · [📘 信息页](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_showcase.html) · [🧵 主题层](#主题层把散痕迹聚成一件事) · [⌨️ 命令](#命令) · [🤖 给 AI 助手](./AGENTS.md)
+[**⚡ 快速落地**](#-5-分钟落地让你的-ai-助手带你走推荐) · [🎨 设计亮点](#-设计亮点为什么是这样) · [📊 展示页](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_tour.html) · [🧵 主题层](#主题层把散痕迹聚成一件事) · [⌨️ 命令](#命令) · [🤖 给 AI 助手](./AGENTS.md)
 
 <br><img src="assets/banner.svg" width="100%" alt="loom banner" />
 
