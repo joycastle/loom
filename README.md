@@ -15,6 +15,7 @@
 ![stdlib only](https://img.shields.io/badge/stdlib-only-5AA9A0)
 ![tests](https://img.shields.io/badge/tests-112%20passing-3FB950)
 ![single-user](https://img.shields.io/badge/private-first-E0A84E)
+[![license](https://img.shields.io/badge/license-MIT-8A93A3)](./LICENSE)
 
 [**⚡ 快速落地**](#-5-分钟落地让你的-ai-助手带你走推荐) · [🎨 设计亮点](#-设计亮点为什么是这样) · [🧵 主题层](#主题层把散痕迹聚成一件事) · [⌨️ 命令](#命令) · [🤖 给 AI 助手](./AGENTS.md)
 
