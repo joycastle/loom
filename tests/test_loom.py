@@ -395,14 +395,14 @@ class ClaudeCollectorTest(unittest.TestCase):
              "message": {"content": "先帮我搭个归因管道"}},
             {"timestamp": "2026-06-07T09:30:00Z", "type": "assistant", "message": {"content": "ok"}},
             {"timestamp": "2026-06-07T10:00:00Z", "type": "user",
-             "message": {"content": "顺便排查一下 tapjoy 作弊订单"}},
+             "message": {"content": "顺便排查一下 acme 作弊订单"}},
         ]
         with open(os.path.join(proj, "sid-body.jsonl"), "w", encoding="utf-8") as f:
             for d in lines:
                 f.write(json.dumps(d, ensure_ascii=False) + "\n")
         e = [x for x in claude_col.collect(self.cfg, "2000-01-01") if "sid-body" in x["id"]][0]
         self.assertTrue(e["summary"].startswith("先帮我搭"))          # 开场做标题
-        self.assertIn("tapjoy 作弊订单", e["detail"]["body"])         # 后面的话题也进 body(可搜)
+        self.assertIn("acme 作弊订单", e["detail"]["body"])         # 后面的话题也进 body(可搜)
         self.assertIn("归因管道", e["detail"]["body"])
 
     def test_skips_compaction_summary_as_opening(self):
@@ -1083,15 +1083,15 @@ class SearchTest(unittest.TestCase):
         # 这条才真正证明「整段可检索」——从 rebuild 索引到 query 命中,不是断言自己塞的字符串。
         e = _entry("claude:sx:2026-06-07", "2026-06-07", "p2", "claude", "session",
                    "搭归因管道", ts="2026-06-07T09:00:00",
-                   opening="搭归因管道", body="搭归因管道 排查 tapjoyfraud 作弊订单")
+                   opening="搭归因管道", body="搭归因管道 排查 acmefraud 作弊订单")
         store.save({e["id"]: e})
         search.rebuild()
         self.assertIn("claude:sx:2026-06-07",
-                      {h["id"] for h in search.query("tapjoyfraud")})   # 英文深处词
+                      {h["id"] for h in search.query("acmefraud")})   # 英文深处词
         self.assertIn("claude:sx:2026-06-07",
                       {h["id"] for h in search.query("作弊订单")})        # 中文深处词
-        self.assertNotIn("搭归因管道", "tapjoyfraud")                     # 词确实不在标题里
-        self.assertEqual(search.query("tapjoyfraud", project="nope"), [])  # 过滤生效→非空转
+        self.assertNotIn("搭归因管道", "acmefraud")                     # 词确实不在标题里
+        self.assertEqual(search.query("acmefraud", project="nope"), [])  # 过滤生效→非空转
 
     def test_auto_rebuild_when_index_missing(self):
         os.remove(util.INDEX_PATH)
