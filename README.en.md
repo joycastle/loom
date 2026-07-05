@@ -62,6 +62,19 @@ Full illustrated walkthrough: [`docs/loom_showcase.html`](./docs/loom_showcase.h
 - **⑥ Daily reports & session digests are AI-synthesized outputs**, not collection sources. `loom report gen` feeds a day's real traces to an AI; `loom session gen` reads a session's **questions and answers** to produce an accurate title + searchable digest (stored in a sidecar, survives re-collection).
 - **⑦ Zero dependencies · 117 green tests.** Clone and run; redaction, path traversal, FTS recall, atomic writes and topic roll-up are all covered end-to-end.
 
+## 📸 Screenshots (`loom serve`)
+
+> Local zero-dependency browse UI, 127.0.0.1 only. Screenshots below use **fictional demo data**.
+
+**Overview: spotlight search + fabric graph (your days, woven)**
+<img src="docs/shots/dashboard.svg" width="100%" alt="dashboard" />
+
+**Topics: DAG graph — click a topic to see everything about "one thing"**
+<img src="docs/shots/topics.svg" width="100%" alt="topics" />
+
+**By day: paginated calendar heatmap**
+<img src="docs/shots/calendar.svg" width="100%" alt="calendar" />
+
 ## Commands
 
 ```bash

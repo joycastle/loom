@@ -93,6 +93,19 @@ GitHub 里点开是源码,**下载后用浏览器打开**即可;或用 [htmlprev
 
 - **⑦ 零依赖 · 纯标准库 · 117 单测全绿。** clone 即用,不装环境;打码/路径穿越/FTS 召回/原子写/主题上卷都有端到端测试守护。
 
+## 📸 界面预览(`loom serve`)
+
+> 本地零依赖浏览页,仅 127.0.0.1。以下截图为**虚构演示数据**。
+
+**总览:聚光灯搜索 + 织物贡献图(你的日子被织成布)**
+<img src="docs/shots/dashboard.svg" width="100%" alt="dashboard" />
+
+**主题:DAG 图,点一个主题看「一件事」的全景**
+<img src="docs/shots/topics.svg" width="100%" alt="topics" />
+
+**按天:翻页月历热力,点日期看当天全景**
+<img src="docs/shots/calendar.svg" width="100%" alt="calendar" />
+
 ---
 
 ## 架构一图
