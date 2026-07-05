@@ -13,9 +13,11 @@
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)
 ![dependencies](https://img.shields.io/badge/dependencies-0-5AA9A0)
 ![stdlib only](https://img.shields.io/badge/stdlib-only-5AA9A0)
-![tests](https://img.shields.io/badge/tests-112%20passing-3FB950)
+![tests](https://img.shields.io/badge/tests-117%20passing-3FB950)
 ![single-user](https://img.shields.io/badge/private-first-E0A84E)
 [![license](https://img.shields.io/badge/license-MIT-8A93A3)](./LICENSE)
+
+**简体中文** | [English](./README.en.md)
 
 [**⚡ 快速落地**](#-5-分钟落地让你的-ai-助手带你走推荐) · [🎨 设计亮点](#-设计亮点为什么是这样) · [📊 展示页](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_showcase.html) · [🧵 主题层](#主题层把散痕迹聚成一件事) · [⌨️ 命令](#命令) · [🤖 给 AI 助手](./AGENTS.md)
 
@@ -80,7 +82,7 @@ GitHub 里点开是源码,**下载后用浏览器打开**即可;或用 [htmlprev
   > 真实一例(全库 129/129 会话已生成):首问 `拉取最新代码了吗` → ✦标题
   > `梳理 Google Ads Asset 数据从 DWD 到 DWS 的全链路 ETL 流程`;连答案侧才有的 `auto_stop_mins` 等词都能搜到。
 
-- **⑦ 零依赖 · 纯标准库 · 112 单测全绿。** clone 即用,不装环境;打码/路径穿越/FTS 召回/原子写/主题上卷都有端到端测试守护。
+- **⑦ 零依赖 · 纯标准库 · 117 单测全绿。** clone 即用,不装环境;打码/路径穿越/FTS 召回/原子写/主题上卷都有端到端测试守护。
 
 ---
 
