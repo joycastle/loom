@@ -17,6 +17,13 @@ One flat source of truth → daily journals · full-text search · topic graph �
 ![single-user](https://img.shields.io/badge/private-first-E0A84E)
 [![license](https://img.shields.io/badge/license-MIT-8A93A3)](./LICENSE)
 
+![Claude Code](https://img.shields.io/badge/Claude_Code-8A2BE2?logo=anthropic&logoColor=white)
+![Codex](https://img.shields.io/badge/Codex-000000?logo=openai&logoColor=white)
+![Cursor](https://img.shields.io/badge/Cursor-1a1a2e)
+![Copilot](https://img.shields.io/badge/Copilot-24292e?logo=githubcopilot&logoColor=white)
+![CodeBuddy](https://img.shields.io/badge/CodeBuddy-0052d9)
+![Windsurf](https://img.shields.io/badge/Windsurf-0e7c66)
+
 [简体中文](./README.md) | **English**
 
 </div>
@@ -94,6 +101,16 @@ Drop `xxx.py` into `loom/collectors/` implementing `collect(cfg, since) -> [entr
 ## License
 
 [MIT](./LICENSE)
+
+## 🤝 Contributing
+
+Issues / PRs welcome: new collectors (just implement `collect(cfg, since)`), docs in other languages, pitfall notes.
+Run `python3 -m pytest tests/test_loom.py` after changes (zero deps, should stay green).
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=joycastle/loom&type=Date)](https://star-history.com/#joycastle/loom&Date)
+
 
 ---
 **For AI assistants landing here**: read [`AGENTS.md`](./AGENTS.md) first; for first-time setup follow [`ONBOARDING.md`](./ONBOARDING.md).
