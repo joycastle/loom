@@ -127,6 +127,7 @@ loom init                      # 交互引导:身份/扫仓/飞书
 loom sync [--push] [--since]   # 采集全部源 → 渲染 → 提交(--push 上云)。日常就这条
 loom collect --source <name>   # 单源采集:git|claude|codex|cursor|codebuddy|feishu|all
 loom build | today
+loom serve [--port 8787]       # 本地浏览页(仅 127.0.0.1):搜索/主题树/按天 三视角 + 条目详情
 loom search <词> [--project P] [--tool T] [--since D] [--until D]
                                # SQLite FTS5(trigram):≥3 字符 bm25 排序,<3 字符回退子串;空词+过滤=浏览
 

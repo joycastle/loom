@@ -1412,5 +1412,83 @@ class DigestTest(unittest.TestCase):
         self.assertNotIn("SuperSecret123", self.digest.load()[self.eid]["abstract"])
 
 
+class ServeTest(unittest.TestCase):
+    """浏览页 API:纯函数出 JSON + 一发端到端 HTTP。"""
+
+    def setUp(self):
+        from loom import serve, topics
+        self.serve, self.topics = serve, topics
+        self.cfg = {"vault": {"dir": tempfile.mkdtemp(prefix="loom-vault-")}}
+        for p in (util.DATA_PATH, util.INDEX_PATH, topics._map_path()):
+            if os.path.exists(p):
+                os.remove(p)
+        es = [
+            _entry("git:p:1", "2026-06-01", "proj", "git", "commit", "净额口径修复",
+                   body="按订单精算"),
+            _entry("claude:s:2026-06-01", "2026-06-01", "proj", "claude", "session",
+                   "对净额的讨论", opening="净额怎么算"),
+            _entry("note:x", "2026-06-02", "分析", "notes", "note", "随手记"),
+        ]
+        store.save({e["id"]: e for e in es})
+        search.rebuild()
+        # 主题:父子两页 + 两条映射
+        td = topics.topics_dir(self.cfg)
+        os.makedirs(td, exist_ok=True)
+        open(os.path.join(td, "bf支付.md"), "w").write("---\ntitle: bf支付\n---\n")
+        open(os.path.join(td, "净额.md"), "w").write("---\ntitle: 净额\nparent: bf支付\n---\n")
+        topics.save_map({"git:p:1": ["净额"], "claude:s:2026-06-01": ["净额"]})
+
+    def test_api_days_and_day(self):
+        by_id = store.load()
+        days = self.serve.api_days(by_id)["days"]
+        self.assertEqual(days[0], {"date": "2026-06-02", "count": 1})   # 倒序
+        d = self.serve.api_day("2026-06-01", by_id)
+        self.assertEqual(d["total"], 2)
+        self.assertIn("commit", d["groups"])
+        self.assertEqual(d["groups"]["session"][0]["topics"], ["净额"])  # 卡片带主题
+
+    def test_api_topics_rollup_and_topic(self):
+        t = self.serve.api_topics(self.cfg)
+        root = t["tree"][0]
+        self.assertEqual(root["name"], "bf支付")
+        self.assertEqual(root["count"], 2)                  # 伞主题显示上卷数(直挂0)
+        self.assertEqual(root["direct"], 0)
+        self.assertEqual(root["children"][0]["name"], "净额")
+        m = self.serve.api_topic(self.cfg, "bf支付", store.load())
+        self.assertEqual(m["total"], 2)                     # 上卷含子主题成员
+        self.assertEqual(len(m["groups"]["commit"]), 1)
+
+    def test_api_search_and_entry(self):
+        r = self.serve.api_search(self.cfg, "净额口径")
+        self.assertEqual(len(r["hits"]), 1)
+        self.assertEqual(r["hits"][0]["topics"], ["净额"])
+        e = self.serve.api_entry("git:p:1", store.load())
+        self.assertEqual(e["detail"]["body"], "按订单精算")   # 详情含 detail
+        self.assertEqual(self.serve.api_entry("没有", {}), {"error": "not found"})
+
+    def test_fix_mojibake(self):
+        garbled = "净额".encode("utf-8").decode("latin-1")   # 模拟裸 UTF-8 过 latin-1
+        self.assertEqual(self.serve._fix(garbled), "净额")
+        self.assertEqual(self.serve._fix("正常ascii"), "正常ascii")
+
+    def test_http_end_to_end(self):
+        import http.client
+        import threading
+        from http.server import ThreadingHTTPServer
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), self.serve._make_handler(self.cfg))
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_port, timeout=5)
+            c.request("GET", "/api/search?q=%E5%87%80%E9%A2%9D")
+            hits = json.loads(c.getresponse().read())["hits"]
+            self.assertEqual(len(hits), 2)                  # 两条净额相关都命中
+            c.request("GET", "/")
+            self.assertIn(b"loom", c.getresponse().read()[:2000])   # 首页出得来
+            c.request("GET", "/api/nope")
+            self.assertEqual(c.getresponse().status, 404)
+        finally:
+            srv.shutdown()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

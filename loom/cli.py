@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-from . import config, dataset, digest, intake, render, report, search, store, topics, util
+from . import config, dataset, digest, intake, render, report, search, serve, store, topics, util
 from . import collectors
 
 
@@ -400,6 +400,10 @@ def cmd_deprecate(cfg, a):
         vault_git(cfg, True)
 
 
+def cmd_serve(cfg, a):
+    serve.serve(cfg, port=a.port)
+
+
 def cmd_source(cfg, a):
     cfg["sources"].setdefault(a.name, {})["enabled"] = (a.action == "enable")
     config.save(cfg); print(f"{a.name} -> {a.action}")
@@ -483,6 +487,8 @@ def build_parser():
             sp.add_argument("--push", action="store_true")
     sub.add_parser("build")
     sub.add_parser("today")
+    sp = sub.add_parser("serve")
+    sp.add_argument("--port", type=int, default=8787)
     sub.add_parser("init")
     sp = sub.add_parser("search")
     sp.add_argument("term")
@@ -561,7 +567,7 @@ def main(argv=None):
         "repo": cmd_repo, "feishu": cmd_feishu, "identity": cmd_identity,
         "source": cmd_source, "doc": cmd_doc, "data": cmd_data, "report": cmd_report,
         "deprecate": cmd_deprecate, "topic": cmd_topic, "note": cmd_note,
-        "session": cmd_session,
+        "session": cmd_session, "serve": cmd_serve,
     }
     handlers[args.cmd](cfg, args)
 

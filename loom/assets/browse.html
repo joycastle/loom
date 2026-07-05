@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>loom · 台账浏览</title>
+<style>
+:root{--ink:#0F1218;--panel:#171B23;--panel2:#1D222C;--line:#2A313D;
+  --tx:#E8EAED;--mut:#8A93A3;--dim:#5C6673;--warm:#E0A84E;--cool:#5AA9A0;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--ink);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  line-height:1.55;font-feature-settings:"tnum" 1;}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+a{color:var(--cool);text-decoration:none}
+.wrap{max-width:1080px;margin:0 auto;padding:18px 20px 80px}
+header{display:flex;align-items:center;gap:14px;padding:6px 0 16px;border-bottom:1px solid var(--line)}
+header svg{width:34px;height:34px}
+header .nm{font-size:19px;font-weight:700;background:linear-gradient(92deg,var(--warm),var(--cool));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+nav{display:flex;gap:6px;margin-left:auto}
+nav button{background:var(--panel);border:1px solid var(--line);border-radius:999px;color:var(--mut);
+  padding:6px 16px;font-size:13px;cursor:pointer}
+nav button.on{color:var(--warm);border-color:var(--warm)}
+.view{display:none;padding-top:16px}.view.on{display:block}
+/* 搜索 */
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.bar input,.bar select{background:var(--panel);border:1px solid var(--line);border-radius:9px;
+  color:var(--tx);padding:9px 12px;font-size:14px}
+.bar input[type=search]{flex:1;min-width:220px}
+.hint{color:var(--dim);font-size:12px;margin-bottom:10px}
+/* 卡片 */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 14px;
+  margin-bottom:8px;cursor:pointer}
+.card:hover{border-color:var(--cool)}
+.card .top{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:12px;color:var(--mut)}
+.card .top .d{color:var(--warm)}
+.card .top .k{border:1px solid var(--line);border-radius:999px;padding:0 8px}
+.card .sm{font-size:14px;margin-top:3px;word-break:break-all}
+.card .sn{font-size:12px;color:var(--dim);margin-top:3px}
+.card .tp{font-size:11px;color:var(--cool);margin-top:3px}
+.gh{font-size:13px;color:var(--warm);margin:16px 0 8px;letter-spacing:.06em}
+/* 主题树 */
+.cols{display:grid;grid-template-columns:280px 1fr;gap:18px}
+@media(max-width:760px){.cols{grid-template-columns:1fr}}
+.tnode{padding:3px 0 3px 0;font-size:14px;cursor:pointer;white-space:nowrap}
+.tnode:hover .tn,.tnode.on .tn{color:var(--warm)}
+.tnode .c{color:var(--dim);font-size:11px;margin-left:6px}
+.tnode .m{color:var(--warm);font-size:11px;margin-left:4px}
+.loose{margin-top:14px;color:var(--dim);font-size:12px}
+/* 日历 */
+.days{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.day{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:6px 11px;
+  font-size:13px;cursor:pointer}
+.day:hover,.day.on{border-color:var(--warm);color:var(--warm)}
+.day .c{color:var(--dim);font-size:11px;margin-left:5px}
+/* 详情抽屉 */
+#drawer{position:fixed;top:0;right:-560px;width:min(560px,92vw);height:100vh;background:var(--panel2);
+  border-left:1px solid var(--line);transition:right .18s;overflow-y:auto;padding:20px;z-index:9}
+#drawer.on{right:0}
+#drawer h3{font-size:15px;margin-bottom:10px;word-break:break-all}
+#drawer .meta{font-size:12px;color:var(--mut);margin-bottom:12px}
+#drawer pre{background:var(--ink);border:1px solid var(--line);border-radius:9px;padding:12px;
+  font-size:12px;white-space:pre-wrap;word-break:break-all;margin:8px 0;max-height:50vh;overflow:auto}
+#drawer .x{position:sticky;top:0;float:right;background:var(--panel);border:1px solid var(--line);
+  border-radius:999px;color:var(--mut);width:30px;height:30px;cursor:pointer}
+.empty{color:var(--dim);padding:30px 0;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <svg viewBox="0 0 100 100"><rect x="2" y="2" width="96" height="96" rx="22" fill="#141821" stroke="#2A313D"/>
+  <g fill="#5AA9A0"><rect x="14" y="21.5" width="72" height="9" rx="4.5"/><rect x="14" y="45.5" width="72" height="9" rx="4.5"/><rect x="14" y="69.5" width="72" height="9" rx="4.5"/></g>
+  <g fill="#E0A84E"><rect x="21.5" y="14" width="9" height="72" rx="4.5"/><rect x="45.5" y="14" width="9" height="72" rx="4.5"/><rect x="69.5" y="14" width="9" height="72" rx="4.5"/></g>
+  <g fill="#5AA9A0"><rect x="45.5" y="21.5" width="9" height="9" rx="2.5"/><rect x="21.5" y="45.5" width="9" height="9" rx="2.5"/><rect x="69.5" y="45.5" width="9" height="9" rx="2.5"/><rect x="45.5" y="69.5" width="9" height="9" rx="2.5"/></g></svg>
+  <span class="nm">loom</span><span style="color:var(--dim);font-size:13px">台账浏览</span>
+  <nav>
+    <button data-v="search" class="on">🔍 搜索</button>
+    <button data-v="topics">🧵 主题</button>
+    <button data-v="days">📅 按天</button>
+  </nav>
+</header>
+
+<div id="v-search" class="view on">
+  <div class="bar">
+    <input type="search" id="q" placeholder="搜任何词(中文子串可用)…回车检索">
+    <select id="f-tool"><option value="">全部工具</option></select>
+    <input id="f-since" type="date" title="起始日期">
+    <input id="f-until" type="date" title="截止日期">
+  </div>
+  <div class="hint">≥3 字按相关度排序;空词 + 过滤器 = 浏览。点卡片看全部字段与回链。</div>
+  <div id="r-search"></div>
+</div>
+
+<div id="v-topics" class="view">
+  <div class="cols">
+    <div id="ttree"></div>
+    <div id="tmembers"><div class="empty">← 点一个主题,看这件事的全景(含子树上卷)</div></div>
+  </div>
+</div>
+
+<div id="v-days" class="view">
+  <div class="days" id="dlist"></div>
+  <div id="dbody"><div class="empty">↑ 选一天</div></div>
+</div>
+</div>
+
+<div id="drawer"><button class="x" onclick="drawer(false)">✕</button><div id="dctn"></div></div>
+
+<script>
+const $=s=>document.querySelector(s), api=(p,o)=>fetch(p+'?'+new URLSearchParams(o)).then(r=>r.json());
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const KIND={session:'💬',commit:'💻',doc:'📄',note:'📎',report:'📋',requirement:'📥'};
+function card(e){return `<div class="card" onclick="detail('${esc(e.id).replace(/'/g,"\\'")}')">
+  <div class="top"><span class="d">${esc(e.date)}</span><span>${esc(e.project)}</span>
+  <span class="k">${KIND[e.kind]||''} ${esc(e.kind)}</span><span>${esc(e.tool)}</span></div>
+  <div class="sm">${esc(e.summary)}</div>
+  ${e.snip?`<div class="sn">↳ ${esc(e.snip)}</div>`:''}
+  ${e.topics&&e.topics.length?`<div class="tp">🧵 ${e.topics.map(esc).join(' · ')}</div>`:''}</div>`}
+function groups(g){const order=['report','session','commit','doc','note','requirement'];
+  const keys=[...new Set([...order.filter(k=>g[k]),...Object.keys(g)])];
+  return keys.map(k=>`<div class="gh">${KIND[k]||''} ${esc(k)} (${g[k].length})</div>`+g[k].map(card).join('')).join('')||'<div class="empty">空</div>'}
+
+// 视图切换
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); $('#v-'+b.dataset.v).classList.add('on');
+  if(b.dataset.v==='topics'&&!window._t){window._t=1;loadTopics()}
+  if(b.dataset.v==='days'&&!window._d){window._d=1;loadDays()}
+});
+
+// 搜索
+let deb;
+async function doSearch(){const r=await api('/api/search',{q:$('#q').value,tool:$('#f-tool').value,
+  since:$('#f-since').value,until:$('#f-until').value,limit:80});
+  $('#r-search').innerHTML=r.hits.map(card).join('')||'<div class="empty">无命中</div>'}
+$('#q').addEventListener('input',()=>{clearTimeout(deb);deb=setTimeout(doSearch,280)});
+['#f-tool','#f-since','#f-until'].forEach(s=>$(s).onchange=doSearch);
+['git','claude','codex','cursor','feishu','docs','notes','日报'].forEach(t=>{
+  const o=document.createElement('option');o.value=t;o.textContent=t;$('#f-tool').appendChild(o)});
+
+// 主题
+function tnode(n,depth){return `<div class="tnode" style="padding-left:${depth*16}px" onclick="loadTopic('${esc(n.name)}',this)">
+  <span class="tn">${esc(n.name)}</span><span class="c">${n.count}</span>${n.multi?'<span class="m">↺多父</span>':''}</div>`
+  + n.children.map(c=>tnode(c,depth+1)).join('')}
+async function loadTopics(){const r=await api('/api/topics',{});
+  $('#ttree').innerHTML=r.tree.map(n=>tnode(n,0)).join('')
+  +(r.loose.length?`<div class="loose">未建页:${r.loose.map(esc).join(' · ')}</div>`:'')
+  +`<div class="loose">已归类 ${r.total_tagged} 条</div>`}
+async function loadTopic(name,el){document.querySelectorAll('.tnode').forEach(x=>x.classList.remove('on'));
+  if(el)el.classList.add('on');
+  const r=await api('/api/topic',{name});
+  $('#tmembers').innerHTML=`<div class="gh" style="font-size:15px">🧵 ${esc(r.name)} · 上卷 ${r.total} 条`
+  +(r.parents.length?`<span style="color:var(--dim)"> · parent: ${r.parents.map(esc).join(', ')}</span>`:'')+`</div>`+groups(r.groups)}
+
+// 按天
+async function loadDays(){const r=await api('/api/days',{});
+  $('#dlist').innerHTML=r.days.map(d=>`<div class="day" onclick="loadDay('${d.date}',this)">${d.date}<span class="c">${d.count}</span></div>`).join('')}
+async function loadDay(date,el){document.querySelectorAll('.day').forEach(x=>x.classList.remove('on'));
+  if(el)el.classList.add('on');
+  const r=await api('/api/day',{date});
+  $('#dbody').innerHTML=`<div class="gh" style="font-size:15px">📅 ${date} · ${r.total} 条</div>`+groups(r.groups)}
+
+// 详情
+function drawer(on){$('#drawer').classList.toggle('on',!!on)}
+async function detail(id){const e=await api('/api/entry',{id});
+  const d=e.detail||{};
+  let rows=`<h3>${esc(e.summary)}</h3>
+  <div class="meta">${esc(e.date)} · ${esc(e.project)} · ${esc(e.tool)}/${esc(e.kind)}
+  ${e.topics&&e.topics.length?` · 🧵 ${e.topics.map(esc).join(', ')}`:''}</div>
+  <div class="meta mono">ref: ${esc(e.ref)}</div>`;
+  for(const k of ['digest','body','opening','content','work','thinking','plan']){
+    if(d[k])rows+=`<div class="gh">${k}</div><pre>${esc(d[k])}</pre>`}
+  const rest=Object.fromEntries(Object.entries(d).filter(([k])=>!['digest','body','opening','content','work','thinking','plan'].includes(k)));
+  if(Object.keys(rest).length)rows+=`<div class="gh">detail</div><pre>${esc(JSON.stringify(rest,null,1))}</pre>`;
+  $('#dctn').innerHTML=rows;drawer(true)}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')drawer(false)});
+
+doSearch();
+</script>
+</body>
+</html>
