@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>*{margin:0;padding:0}</style>
+<title>loom · 系统设计与成果</title>
+<style>
+  :root{
+    --ink:#0F1218; --panel:#171B23; --panel2:#1D222C; --line:#2A313D;
+    --tx:#E8EAED; --mut:#8A93A3; --dim:#5C6673;
+    --warm:#E0A84E; --cool:#5AA9A0; --warmd:#8a6320; --r:14px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--tx);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    line-height:1.62;-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1;}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+  .wrap{max-width:1020px;margin:0 auto;padding:0 22px;}
+  a{color:var(--cool);text-decoration:none;} p{margin:0 0 12px;}
+  .warp{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background:repeating-linear-gradient(90deg,transparent 0 46px,rgba(224,168,78,.04) 46px 47px);}
+  .glow{position:fixed;top:-160px;left:50%;transform:translateX(-50%);width:900px;height:420px;z-index:0;
+    pointer-events:none;background:radial-gradient(ellipse at center,rgba(90,169,160,.12),transparent 62%);}
+  main{position:relative;z-index:1;}
+
+  header{padding:56px 0 34px;}
+  .brand{display:flex;align-items:center;gap:13px;margin-bottom:26px;}
+  .brand svg{width:46px;height:46px;display:block;flex-shrink:0;}
+  .brand .bnm{font-size:23px;font-weight:720;letter-spacing:-.01em;
+    background:linear-gradient(92deg,var(--warm),var(--cool));
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+  .eyebrow{font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--mut);display:flex;gap:10px;align-items:center;}
+  .eyebrow::before{content:"";width:26px;height:1px;background:linear-gradient(90deg,var(--warm),var(--cool));}
+  h1{font-size:clamp(31px,5.2vw,52px);line-height:1.05;margin:16px 0 0;font-weight:680;letter-spacing:-.02em;text-wrap:balance;}
+  h1 .thr{background:linear-gradient(92deg,var(--warm),var(--cool));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .lede{color:var(--mut);font-size:clamp(15px,2.1vw,18px);max-width:64ch;margin:18px 0 0;}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin:34px 0 0;background:var(--line);
+    border:1px solid var(--line);border-radius:var(--r);overflow:hidden;}
+  .kpi{background:var(--panel);padding:18px 16px;}
+  .kpi .n{font-size:clamp(23px,3.4vw,33px);font-weight:700;letter-spacing:-.02em;}
+  .kpi .n.warm{color:var(--warm)} .kpi .n.cool{color:var(--cool)}
+  .kpi .l{font-size:12.5px;color:var(--mut);margin-top:3px;}
+  .toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px;}
+  .toc a{font-size:12.5px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 12px;color:var(--mut);}
+  .toc a:hover{color:var(--cool);border-color:var(--cool);}
+
+  section{padding:40px 0;border-top:1px solid var(--line);}
+  h2{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--warm);margin:0 0 8px;font-weight:640;}
+  .sub{color:var(--mut);font-size:15px;max-width:72ch;margin:0 0 22px;}
+  .note{color:var(--mut);font-size:13px;margin-top:12px;}
+  ul.clean{margin:8px 0 0;padding-left:18px;} ul.clean li{margin:5px 0;font-size:14px;} ul.clean li b{color:var(--tx);}
+
+  .figure{background:#0B0E13;border:1px solid var(--line);border-radius:var(--r);padding:14px;overflow-x:auto;}
+  .figure svg{display:block;min-width:660px;width:100%;height:auto;}
+  .dg text{font-family:system-ui,sans-serif;}
+
+  /* 数据模型 */
+  .code{background:#0B0E13;border:1px solid var(--line);border-radius:12px;padding:16px 18px;overflow-x:auto;}
+  .code pre{margin:0;font-size:13px;line-height:1.85;white-space:pre;font-family:ui-monospace,Menlo,Consolas,monospace;color:#c9d1dc;}
+  .code .kk{color:var(--warm);} .code .cc{color:var(--cool);} .code .gg{color:var(--dim);}
+  .fields{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:14px;}
+  @media(max-width:680px){.fields{grid-template-columns:1fr;}}
+  .fd{font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 12px;}
+  .fd b{color:var(--cool);} .fd span{color:var(--mut);}
+
+  /* 每种数据:逐类型剖析 */
+  .ptype{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin-bottom:14px;}
+  .pt-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+  .pt-h .ic{font-size:18px;}
+  .pt-h .nm{font-size:16px;font-weight:660;}
+  .pt-h .bd{font-size:11px;color:var(--cool);border:1px solid var(--line);border-radius:999px;padding:2px 9px;}
+  .pt-h .bd.k{color:var(--warm);}
+  .pflow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  @media(max-width:680px){.pflow{grid-template-columns:1fr;}}
+  .ps{background:var(--panel2);padding:12px 13px;position:relative;}
+  .ps .k{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:5px;}
+  .ps .k.src{color:var(--mut)} .ps .k.pro{color:var(--warm)} .ps .k.sto{color:var(--cool)}
+  .ps .v{font-size:12.7px;color:var(--tx);line-height:1.5;}
+  .ps .v .mono{font-size:11.5px;color:var(--mut);}
+  .ptrade{margin-top:10px;font-size:12.7px;color:var(--mut);border-left:2px solid var(--warmd);padding:4px 0 4px 11px;}
+  .ptrade b{color:var(--warm);font-weight:600;}
+  .pidx{margin-top:8px;font-size:12px;color:var(--dim);display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .pidx .lb{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);}
+  .pidx b{color:var(--cool);}
+  .fx{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--cool);
+    border:1px solid var(--line);border-radius:6px;padding:2px 7px;background:var(--panel2);cursor:help;}
+  .fx:hover{border-color:var(--cool);}
+  /* 展开式「长啥样」示例 */
+  .ex{margin-top:11px;}
+  .ex>summary{cursor:pointer;font-size:12px;color:var(--cool);list-style:none;
+    display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:3px 11px;}
+  .ex>summary::-webkit-details-marker{display:none;}
+  .ex>summary::before{content:"▸";color:var(--dim);font-size:10px;}
+  .ex[open]>summary::before{content:"▾";}
+  .ex>summary:hover{color:var(--warm);border-color:var(--warm);}
+  .exb{margin-top:9px;background:#0B0E13;border:1px solid var(--line);border-radius:9px;
+    padding:12px 14px;font-size:12px;line-height:1.65;color:#c9d1dc;overflow-x:auto;}
+  .exb .fld{color:var(--warm);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;}
+  .exb .v2{color:var(--mut);}
+  .exb .ar{color:var(--dim);}
+  .exb .hl{color:var(--cool);}
+  .exb pre{margin:0;white-space:pre-wrap;word-break:break-word;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.6;color:#a9b2bf;}
+  .exb .cap{display:block;color:var(--dim);font-size:10.5px;margin:0 0 7px;letter-spacing:.03em;}
+
+  /* 字段词典 */
+  .gloss{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
+  @media(max-width:680px){.gloss{grid-template-columns:1fr;}}
+  .gl{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+    display:flex;gap:12px;align-items:flex-start;}
+  .gl .nmfx{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:var(--warm);
+    background:#0B0E13;border:1px solid var(--warmd);border-radius:6px;padding:3px 8px;white-space:nowrap;flex-shrink:0;}
+  .gl .gd{font-size:12.7px;color:var(--mut);line-height:1.55;}
+  .gl .gd b{color:var(--tx);font-weight:600;}
+  .gl .gd .who{color:var(--cool);}
+  .gl .gd .ix{display:block;font-size:10.5px;margin-top:5px;color:var(--dim);letter-spacing:.03em;}
+  .gl .gd .ix.no{color:var(--warmd);}
+
+  /* 存储 vs 视图 */
+  .axgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:6px;}
+  @media(max-width:680px){.axgrid{grid-template-columns:repeat(2,1fr);}}
+  .ax{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 10px;text-align:center;}
+  .ax .t{font-size:13px;font-weight:600;} .ax .m{font-size:11px;color:var(--mut);margin-top:2px;}
+  .ax .cmd{font-size:11px;color:var(--cool);margin-top:6px;}
+
+  /* pipeline */
+  .pipe{display:flex;flex-wrap:wrap;gap:8px;}
+  .st{flex:1 1 145px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 14px;}
+  .st .no{font-size:11px;color:var(--warm);} .st .t{font-size:14px;font-weight:600;margin:2px 0;} .st .d{font-size:12px;color:var(--mut);}
+
+  .day{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;}
+  .day .bar{padding:12px 16px;border-bottom:1px solid var(--line);font-size:13px;color:var(--mut);}
+  .day .bar .mono{color:var(--tx)}
+  .layers{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);}
+  @media(max-width:680px){.layers{grid-template-columns:repeat(2,1fr);}}
+  .ly{background:var(--panel);padding:14px;} .ly .tag{font-size:11px;color:var(--warm);}
+  .ly .t{font-size:13px;font-weight:600;margin:3px 0;} .ly .d{font-size:12px;color:var(--mut);}
+
+  .quality{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center;}
+  @media(max-width:680px){.quality{grid-template-columns:repeat(2,1fr);}}
+  .q{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 10px;}
+  .q .n{font-size:26px;font-weight:700;color:var(--warm);} .q .l{font-size:12px;color:var(--mut);margin-top:3px;}
+  .ttree{background:#0B0E13;border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;overflow-x:auto;}
+  .trow{display:flex;align-items:center;padding:2.5px 0;white-space:nowrap;font-size:13.5px;}
+  .tick{color:var(--dim);font-family:ui-monospace,monospace;margin-right:2px;}
+  .tn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:4px 11px;background:var(--panel);}
+  .tn .c{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--warm);}
+  .tn.d0{border-color:var(--warmd);} .tn.d0 .nm{color:var(--warm);font-weight:640;}
+  .tn.d1 .nm{color:var(--cool);} .tn.d2 .nm{color:var(--tx);}
+  .tn.d3{background:var(--panel2);} .tn.d3 .nm{color:var(--mut);}
+  .i1{padding-left:24px} .i2{padding-left:50px} .i3{padding-left:76px}
+  .mp{color:var(--warm);font-size:11px;margin-left:8px;}
+  .tstat{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;}
+  .tstat span{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12.5px;color:var(--mut);}
+  .tstat b{color:var(--cool);}
+  .cases{display:flex;flex-direction:column;gap:14px;}
+  .case{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;}
+  .case .ch{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  .case .ch .t{font-size:16px;font-weight:660;} .case .ch .meta{font-size:12px;color:var(--mut);}
+  .case p{font-size:13.5px;color:var(--mut);margin:8px 0 0;} .case p b{color:var(--tx);}
+  .trace{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:11px;}
+  .tr{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 11px;font-size:12.5px;}
+  .tr b{color:var(--cool);} .tr .c{color:var(--warm);font-weight:700;} .trace .sep{color:var(--dim);}
+  footer{padding:34px 0 60px;color:var(--dim);font-size:12.5px;border-top:1px solid var(--line);}
+  .pill{display:inline-block;font-size:11px;color:var(--cool);border:1px solid var(--line);border-radius:999px;padding:2px 9px;margin-left:6px;}
+</style>
+</head>
+<body>
+<div class="warp"></div><div class="glow"></div>
+<main class="wrap">
+
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 100 100" role="img" aria-label="loom">
+        <defs>
+          <linearGradient id="lwarp" gradientUnits="userSpaceOnUse" x1="0" y1="14" x2="0" y2="86">
+            <stop offset="0" stop-color="#F0C270"/><stop offset="1" stop-color="#D89A3C"/></linearGradient>
+          <linearGradient id="lweft" gradientUnits="userSpaceOnUse" x1="14" y1="0" x2="86" y2="0">
+            <stop offset="0" stop-color="#69C2B8"/><stop offset="1" stop-color="#4E9B92"/></linearGradient>
+        </defs>
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="#141821" stroke="#2A313D" stroke-width="1.5"/>
+        <g fill="url(#lweft)"><rect x="14" y="21.5" width="72" height="9" rx="4.5"/>
+          <rect x="14" y="45.5" width="72" height="9" rx="4.5"/><rect x="14" y="69.5" width="72" height="9" rx="4.5"/></g>
+        <g fill="url(#lwarp)"><rect x="21.5" y="14" width="9" height="72" rx="4.5"/>
+          <rect x="45.5" y="14" width="9" height="72" rx="4.5"/><rect x="69.5" y="14" width="9" height="72" rx="4.5"/></g>
+        <g fill="url(#lweft)"><rect x="45.5" y="21.5" width="9" height="9" rx="2.5"/>
+          <rect x="21.5" y="45.5" width="9" height="9" rx="2.5"/><rect x="69.5" y="45.5" width="9" height="9" rx="2.5"/>
+          <rect x="45.5" y="69.5" width="9" height="9" rx="2.5"/></g>
+      </svg>
+      <span class="bnm">loom</span>
+    </div>
+    <div class="eyebrow">系统设计与成果</div>
+    <h1>把散落各处的工作痕迹,<br><span class="thr">织成一本可检索、可关联的台账</span></h1>
+    <p class="lede">loom(织机)采集 git、AI 对话、文档、代码、数据、日报,归一成一份扁平记录,
+      再派生出检索索引、按天日记、主题关联、私有云备份。这页讲清楚:整体架构、
+      <b>每种数据具体怎么处理与保存</b>、以及每个设计的取舍。</p>
+    <div class="kpis">
+      <div class="kpi"><div class="n warm">1,221</div><div class="l">条归一化记录</div></div>
+      <div class="kpi"><div class="n">6</div><div class="l">个采集来源(+日报/会话摘要为 AI 合成)</div></div>
+      <div class="kpi"><div class="n cool">3,355</div><div class="l">行 Python · 0 依赖</div></div>
+      <div class="kpi"><div class="n">112</div><div class="l">单元测试全绿</div></div>
+    </div>
+    <div class="toc">
+      <a href="#arch">系统架构</a><a href="#model">数据模型</a><a href="#fields">字段词典</a><a href="#types">每种数据怎么处理</a>
+      <a href="#axes">存储 vs 视图</a><a href="#topic">主题层(图)</a><a href="#cases">真实案例</a>
+      <a href="#flow">数据流</a><a href="#honest">诚实的取舍</a>
+    </div>
+  </header>
+
+  <section id="arch">
+    <h2>系统架构 —— 七源汇流,一份真相,派生一切</h2>
+    <p class="sub">像织机:<b>6 股采集来源</b>汇入一个结(归一 + 打码)→ 一份真相 → 织出检索、日记、主题、云备份。
+      <b>日报不是采集源</b>——它是 AI 读本库其它数据<b>合成</b>的产出,渲染回日记顶部(见右侧)。</p>
+    <div class="figure"><svg class="dg" viewBox="0 0 960 380" role="img" aria-label="架构汇流图">
+      <defs>
+        <linearGradient id="gt" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#E0A84E"/><stop offset="1" stop-color="#5AA9A0"/>
+        </linearGradient>
+        <radialGradient id="gk" cx="0.35" cy="0.35" r="0.75">
+          <stop offset="0" stop-color="#5AA9A0"/><stop offset="1" stop-color="#8a6320"/>
+        </radialGradient>
+      </defs>
+      <!-- 左:6 采集来源 -->
+      <g font-size="13" fill="#E8EAED">
+        <rect x="8" y="30" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="50">git 提交</text>
+        <rect x="8" y="88" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="108">Claude 会话</text>
+        <rect x="8" y="146" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="166">Cursor 会话</text>
+        <rect x="8" y="204" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="224">Codex 会话</text>
+        <rect x="8" y="262" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="282">仓库文档 .md</text>
+        <rect x="8" y="320" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="340">数据·代码·散信息</text>
+      </g>
+      <!-- 汇入线 -->
+      <g fill="none" stroke="url(#gt)" stroke-width="1.6" opacity="0.75">
+        <path d="M184,45 C300,45 390,175 446,175"/>
+        <path d="M184,103 C300,103 400,175 446,175"/>
+        <path d="M184,161 C320,161 410,175 446,175"/>
+        <path d="M184,219 C320,219 410,175 446,175"/>
+        <path d="M184,277 C300,277 400,175 446,175"/>
+        <path d="M184,335 C300,335 390,175 446,175"/>
+      </g>
+      <!-- 结(归一+打码) -->
+      <circle cx="480" cy="175" r="36" fill="url(#gk)" stroke="#2A313D"/>
+      <text x="480" y="171" text-anchor="middle" font-size="15" fill="#0F1218" font-weight="700">loom</text>
+      <text x="480" y="189" text-anchor="middle" font-size="9.5" fill="#0F1218">归一·打码</text>
+      <rect x="410" y="238" width="140" height="30" rx="7" fill="#1D222C" stroke="#8a6320"/>
+      <text x="480" y="258" text-anchor="middle" font-size="12" fill="#E0A84E">entries.jsonl 真相</text>
+      <path d="M480,211 L480,238" stroke="#8a6320" stroke-width="1.4" fill="none"/>
+      <!-- 织出线 -->
+      <g fill="none" stroke="url(#gt)" stroke-width="1.6" opacity="0.75">
+        <path d="M516,175 C640,175 700,49 776,49"/>
+        <path d="M516,175 C640,175 700,121 776,121"/>
+        <path d="M516,175 C640,175 700,193 776,193"/>
+        <path d="M516,175 C640,175 700,265 776,265"/>
+        <path d="M516,175 C640,175 700,337 776,337"/>
+      </g>
+      <!-- 右:5 派生(含 AI 合成日报)-->
+      <g font-size="13" fill="#E8EAED">
+        <rect x="776" y="34" width="176" height="30" rx="7" fill="#1D222C" stroke="#5AA9A0"/><text x="788" y="54">检索索引 FTS5</text>
+        <rect x="776" y="106" width="176" height="30" rx="7" fill="#1D222C" stroke="#5AA9A0"/><text x="788" y="126">按天日记(md)</text>
+        <rect x="776" y="178" width="176" height="30" rx="7" fill="#1D222C" stroke="#5AA9A0"/><text x="788" y="198">主题关联(DAG)</text>
+        <rect x="776" y="250" width="176" height="30" rx="7" fill="#1D222C" stroke="#E0A84E"/><text x="788" y="270" fill="#E0A84E">日报(AI 合成)</text>
+        <rect x="776" y="322" width="176" height="30" rx="7" fill="#1D222C" stroke="#5AA9A0"/><text x="788" y="342">私有云备份 git</text>
+      </g>
+    </svg></div>
+  </section>
+
+  <section id="model">
+    <h2>核心数据模型 —— 所有来源归一成同一结构</h2>
+    <p class="sub">一条 entry = "一件发生过的事 / 一份材料"。不同来源塞不同的 <span class="mono">detail</span> 字段,不为每种源建表。</p>
+    <div class="code"><pre>{
+  <span class="kk">"id"</span>:      <span class="cc">"git:data-marketing:0842ee76"</span>,   <span class="gg">// 稳定主键 → 幂等去重 / 可按天拆</span>
+  <span class="kk">"date"</span>:    <span class="cc">"2026-07-02"</span>,  <span class="kk">"ts"</span>: <span class="cc">"…T22:30:00"</span>,  <span class="kk">"project"</span>: <span class="cc">"data-marketing"</span>,
+  <span class="kk">"tool"</span>:    <span class="cc">"git"</span>,   <span class="kk">"kind"</span>: <span class="cc">"commit"</span>,   <span class="gg">// 来源 / 类型</span>
+  <span class="kk">"summary"</span>: <span class="cc">"fix(dwb-moloco): clean_name 补剥去重尾…"</span>,
+  <span class="kk">"ref"</span>:     <span class="cc">"0842ee76"</span>,       <span class="gg">// 回链原文,不复制全文</span>
+  <span class="kk">"detail"</span>:  { <span class="gg">// 因源而异:body / opening / file_list / content / path / dated …</span> }
+}</pre></div>
+    <div class="fields">
+      <div class="fd"><b>id 稳定</b> <span>重复采集只覆盖;可编码天(claude:会话:日期)。</span></div>
+      <div class="fd"><b>ref 回链</b> <span>只存指针+摘要,全文留原处,库保持轻。</span></div>
+      <div class="fd"><b>detail 自由</b> <span>每种源塞各自字段,无需多表。</span></div>
+      <div class="fd"><b>扁平存储</b> <span>不按天/项目分桶——那是"视图"。</span></div>
+    </div>
+  </section>
+
+  <section id="fields">
+    <h2>可检索的字段 —— 先认识这几个词</h2>
+    <p class="sub">下面每类数据卡上的「检索」标签,写的都是这几个字段名。它们是一条 entry 的 <span class="mono">detail</span> 里
+      <b>因源而异的文本槽</b>:<b>标 ◆ 的进 FTS 索引,能被 <span class="mono">loom search</span> 搜到</b>;
+      <span class="mono">ref</span> 只作回链、不进全文。<span class="note" style="display:inline">(卡片上的字段名可鼠标悬停看释义)</span></p>
+    <div class="gloss">
+      <div class="gl"><span class="nmfx">summary</span><div class="gd">
+        <b>一句话标题 / 摘要,每条必有。</b> <span class="who">git = 提交标题 · AI 会话 = 意图标题 · 数据 = 卡名 · 文档 = H1</span>
+        <span class="ix">◆ 进检索 · 也是日记/搜索结果里最先看到的那行</span></div></div>
+      <div class="gl"><span class="nmfx">opening</span><div class="gd">
+        <b>会话的「开场首问」全文</b>(仅 AI 会话类)。你打开这个 session 说的第一句真实提问。
+        <span class="ix">◆ 进检索</span></div></div>
+      <div class="gl"><span class="nmfx">body</span><div class="gd">
+        <b>长正文。</b> <span class="who">git = 提交正文(为什么改 + 怎么验证)· Claude = 当天全部提问合并(≤8000 字)</span>
+        <span class="ix">◆ 进检索 —— 所以整段提问 / 提交理由都搜得到</span></div></div>
+      <div class="gl"><span class="nmfx">headings</span><div class="gd">
+        <b>文档大纲</b>:各级标题拼成的目录(仅文档类)。用它定位"这文档讲了啥"而不必读全文。
+        <span class="ix">◆ 进检索</span></div></div>
+      <div class="gl"><span class="nmfx">content</span><div class="gd">
+        <b>文档 / 代码全文快照</b>(≤10 万字,超长尾部不进)。源文件删了、这份快照还在。
+        <span class="ix">◆ 进检索</span></div></div>
+      <div class="gl"><span class="nmfx">digest</span><div class="gd">
+        <b>AI 会话摘要</b>:读当天会话的「问 + 答」原文后,AI 写的准确标题 + 2–4 句摘要(可选生成)。
+        补"首问含糊 / 答案侧搜不到"的洞;覆盖后日记里该会话标题带 ✦。
+        <span class="ix">◆ 进检索(存独立 sidecar,重采不丢)</span></div></div>
+      <div class="gl"><span class="nmfx">ref</span><div class="gd">
+        <b>回链指针</b>:git hash / jsonl 路径 / 文件名。点它一跳回到原文看完整 diff / 完整对话。
+        <span class="ix no">○ 不进检索,只作溯源(库保持轻)</span></div></div>
+    </div>
+    <p class="note"><b>为什么这样拆?</b> 一条记录只留"值钱的短文本 + 一个回链",全文/整 diff/完整对话都留在原处按需回溯——
+      这就是库能塞下 1200+ 条却依然轻、且每条都可一跳还原的原因。<span class="mono">detail</span> 是装这些槽的"字段袋",
+      不为每种源单独建表。</p>
+  </section>
+
+  <section id="types">
+    <h2>每种数据:怎么采 · 怎么处理 · 存成啥 · 取舍</h2>
+    <p class="sub">七类数据各有各的解析与存储策略。统一原则:<b>只存摘要+回链+可检索文本,全文/原始留在原处</b>;
+      能上云的是文本知识层,重/敏感的留本地。<b>每张卡底部可展开「看这类长啥样」</b>——是本库里的真实条目。</p>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">💻</span><span class="nm">git 提交</span><span class="bd k">tool=git</span><span class="bd">kind=commit</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">采自</div><div class="v">各仓 <span class="mono">git log --all --no-merges --since</span>,按你的邮箱/名过滤本人提交</div></div>
+        <div class="ps"><div class="k pro">处理</div><div class="v">解析 header+正文(%b)+文件明细(numstat);用哨兵分隔正文与 numstat;重命名取新路径;同题同改动量去重</div></div>
+        <div class="ps"><div class="k sto">存为</div><div class="v">summary=标题;detail={body≤4000、file_list≤40(含增删行)、ins/del/files};date=作者日期</div></div>
+      </div>
+      <div class="ptrade"><b>取舍</b> 存标题+"为什么改"的正文+文件明细,但<b>不存完整 diff</b>(ref=hash,`git show` 看全)——库轻、又保留了最值钱的决策理由。</div>
+      <div class="pidx"><span class="lb">进检索</span><span class="fx" title="提交标题(一句话摘要)">summary</span><span class="fx" title="提交正文:为什么改+怎么验证">body</span></div>
+      <details class="ex"><summary>看这类存进去长啥样(真实条目)</summary><div class="exb">
+        <span class="cap">git:data-insights:9322f560 · 一条提交条目</span>
+        <span class="fld">summary</span> Staging (#72)<br>
+        <span class="fld">body</span> <span class="v2">perf(cohort): 并行拉取 app combo,MS 任务 25min → 5-10min;原来 5 个 app combo 串行(5×5=25 次请求)…<span class="ar">(为什么改 + 怎么验证)</span></span><br>
+        <span class="fld">file_list</span> <span class="v2">applovin_spend_cohort_report.py (+1/-0) · workflow_applovin_asset_spend.yml (+0/-56) · …</span><br>
+        <span class="fld">ref</span> <span class="hl">9322f560</span> <span class="ar">→ git show 看完整 diff(不入库)</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">💬</span><span class="nm">Claude Code 会话</span><span class="bd k">tool=claude</span><span class="bd">kind=session</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">采自</div><div class="v"><span class="mono">~/.claude/projects/*/*.jsonl</span> 逐条消息(含时间戳)</div></div>
+        <div class="ps"><div class="k pro">处理</div><div class="v">UTC→本地;<b>按天分桶(跨天长会话拆到每天)</b>;跳过命令/工具/压缩摘要,取当天首个真实提问作标题</div></div>
+        <div class="ps"><div class="k sto">存为</div><div class="v">id=claude:会话:日期;detail={start/end、user/asst 计数、opening≤1200、<b>当天全部提问 body≤8000</b>}</div></div>
+      </div>
+      <div class="ptrade"><b>取舍</b> 只索引<b>你的提问</b>(不含助手长回答/完整 transcript),ref 指向原 jsonl 看全文——搜"我问过啥"很准、库不爆。</div>
+      <div class="pidx"><span class="lb">进检索</span><span class="fx" title="当天会话的意图标题(可被 AI 摘要覆盖)">summary</span><span class="fx" title="打开 session 的第一句真实提问">opening</span><span class="fx" title="当天全部提问合并(≤8000字)">body</span><span class="fx" title="可选:AI 读问+答生成的准确标题+摘要">digest ✦</span></div>
+      <details class="ex"><summary>看这类长啥样 + ✦AI 会话摘要怎么救糊标题(真实)</summary><div class="exb">
+        <span class="cap">全库 129/129 会话已生成摘要 · 这是其中一条</span>
+        <span class="fld">opening</span> <span class="v2">「拉取最新代码了吗」</span> <span class="ar">← 采集器原判标题(首问),代表不了整场</span><br>
+        <span class="fld">summary ✦</span> <span class="hl">梳理 Google Ads Asset 数据从 DWD 到 DWS 的全链路 ETL 流程</span> <span class="ar">← AI 读「问+答」后写的准确标题</span><br>
+        <span class="fld">digest ✦</span> <span class="v2">目标是理解 dwd_spend_google_ads_asset 如何流转到 dws_mkt_ads_asset_di;AI 拆解了 Google Ads API 拉取 → S3 落地 → load_dwd_next.py 按 jsonpath 字段映射写 DWD → spend_clean_dims 建维度 → dws JOIN…<span class="ar">(答案侧内容,现在也搜得到)</span></span><br>
+        <span class="ar">原判保留在 detail.summary_raw;摘要存独立 sidecar,每次 sync 叠加回条目、重采不丢。</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">🖱️</span><span class="nm">Cursor / Codex 会话</span><span class="bd k">tool=cursor·codex</span><span class="bd">kind=session</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">采自</div><div class="v">Cursor <span class="mono">state.vscdb</span> / Codex <span class="mono">state_5.sqlite</span>;<b>先拷到临时目录再读,避开锁</b></div></div>
+        <div class="ps"><div class="k pro">处理</div><div class="v">只有会话级时间(无逐条消息文本)→ 按<b>开始日 + 最后活跃日</b>两端归属</div></div>
+        <div class="ps"><div class="k sto">存为</div><div class="v">id=工具:会话:日期;detail={start/end、改动文件/行数(cursor)、git_branch(codex)、opening}</div></div>
+      </div>
+      <div class="ptrade"><b>取舍(数据限制)</b> 拿不到消息级文本,只能到<b>标题级 + 两端归属</b>(中间天可能漏)。这是工具存储决定的,非设计偷懒——已在代码里注明。</div>
+      <div class="pidx"><span class="lb">进检索</span><span class="fx" title="会话标题">summary</span><span class="fx" title="能拿到的开场文本(有则存)">opening</span></div>
+      <details class="ex"><summary>看这类长啥样(真实条目)</summary><div class="exb">
+        <span class="cap">cursor · 一条跨天会话(两端归属演示)</span>
+        <span class="fld">summary</span> Retention metrics calculation issue<br>
+        <span class="fld">start → end</span> <span class="v2">2026-03-26 12:19 → 2026-03-27 16:08</span> <span class="ar">← 跨两天,只落在开始日+最后活跃日两端</span><br>
+        <span class="fld">detail</span> <span class="v2">files 改动数 / add / del(cursor);codex 则是 git_branch + opening</span><br>
+        <span class="ar">拿不到消息级文本,故没有 body——这是工具存储的限制,不是设计取巧。</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">📄</span><span class="nm">仓库文档 .md</span><span class="bd k">tool=docs</span><span class="bd">kind=doc</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">采自</div><div class="v">各仓 <span class="mono">.md</span>(跳过 node_modules/vendor 等)</div></div>
+        <div class="ps"><div class="k pro">处理</div><div class="v">取 H1 标题 + 大纲(headings)+ 全文(≤200k);全文快照写进 <span class="mono">vault/notes/_archive</span></div></div>
+        <div class="ps"><div class="k sto">存为</div><div class="v">detail={headings、content≤200k、path、repo};归档<b>永不裁剪</b>→ 源文件可安全删</div></div>
+      </div>
+      <div class="ptrade"><b>取舍</b> <b>不进按天日记</b>(纯参考、量大);全文归档只留最新版,旧版在 vault git 历史里。</div>
+      <div class="pidx"><span class="lb">进检索</span><span class="fx" title="各级标题拼成的目录">headings</span><span class="fx" title="全文快照,≤10万字">content</span></div>
+      <details class="ex"><summary>看这类长啥样(真实条目)</summary><div class="exb">
+        <span class="cap">docs · 一篇仓库文档索引</span>
+        <span class="fld">summary</span> DCS <span class="ar">(取自 H1)</span><br>
+        <span class="fld">headings</span> <span class="v2">DCS › 开发 › 本地开发 › 线上部署 › 构建基础镜像 …</span> <span class="ar">← 大纲,用来定位"讲了啥"</span><br>
+        <span class="fld">content</span> <span class="v2">全文快照写进 notes/_archive/…(永不裁剪,删源也不丢)</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">🧮</span><span class="nm">数据文件 csv / xlsx</span><span class="bd k">loom data add</span><span class="bd">kind=note</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">采自</div><div class="v">手动 <span class="mono">loom data add</span>(拉数产物、导出表)</div></div>
+        <div class="ps"><div class="k pro">处理</div><div class="v">纯标准库解析(csv 模块 / xlsx 用 zip+xml,处理 inlineStr、共享串、<b>日期序列号还原</b>)→ 蒸馏"数据卡"</div></div>
+        <div class="ps"><div class="k sto">存为</div><div class="v"><b>数据卡 .card.md</b>(列/类型/统计/前5行样例 + 血缘 inputs/produced_by/used_by)进 vault;<b>原始文件拷进 _data/</b></div></div>
+      </div>
+      <div class="ptrade"><b>取舍(分层)</b> 知识层(卡)<b>上云可检索</b>,资料层(原始 csv/xlsx)<b>gitignore 留本地</b>——大文件/敏感明细不出本地,样例入库前打码。</div>
+      <div class="pidx"><span class="lb">进检索</span><span class="fx" title="卡名">summary</span><span class="fx" title="数据卡正文:列/类型/统计/前5行样例/血缘">content</span></div>
+      <details class="ex"><summary>看这类长啥样(真实数据卡)</summary><div class="exb">
+        <span class="cap">data/bv/BV-分桶-不分桶对比.card.md · 蒸馏后的数据卡(上云)</span>
+<pre>title: BV-分桶-不分桶对比
+kind: source          rows: 22 · cols: 14 · size: 15KB
+produced_by: [ads_mkt_bv_attr_user_type_tier_1d.sql]   # 血缘
+raw: _data/BV-分桶-不分桶对比.xlsx     # 原始文件本地留存、不上云
+
+&gt; 原始数据。在 _data/…(不上云);拉取代码见 ads_mkt_bv_attr_user_type_tier_1d.sql
+## 列(14)  … 类型/统计/前 5 行样例(打码后)</pre>
+        <span class="ar">卡片上云可检索;原始 xlsx gitignore 留本地。</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">📎</span><span class="nm">代码 sql / py 等</span><span class="bd k">tool=notes</span><span class="bd">kind=note</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">采自</div><div class="v"><span class="mono">loom doc add</span> 收进 vault/notes 的代码文件</div></div>
+        <div class="ps"><div class="k pro">处理</div><div class="v">入库<b>打码</b>(只抹值不动变量名);日期优先级 <b>frontmatter > 文件名内日期 > mtime</b></div></div>
+        <div class="ps"><div class="k sto">存为</div><div class="v">原样存代码(可检索);无可靠日期的标 <b>dated=False</b></div></div>
+      </div>
+      <div class="ptrade"><b>取舍</b> 无可靠日期的代码<b>不塞进某天日记</b>(仍进检索)——避免一次性归档把几百个 scratch 全挤在导入当天,虚胖当天。</div>
+      <div class="pidx"><span class="lb">进检索</span><span class="fx" title="代码全文快照">content</span></div>
+      <details class="ex"><summary>看这类长啥样(打码演示)</summary><div class="exb">
+        <span class="cap">代码入库前只抹「值」、保留变量名与逻辑</span>
+<pre>conn = connect(host=DB_HOST,
+               password=<span class="hl">«已打码»</span>)      # 值被抹
+secret = Variable.get("secret_api_key")   # 变量名/调用照留,可检索
+</pre>
+        <span class="ar">原文永远在 git / 原文件里(回链可查);只保证 loom 的派生文件不外泄密钥。</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">📋</span><span class="nm">日报</span><span class="bd k">派生 · AI 合成</span><span class="bd">kind=report</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">来自</div><div class="v"><b>不是采集源</b>——AI 读本库其它数据合成(<span class="mono">loom report gen→AI→set</span>);历史飞书 xlsx 只是一次性种子,帮 AI 串联,非持续数据源</div></div>
+        <div class="ps"><div class="k pro">处理</div><div class="v">聚合当天真实痕迹 → AI 写成 今日工作/思考/明日计划;同天多条合并不覆盖</div></div>
+        <div class="ps"><div class="k sto">存为</div><div class="v">id=report:日期(幂等);渲染进当天日记<b>顶部</b>作叙事总述</div></div>
+      </div>
+      <div class="ptrade"><b>取舍</b> 日报是<b>产出</b>不是输入:后续都由 AI 读库自动写,重写直接覆盖同一天。放在架构图右侧(派生),不占来源。</div>
+      <div class="pidx"><span class="lb">进检索</span><span class="fx" title="今日工作/思考/明日计划三段全文">body</span></div>
+      <details class="ex"><summary>看这类长啥样(真实日报片段)</summary><div class="exb">
+        <span class="cap">report:日期 · 渲染进当天日记顶部作总述</span>
+        <span class="fld">work</span> <span class="v2">- 素材匹配上线备料:对 applovin / google / unity / facebook / moloco 五渠道跑素材匹配 dryrun,核对花费能否对到具体素材。<br>- BF 三方支付注入 AF:做 ads↔dws 对账…</span><br>
+        <span class="ar">全库 79 篇日报;后续由 AI 读库合成(report gen→set),非手写。</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">🗒️</span><span class="nm">散信息 / 飞书表</span><span class="bd k">loom note</span><span class="bd">kind=note</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">采自</div><div class="v"><span class="mono">loom note "文本"</span> / 飞书表薄脚本逐行喂(<b>非专用采集器</b>)</div></div>
+        <div class="ps"><div class="k pro">处理</div><div class="v">打码 + 补 frontmatter → <span class="mono">notes/inbox</span></div></div>
+        <div class="ps"><div class="k sto">存为</div><div class="v">统一成 <b>note</b>,和文档同管线:进检索、进日记、可被主题层打标</div></div>
+      </div>
+      <div class="ptrade"><b>取舍</b> 不为任何单一来源写死采集逻辑;飞书只是众多喂料口之一。外部来源真相在源(重喂覆盖),本地随手记真相在文件。</div>
+      <div class="pidx"><span class="lb">进检索</span><span class="fx" title="随手记/外部信息的正文">content</span></div>
+      <details class="ex"><summary>看这类长啥样(入库形态)</summary><div class="exb">
+        <span class="cap">loom note "文本" → notes/inbox/…md(打码 + 补 frontmatter)</span>
+<pre>--- type: loom-note   tags: [...]   date: … ---
+&lt;打码后的正文&gt;
+</pre>
+        <span class="ar">和文档同一条管线:进检索 / 进日记 / 可被主题层打标。飞书等外部源只需薄脚本逐行喂 intake.note,不为单一来源写死采集器。</span>
+      </div></details>
+    </div>
+  </section>
+
+  <section id="axes">
+    <h2>存储 vs 视图 —— 只按 id 存,任意轴查</h2>
+    <p class="sub">存储扁平(按 id);"按天""按主题"都只是对同一份数据的不同切法。加一次,多轴皆可见。</p>
+    <div class="axgrid">
+      <div class="ax"><div class="t">按天</div><div class="m">当天全部痕迹</div><div class="cmd mono">journal/</div></div>
+      <div class="ax"><div class="t">按主题</div><div class="m">一件事·上卷</div><div class="cmd mono">topic show</div></div>
+      <div class="ax"><div class="t">全文</div><div class="m">中文子串</div><div class="cmd mono">search</div></div>
+      <div class="ax"><div class="t">按项目</div><div class="m">仓/类目</div><div class="cmd mono">--project</div></div>
+      <div class="ax"><div class="t">按时段</div><div class="m">区间</div><div class="cmd mono">--since/until</div></div>
+    </div>
+  </section>
+
+  <section id="topic">
+    <h2>主题层 —— 多层(DAG)+ 多主题,聚成「一件事」</h2>
+    <p class="sub">条目只打最细的<b>叶子</b>标签;层级写在<b>主题页</b>(parent 可多 = DAG 多父);查询时<b>上卷整棵子树</b>,移子树只改一处。
+      下面是全库<b>逐条 AI 判 + 对抗复核</b>后的真实主题树(数字 = 该主题直接条目数,可 <span class="mono">loom topic show</span> 复现):</p>
+    <p class="note" style="border-left:2px solid var(--warmd);padding-left:11px;margin:0 0 14px">
+      ⚠ 这棵树是<b>某数据仓库工程师的真实工作</b>分类<b>示例(已脱敏,仅作演示)</b>(数仓/归因/反作弊等)——
+      说明主题层"能长成什么样",不是 loom 预设的固定分类;换个人跑,会按各自的工作自然长出完全不同的树。</p>
+    <div class="tstat">
+      <span>已分类 <b>791</b> / 非日报 1142 条</span><span><b>21</b> 个主题 · 4 层</span>
+      <span><b>17</b> 条多主题</span><span>日报不入主题(多主题叙事层)</span>
+    </div>
+    <div class="ttree">
+      <div class="trow"><span class="tn d0"><span class="nm">数仓建设</span><span class="c">伞</span></span></div>
+      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">素材归因</span><span class="c">50</span></span></div>
+      <div class="trow i2"><span class="tick">│└</span><span class="tn d2"><span class="nm">素材匹配重构</span><span class="c">28</span></span></div>
+      <div class="trow i3"><span class="tick">│&nbsp;└</span><span class="tn d3"><span class="nm">serial兜底</span><span class="c">13</span></span></div>
+      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">成本分摊</span><span class="c">35</span></span></div>
+      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">BF三方支付</span><span class="c">11</span></span></div>
+      <div class="trow i2"><span class="tick">│├</span><span class="tn d2"><span class="nm">净额</span><span class="c">28</span></span><span class="mp">↺ 多父:也属素材匹配重构</span></div>
+      <div class="trow i2"><span class="tick">│└</span><span class="tn d2"><span class="nm">三方对账</span><span class="c">16</span></span></div>
+      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">Cohort回收</span><span class="c">59</span></span></div>
+      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">渠道再归因</span><span class="c">21</span></span></div>
+      <div class="trow i1"><span class="tick">└</span><span class="tn d1"><span class="nm">数仓底座</span><span class="c">110</span></span></div>
+      <div class="trow"><span class="tn d0"><span class="nm">分析排查</span><span class="c">域</span></span></div>
+      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">反作弊</span><span class="c">32</span></span></div>
+      <div class="trow i2"><span class="tick">│├</span><span class="tn d2"><span class="nm">作弊排查</span><span class="c">68</span></span></div>
+      <div class="trow i2"><span class="tick">│├</span><span class="tn d2"><span class="nm">假单检测</span><span class="c">49</span></span></div>
+      <div class="trow i2"><span class="tick">│└</span><span class="tn d2"><span class="nm">渠道拉黑</span><span class="c">6</span></span></div>
+      <div class="trow i1"><span class="tick">└</span><span class="tn d1"><span class="nm">临时排查</span><span class="c">59</span></span></div>
+      <div class="trow"><span class="tn d0"><span class="nm">报表周报</span><span class="c">152</span></span></div>
+      <div class="trow"><span class="tn d0"><span class="nm">受众运营</span><span class="c">18</span></span></div>
+      <div class="trow"><span class="tn d0"><span class="nm">loom工具开发</span><span class="c">49</span></span></div>
+      <div class="trow i1"><span class="tick">└</span><span class="tn d1"><span class="nm">loom-飞书drive</span><span class="c">3</span></span></div>
+    </div>
+    <p class="note"><b>loom topic show 数仓建设</b> 上卷整棵子树、一次看全"数仓建设"下所有活;<b>show 素材匹配重构</b> 只看那一件事。
+      <b>净额</b>被 BF三方支付 与 素材匹配重构 两棵共享(多父,DAG),只在它主题页写两个 parent 即可。同一条记录照常出现在它那天的日记里。</p>
+  </section>
+
+  <section id="cases">
+    <h2>真实案例 —— 主题层把痕迹缝成「一件事」</h2>
+    <p class="sub">下面数字都是 <b>loom topic show</b> 的真实输出、可命令复现;分类经<b>逐条核对</b>(已剔除误命中,如混进的 loom 讨论、自指的主题页)。</p>
+    <div class="cases">
+      <div class="case">
+        <div class="ch"><span class="t">① 素材匹配重构</span><span class="meta">上线 prod · <span class="mono">loom topic show 素材匹配重构 = 32 条</span></span></div>
+        <p>把素材匹配从"管道里堆 serial 特例"重构为分层匹配 + serial 兜底 + 脏数据分离。一件事从设计→落码→验证→交付,痕迹散在四类里,主题层(含子主题 serial兜底)上卷成一条线:</p>
+        <div class="trace">
+          <span class="tr">💬 <b>对话</b> <span class="c">2</span> 无主花费收尾判断</span><span class="sep">·</span>
+          <span class="tr">💻 <b>提交</b> <span class="c">8</span> clean_name→serial兜底→上线</span><span class="sep">·</span>
+          <span class="tr">📄 <b>文档</b> <span class="c">10</span> 五渠道清洗规则+交接档</span><span class="sep">·</span>
+          <span class="tr">📎 <b>数据/代码</b> <span class="c">12</span> 无主花费凭证+dryrun</span>
+        </div>
+        <p><b>对比</b>:关键词搜"素材"给你 300 条一锅粥;这件事精确到这 32 条,一条决策链看到底(日报作为多主题叙事层,不计入单一主题)。</p>
+      </div>
+      <div class="case">
+        <div class="ch"><span class="t">② 反作弊</span><span class="meta">从 Databricks 归档聚出 · 6 条</span></div>
+        <p>散在归档里的作弊排查脚本(多游戏 × 多渠道 作弊排查、假单检测、付费排查)聚成一个新主题:</p>
+        <div class="trace"><span class="tr">📎 <b>SQL 脚本</b> <span class="c">6</span> 各渠道作弊排查 + 假单/付费检测</span></div>
+        <p><b>值</b>:旧代码不再是死文件——下次查作弊从这件事进,不必全库大海捞针。</p>
+      </div>
+      <div class="case">
+        <div class="ch"><span class="t">③ 一个横跨 43 天的 Claude 会话</span><span class="meta">2026-04-21 → 06-30</span></div>
+        <p>一直开在同一 session 里的长会话,以前只挂开聊那天、后面 42 天全隐形。按天拆分后:</p>
+        <div class="trace"><span class="tr">拆成 <span class="c">43</span> 个当天条目</span><span class="sep">·</span><span class="tr">每天带那天的首问</span><span class="sep">·</span><span class="tr">整段提问可搜</span></div>
+        <p><b>值</b>:每个活跃天都看到当天真实对话;全库 <b>44</b> 个跨天会话被一并"救"回各自的天。</p>
+      </div>
+      <div class="case">
+        <div class="ch"><span class="t">④ AI 会话摘要:救糊标题 + 让答案侧可搜</span><span class="meta">全库 129/129 会话已生成</span></div>
+        <p>采集器只索引你的提问,长会话首问常含糊。用 <span class="mono">loom session gen</span> 让 AI 读当天<b>问+答</b>原文,写准标题 + 可检索摘要,叠加回条目(重采不丢):</p>
+        <div class="trace">
+          <span class="tr">原判 <span class="c">拉取最新代码了吗</span></span><span class="sep">→</span>
+          <span class="tr">✦标题 <span class="c">梳理 Google Ads Asset 从 DWD 到 DWS 全链路 ETL</span></span>
+        </div>
+        <p><b>值</b>:答案侧才有的词(如 <span class="mono">auto_stop_mins</span>、<span class="mono">value-based TOS</span>)现在都搜得到——以前它们只在助手回答里、全库检索不到。<b>129</b> 个会话一次工作流(每天一 agent 读 transcript)跑完。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="flow">
+    <h2>数据流(一次 sync 的六步)</h2>
+    <div class="pipe">
+      <div class="st"><div class="no mono">01</div><div class="t">采集</div><div class="d">各源读近 N 天;一个源崩不掀翻全局</div></div>
+      <div class="st"><div class="no mono">02</div><div class="t">打码</div><div class="d">入库前抹 token/密钥/webhook</div></div>
+      <div class="st"><div class="no mono">03</div><div class="t">upsert</div><div class="d">按 id 合并;原子写(临时文件+替换)</div></div>
+      <div class="st"><div class="no mono">04</div><div class="t">建索引</div><div class="d">从真相重建 FTS(可删可再生)</div></div>
+      <div class="st"><div class="no mono">05</div><div class="t">渲染</div><div class="d">生成日记;手写笔记区永不覆盖</div></div>
+      <div class="st"><div class="no mono">06</div><div class="t">推云</div><div class="d">vault git push;原始数据留本地</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>一天的全景(具体例子)</h2>
+    <div class="day">
+      <div class="bar">📅 <span class="mono">2026-06-29</span> · 素材归因主题域:设计 → 被对抗式审查打回 → 重做正式版</div>
+      <div class="layers">
+        <div class="ly"><div class="tag">📋 日报</div><div class="t">8 条工作流</div><div class="d">带 ✅/🚧 状态</div></div>
+        <div class="ly"><div class="tag">💻 提交</div><div class="t">9 个提交</div><div class="d">带 body:为什么改+验证</div></div>
+        <div class="ly"><div class="tag">💬 会话</div><div class="t">6h 长会话</div><div class="d">按天拆分 + ✦AI 摘要</div></div>
+        <div class="ly"><div class="tag">📎 数据</div><div class="t">2 张数据卡</div><div class="d">拉数凭证</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="honest">
+    <h2>诚实的取舍</h2>
+    <p class="sub">明知的边界,写出来才可信。</p>
+    <ul class="clean">
+      <li><b>检索是关键词,不是语义</b> — "cohort" 召不回"留存";语义检索要向量模型,会破坏零依赖,暂不上。</li>
+      <li><b>只 Claude 能逐条拆会话</b> — Cursor/Codex 无消息级文本,只能两端归属。</li>
+      <li><b>助手回答默认不进检索</b> — 采集只索引你的提问;需要时用 <span class="mono">loom session gen</span> 让 AI 读当天<b>问+答</b>生成摘要,把答案侧内容也纳入检索(存独立 sidecar,重采不丢)。</li>
+      <li><b>全量重建</b> — 每次 sync 全量重扫;单人无感,超大历史才需增量。</li>
+      <li><b>AI 分类非全自动</b> — 闭集 + 人过目 + 审计控准。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>工程质量</h2>
+    <div class="quality">
+      <div class="q"><div class="n">3,355</div><div class="l">行 Python</div></div>
+      <div class="q"><div class="n">0</div><div class="l">第三方依赖</div></div>
+      <div class="q"><div class="n">112</div><div class="l">单元测试全绿</div></div>
+      <div class="q"><div class="n">7</div><div class="l">数据来源</div></div>
+    </div>
+    <p class="note">采集/检索/渲染/主题/散信息/日报/生命周期各自成模块;打码、路径穿越、FTS 召回、原子写、主题上卷都有端到端测试守护。</p>
+  </section>
+
+  <footer>loom · 跨来源个人成果台账 · 纯标准库 Python · 代码开源 <b>github.com/joycastle/loom</b>(MIT),数据仓私有 · 数据截至 2026-07-05<span class="pill">MIT</span></footer>
+</main>
+</body>
+</html>
