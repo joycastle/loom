@@ -125,27 +125,28 @@ nav button.on{color:var(--warm);border-color:var(--warm)}
   <g fill="#5AA9A0"><rect x="14" y="21.5" width="72" height="9" rx="4.5"/><rect x="14" y="45.5" width="72" height="9" rx="4.5"/><rect x="14" y="69.5" width="72" height="9" rx="4.5"/></g>
   <g fill="#E0A84E"><rect x="21.5" y="14" width="9" height="72" rx="4.5"/><rect x="45.5" y="14" width="9" height="72" rx="4.5"/><rect x="69.5" y="14" width="9" height="72" rx="4.5"/></g>
   <g fill="#5AA9A0"><rect x="45.5" y="21.5" width="9" height="9" rx="2.5"/><rect x="21.5" y="45.5" width="9" height="9" rx="2.5"/><rect x="69.5" y="45.5" width="9" height="9" rx="2.5"/><rect x="45.5" y="69.5" width="9" height="9" rx="2.5"/></g></svg>
-  <span class="nm">loom</span><span style="color:var(--dim);font-size:13px">台账浏览</span>
+  <span class="nm">loom</span><span style="color:var(--dim);font-size:13px" data-t="台账浏览|ledger browser"></span>
   <nav>
-    <button data-v="search" class="on">🔍 搜索</button>
-    <button data-v="topics">🧵 主题</button>
-    <button data-v="days">📅 按天</button>
+    <button data-v="search" class="on">🔍 <span data-t="搜索|Search"></span></button>
+    <button data-v="topics">🧵 <span data-t="主题|Topics"></span></button>
+    <button data-v="days">📅 <span data-t="按天|Days"></span></button>
+    <button id="langbtn" title="switch language"></button>
   </nav>
 </header>
 
 <div id="v-search" class="view on">
-  <div class="spot"><input type="search" id="q" placeholder="搜你做过的任何事…(中文子串可用)" autofocus>
+  <div class="spot"><input type="search" id="q" autofocus>
     <span class="kbd">⌘K</span></div>
-  <div class="subq" id="subq">一份台账,织进了你的全部工作痕迹</div>
+  <div class="subq" id="subq"></div>
   <div id="dash">
     <div class="stats" id="stats"></div>
     <div class="fab" id="fabric"></div>
     <div class="threads" id="threads"></div>
-    <div style="max-width:760px;margin:18px auto 0"><div class="gh" style="margin-top:0">⏱ 最近入账</div><div id="recent"></div></div>
+    <div style="max-width:760px;margin:18px auto 0"><div class="gh" style="margin-top:0">⏱ <span data-t="最近入账|Recent"></span></div><div id="recent"></div></div>
   </div>
   <div id="rwrap" style="display:none">
     <div class="bar" style="max-width:760px;margin:0 auto 10px">
-      <select id="f-tool"><option value="">全部工具</option></select>
+      <select id="f-tool"><option value="" data-t="全部工具|All tools"></option></select>
       <input id="f-since" type="date" title="起始日期">
       <input id="f-until" type="date" title="截止日期">
     </div>
@@ -156,13 +157,13 @@ nav button.on{color:var(--warm);border-color:var(--warm)}
 <div id="v-topics" class="view">
   <div id="tgraph"></div>
   <div class="loose" id="tloose"></div>
-  <div id="tmembers"><div class="empty">↑ 点图里的主题节点,看这件事的全景(含子树上卷)</div></div>
+  <div id="tmembers"><div class="empty" data-t="↑ 点图里的主题节点,看这件事的全景(含子树上卷)|↑ Click a topic node to see everything about it (subtree rolled up)"></div></div>
 </div>
 
 <div id="v-days" class="view">
   <div class="cols">
     <div id="cals"></div>
-    <div id="dbody"><div class="empty">← 点日历上有热力的日期</div></div>
+    <div id="dbody"><div class="empty" data-t="← 点日历上有热力的日期|← Pick a highlighted date on the calendar"></div></div>
   </div>
 </div>
 </div>
@@ -170,7 +171,16 @@ nav button.on{color:var(--warm);border-color:var(--warm)}
 <div id="drawer"><button class="x" onclick="drawer(false)">✕</button><div id="dctn"></div></div>
 
 <script>
+const LANG=localStorage.getItem('loom_lang')||'zh';
+const T=(zh,en)=>LANG==='en'?en:zh;
 const $=s=>document.querySelector(s), api=(p,o)=>fetch(p+'?'+new URLSearchParams(o)).then(r=>r.json());
+document.addEventListener('DOMContentLoaded',()=>{
+  document.querySelectorAll('[data-t]').forEach(el=>{const[z,e]=el.dataset.t.split('|');el.textContent=T(z,e)});
+  $('#q').placeholder=T('搜你做过的任何事…(中文子串可用)','Search anything you did… (CJK substring OK)');
+  $('#subq').textContent=T('一份台账,织进了你的全部工作痕迹','One ledger, woven from all your work traces');
+  const b=$('#langbtn');b.textContent=T('EN','中');
+  b.onclick=()=>{localStorage.setItem('loom_lang',LANG==='zh'?'en':'zh');location.reload()};
+});
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const KIND={session:'💬',commit:'💻',doc:'📄',note:'📎',report:'📋',requirement:'📥'};
 function card(e){return `<div class="card" onclick="detail('${esc(e.id).replace(/'/g,"\\'")}')">
@@ -181,7 +191,7 @@ function card(e){return `<div class="card" onclick="detail('${esc(e.id).replace(
   ${e.topics&&e.topics.length?`<div class="tp">🧵 ${e.topics.map(esc).join(' · ')}</div>`:''}</div>`}
 function groups(g){const order=['report','session','commit','doc','note','requirement'];
   const keys=[...new Set([...order.filter(k=>g[k]),...Object.keys(g)])];
-  return keys.map(k=>`<div class="gh">${KIND[k]||''} ${esc(k)} (${g[k].length})</div>`+g[k].map(card).join('')).join('')||'<div class="empty">空</div>'}
+  return keys.map(k=>`<div class="gh">${KIND[k]||''} ${esc(k)} (${g[k].length})</div>`+g[k].map(card).join('')).join('')||`<div class="empty">${T('空','Empty')}</div>`}
 
 // 视图切换
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
@@ -196,14 +206,15 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
 let deb;
 function mode(searching){$('#dash').style.display=searching?'none':'';
   $('#rwrap').style.display=searching?'':'none';
-  $('#subq').textContent=searching?'Esc 清空返回总览':'一份台账,织进了你的全部工作痕迹'}
+  $('#subq').textContent=searching?T('Esc 清空返回总览','Esc to clear and return')
+    :T('一份台账,织进了你的全部工作痕迹','One ledger, woven from all your work traces')}
 async function doSearch(){
   const q=$('#q').value.trim(),f=$('#f-tool').value||$('#f-since').value||$('#f-until').value;
   if(!q&&!f){mode(false);return}
   mode(true);
   const r=await api('/api/search',{q,tool:$('#f-tool').value,
     since:$('#f-since').value,until:$('#f-until').value,limit:80});
-  $('#r-search').innerHTML=r.hits.map(card).join('')||'<div class="empty">无命中</div>'}
+  $('#r-search').innerHTML=r.hits.map(card).join('')||`<div class="empty">${T('无命中','No hits')}</div>`}
 $('#q').addEventListener('input',()=>{clearTimeout(deb);deb=setTimeout(doSearch,280)});
 ['#f-tool','#f-since','#f-until'].forEach(s=>$(s).onchange=doSearch);
 ['git','claude','codex','cursor','feishu','docs','notes','日报'].forEach(t=>{
@@ -220,7 +231,7 @@ function countUp(el,n){const t0=performance.now();
 async function loadDash(){
   const [st,dy]=await Promise.all([api('/api/stats',{}),api('/api/days',{})]);
   // 统计带
-  $('#stats').innerHTML=[['条记录',st.entries],['个活跃天',st.days],['个主题',st.topics],['条已归类',st.tagged]]
+  $('#stats').innerHTML=[[T('条记录','entries'),st.entries],[T('个活跃天','active days'),st.days],[T('个主题','topics'),st.topics],[T('条已归类','classified'),st.tagged]]
     .map(([l,n])=>`<div class="stat"><div class="n" data-n="${n}">0</div><div class="l">${l}</div></div>`).join('');
   document.querySelectorAll('.stat .n').forEach(el=>countUp(el,+el.dataset.n));
   // 织物贡献图:26 周 × 7 天
@@ -240,14 +251,14 @@ async function loadDash(){
     const x=30+c.w*CW,y=16+c.r*CH;
     const m=c.ds.slice(5,7);
     if(c.r===0&&!mseen[c.ds.slice(0,7)]){mseen[c.ds.slice(0,7)]=1;
-      svg+=`<text x="${x}" y="9" font-size="9" fill="#5C6673">${+m}月</text>`}
+      svg+=`<text x="${x}" y="9" font-size="9" fill="#5C6673">${LANG==='en'?['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1]:(+m+'月')}</text>`}
     const weave=(c.w+c.r)%2?'#5AA9A0':'#E0A84E';                 // 经纬交替 = 织物纹理
     svg+=`<rect class="fcell" x="${x}" y="${y}" width="${CW-PAD}" height="${CH-PAD}" rx="3"
       fill="${c.c?weave:'#1a202b'}" fill-opacity="${c.c?al(c.c):1}" stroke="none"
-      onclick="goDay('${c.ds}')"><title>${c.ds}${c.c?' · '+c.c+' 条':''}</title></rect>`}
-  ['一','三','五','日'].forEach((w,i)=>{svg+=`<text x="2" y="${16+[0,2,4,6][i]*CH+10}" font-size="9" fill="#5C6673">${w}</text>`});
+      onclick="goDay('${c.ds}')"><title>${c.ds}${c.c?' · '+c.c+T(' 条',' entries'):''}</title></rect>`}
+  (LANG==='en'?['Mo','We','Fr','Su']:['一','三','五','日']).forEach((w,i)=>{svg+=`<text x="2" y="${16+[0,2,4,6][i]*CH+10}" font-size="9" fill="#5C6673">${w}</text>`});
   svg+='</svg>';
-  $('#fabric').innerHTML=`<div class="ft">最近 26 周 · <b>织物密度 = 当日入账</b>(金纬青经交替)· 点格子进当天</div>`+svg;
+  $('#fabric').innerHTML=`<div class="ft">${T('最近 26 周 · <b>织物密度 = 当日入账</b>(金纬青经交替)· 点格子进当天','Last 26 weeks · <b>fabric density = entries that day</b> (gold weft, teal warp) · click to jump')}</div>`+svg;
   // 六股线量
   const tot=Math.max(...Object.values(st.tools));
   $('#threads').innerHTML=Object.entries(st.tools).slice(0,7).map(([t,n])=>
@@ -303,15 +314,15 @@ async function loadTopics(){
       <text class="cnt" x="${w-cw/2-7}" y="20" text-anchor="middle">${n.count}</text></g>`}
   svg+='</svg>';
   $('#tgraph').innerHTML=svg;
-  $('#tloose').innerHTML=(r.loose.length?`未建页:${r.loose.map(t=>`<b onclick="pick('${esc(t)}')">${esc(t)}</b>`).join(' · ')} · `:'')
-    +`已归类 ${r.total_tagged} 条 · ↺=多父(DAG)`;
+  $('#tloose').innerHTML=(r.loose.length?`${T('未建页','No page yet')}:${r.loose.map(t=>`<b onclick="pick('${esc(t)}')">${esc(t)}</b>`).join(' · ')} · `:'')
+    +T(`已归类 ${r.total_tagged} 条 · ↺=多父(DAG)`,`${r.total_tagged} classified · ↺=multi-parent (DAG)`);
 }
 async function pick(name){
   document.querySelectorAll('.gnode').forEach(g=>g.classList.toggle('on',g.dataset.n===name));
   document.querySelectorAll('.gedge').forEach(e=>{const[p,c]=e.dataset.e.split('|');
     e.classList.toggle('hl',p===name||c===name)});
   const r=await api('/api/topic',{name});
-  $('#tmembers').innerHTML=`<div class="gh" style="font-size:15px">🧵 ${esc(r.name)} · 上卷 ${r.total} 条`
+  $('#tmembers').innerHTML=`<div class="gh" style="font-size:15px">🧵 ${esc(r.name)} · ${T('上卷 '+r.total+' 条','rolled up '+r.total)}`
   +(r.parents.length?`<span style="color:var(--dim)"> · parent: ${r.parents.map(esc).join(', ')}</span>`:'')+`</div>`+groups(r.groups);
 }
 
@@ -332,19 +343,19 @@ function renderCal(){
   const today=new Date().toISOString().slice(0,10);
   const [y,mo]=m.split('-').map(Number);
   const dow=(new Date(y,mo-1,1).getDay()+6)%7, dim=new Date(y,mo,0).getDate();
-  let cells='一二三四五六日'.split('').map(w=>`<div class="wd">${w}</div>`).join('');
+  let cells=(LANG==='en'?['Mo','Tu','We','Th','Fr','Sa','Su']:'一二三四五六日'.split('')).map(w=>`<div class="wd">${w}</div>`).join('');
   for(let i=0;i<dow;i++)cells+='<div class="cell"></div>';
   for(let d=1;d<=dim;d++){
     const ds=`${m}-${String(d).padStart(2,'0')}`,c=CAL.cnt[ds]||0;
     cells+=`<div class="cell ${c?'has '+heat(c):''}" data-d="${ds}" ${c?`onclick="loadDay('${ds}')"`:''}
-      title="${ds}${c?' · '+c+' 条':''}" ${ds===today?'style="box-shadow:inset 0 0 0 1px var(--cool)"':''}>${d}</div>`}
+      title="${ds}${c?' · '+c+T(' 条',' entries'):''}" ${ds===today?'style="box-shadow:inset 0 0 0 1px var(--cool)"':''}>${d}</div>`}
   const mTotal=Object.keys(CAL.cnt).filter(d=>d.startsWith(m)).reduce((a,d)=>a+CAL.cnt[d],0);
   $('#cals').innerHTML=`<div class="cal"><div class="mh">
       <button onclick="calNav(-1)" ${CAL.idx===0?'disabled':''}>‹</button>
-      <span>${y} 年 ${mo} 月 <small style="color:var(--dim);font-weight:400">${mTotal} 条</small></span>
+      <span>${T(y+' 年 '+mo+' 月',['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mo-1]+' '+y)} <small style="color:var(--dim);font-weight:400">${mTotal}${T(' 条','')}</small></span>
       <button onclick="calNav(1)" ${CAL.idx===CAL.months.length-1?'disabled':''}>›</button></div>
     <div class="grid">${cells}</div>
-    <div class="legend" style="margin-top:10px">少 <i class="cell h1"></i><i class="cell h2"></i><i class="cell h3"></i> 多</div></div>`;
+    <div class="legend" style="margin-top:10px">${T('少','less')} <i class="cell h1"></i><i class="cell h2"></i><i class="cell h3"></i> ${T('多','more')}</div></div>`;
   markSel();
 }
 function markSel(){document.querySelectorAll('.cell').forEach(x=>x.classList.toggle('on',x.dataset.d===CAL.sel))}
@@ -353,7 +364,7 @@ async function loadDay(date){
   const mi=CAL.months.indexOf(date.slice(0,7));
   if(mi>=0&&mi!==CAL.idx){CAL.idx=mi;renderCal()}else markSel();
   const r=await api('/api/day',{date});
-  $('#dbody').innerHTML=`<div class="gh" style="font-size:15px;margin-top:0">📅 ${date} · ${r.total} 条</div>`+groups(r.groups);
+  $('#dbody').innerHTML=`<div class="gh" style="font-size:15px;margin-top:0">📅 ${date} · ${r.total}${T(' 条','')}</div>`+groups(r.groups);
 }
 
 // ---- 详情 ----
