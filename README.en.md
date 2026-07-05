@@ -69,13 +69,13 @@ Product tour: [loom_tour.html](https://htmlpreview.github.io/?https://github.com
 > Local zero-dependency browse UI, 127.0.0.1 only. Screenshots below use **fictional demo data**.
 
 **Overview: spotlight search + fabric graph (your days, woven)**
-<img src="docs/shots/dashboard.svg" width="100%" alt="dashboard" />
+<img src="docs/shots/dashboard.en.svg" width="100%" alt="dashboard" />
 
 **Topics: DAG graph — click a topic to see everything about "one thing"**
-<img src="docs/shots/topics.svg" width="100%" alt="topics" />
+<img src="docs/shots/topics.en.svg" width="100%" alt="topics" />
 
 **By day: paginated calendar heatmap**
-<img src="docs/shots/calendar.svg" width="100%" alt="calendar" />
+<img src="docs/shots/calendar.en.svg" width="100%" alt="calendar" />
 
 ## Commands
 
