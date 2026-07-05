@@ -26,7 +26,7 @@
 
 **简体中文** | [English](./README.en.md)
 
-[**⚡ 快速落地**](#-5-分钟落地让你的-ai-助手带你走推荐) · [🎨 设计亮点](#-设计亮点为什么是这样) · [📊 展示页](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_showcase.html) · [🧵 主题层](#主题层把散痕迹聚成一件事) · [⌨️ 命令](#命令) · [🤖 给 AI 助手](./AGENTS.md)
+[**⚡ 快速落地**](#-5-分钟落地让你的-ai-助手带你走推荐) · [🎨 设计亮点](#-设计亮点为什么是这样) · [📊 展示页](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_tour.html) · [🧵 主题层](#主题层把散痕迹聚成一件事) · [⌨️ 命令](#命令) · [🤖 给 AI 助手](./AGENTS.md)
 
 <br><img src="assets/banner.svg" width="100%" alt="loom banner" />
 
@@ -66,8 +66,8 @@ git clone https://github.com/joycastle/loom.git ~/Documents/loom
 
 ## 🎨 设计亮点(为什么是这样)
 
-loom 的价值不在"又一个笔记工具",而在几个刻意的设计取舍。完整图文说明见
-**[`docs/loom_showcase.html`](./docs/loom_showcase.html)**(自包含单页:架构图、字段词典、逐类型真实示例、主题层、案例——
+loom 的价值不在"又一个笔记工具",而在几个刻意的设计取舍。产品导览见 **[展示页](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_tour.html)**;完整技术细节见
+**[信息页 `docs/loom_showcase.html`](./docs/loom_showcase.html)**(架构图、字段词典、逐类型处理与示例、主题层——
 GitHub 里点开是源码,**下载后用浏览器打开**即可;或用 [htmlpreview](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_showcase.html) 在线看)。下面是速览:
 
 - **① 扁平存储,按需成视图。** 只按稳定 `id` 存一份真相(`entries.jsonl`),

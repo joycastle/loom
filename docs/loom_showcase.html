@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>*{margin:0;padding:0}</style>
-<title>loom · 系统设计与成果</title>
+<title>loom · 系统设计与实现(信息页)</title>
 <style>
   :root{
     --ink:#0F1218; --panel:#171B23; --panel2:#1D222C; --line:#2A313D;
@@ -190,16 +190,16 @@
       </svg>
       <span class="bnm">loom</span>
     </div>
-    <div class="eyebrow">系统设计与成果</div>
+    <div class="eyebrow">信息页 · 系统设计与实现 · 示例均为虚构演示数据</div>
     <h1>把散落各处的工作痕迹,<br><span class="thr">织成一本可检索、可关联的台账</span></h1>
     <p class="lede">loom(织机)采集 git、AI 对话、文档、代码、数据、日报,归一成一份扁平记录,
       再派生出检索索引、按天日记、主题关联、私有云备份。这页讲清楚:整体架构、
       <b>每种数据具体怎么处理与保存</b>、以及每个设计的取舍。</p>
     <div class="kpis">
-      <div class="kpi"><div class="n warm">1,221</div><div class="l">条归一化记录</div></div>
+      <div class="kpi"><div class="n warm">1,842</div><div class="l">条归一化记录(示例)</div></div>
       <div class="kpi"><div class="n">6</div><div class="l">个采集来源(+日报/会话摘要为 AI 合成)</div></div>
-      <div class="kpi"><div class="n cool">3,355</div><div class="l">行 Python · 0 依赖</div></div>
-      <div class="kpi"><div class="n">112</div><div class="l">单元测试全绿</div></div>
+      <div class="kpi"><div class="n cool">3,582</div><div class="l">行 Python · 0 依赖</div></div>
+      <div class="kpi"><div class="n">118</div><div class="l">单元测试全绿</div></div>
     </div>
     <div class="toc">
       <a href="#arch">系统架构</a><a href="#model">数据模型</a><a href="#fields">字段词典</a><a href="#types">每种数据怎么处理</a>
@@ -333,11 +333,11 @@
       <div class="ptrade"><b>取舍</b> 存标题+"为什么改"的正文+文件明细,但<b>不存完整 diff</b>(ref=hash,`git show` 看全)——库轻、又保留了最值钱的决策理由。</div>
       <div class="pidx"><span class="lb">进检索</span><span class="fx" title="提交标题(一句话摘要)">summary</span><span class="fx" title="提交正文:为什么改+怎么验证">body</span></div>
       <details class="ex"><summary>看这类存进去长啥样(真实条目)</summary><div class="exb">
-        <span class="cap">git:data-insights:9322f560 · 一条提交条目</span>
-        <span class="fld">summary</span> Staging (#72)<br>
-        <span class="fld">body</span> <span class="v2">perf(cohort): 并行拉取 app combo,MS 任务 25min → 5-10min;原来 5 个 app combo 串行(5×5=25 次请求)…<span class="ar">(为什么改 + 怎么验证)</span></span><br>
-        <span class="fld">file_list</span> <span class="v2">applovin_spend_cohort_report.py (+1/-0) · workflow_applovin_asset_spend.yml (+0/-56) · …</span><br>
-        <span class="fld">ref</span> <span class="hl">9322f560</span> <span class="ar">→ git show 看完整 diff(不入库)</span>
+        <span class="cap">git:pay-core:83f2ab19 · 一条提交条目(虚构演示)</span>
+        <span class="fld">summary</span> fix(recon): 回调幂等键冲突按 trace_id 重试 (#48)<br>
+        <span class="fld">body</span> <span class="v2">高并发下回调重复投递会撞幂等键,旧逻辑直接丢弃造成对账缺口;改为按 trace_id 幂等重试,dryrun 重放 3 天差异归零…<span class="ar">(为什么改 + 怎么验证)</span></span><br>
+        <span class="fld">file_list</span> <span class="v2">recon/idempotent.py (+42/-9) · recon/replay_job.py (+18/-2) · …</span><br>
+        <span class="fld">ref</span> <span class="hl">83f2ab19</span> <span class="ar">→ git show 看完整 diff(不入库)</span>
       </div></details>
     </div>
 
@@ -351,10 +351,10 @@
       <div class="ptrade"><b>取舍</b> 只索引<b>你的提问</b>(不含助手长回答/完整 transcript),ref 指向原 jsonl 看全文——搜"我问过啥"很准、库不爆。</div>
       <div class="pidx"><span class="lb">进检索</span><span class="fx" title="当天会话的意图标题(可被 AI 摘要覆盖)">summary</span><span class="fx" title="打开 session 的第一句真实提问">opening</span><span class="fx" title="当天全部提问合并(≤8000字)">body</span><span class="fx" title="可选:AI 读问+答生成的准确标题+摘要">digest ✦</span></div>
       <details class="ex"><summary>看这类长啥样 + ✦AI 会话摘要怎么救糊标题(真实)</summary><div class="exb">
-        <span class="cap">全库 129/129 会话已生成摘要 · 这是其中一条</span>
-        <span class="fld">opening</span> <span class="v2">「拉取最新代码了吗」</span> <span class="ar">← 采集器原判标题(首问),代表不了整场</span><br>
-        <span class="fld">summary ✦</span> <span class="hl">梳理 Google Ads Asset 数据从 DWD 到 DWS 的全链路 ETL 流程</span> <span class="ar">← AI 读「问+答」后写的准确标题</span><br>
-        <span class="fld">digest ✦</span> <span class="v2">目标是理解 dwd_spend_google_ads_asset 如何流转到 dws_mkt_ads_asset_di;AI 拆解了 Google Ads API 拉取 → S3 落地 → load_dwd_next.py 按 jsonpath 字段映射写 DWD → spend_clean_dims 建维度 → dws JOIN…<span class="ar">(答案侧内容,现在也搜得到)</span></span><br>
+        <span class="cap">示例:96/96 会话已生成摘要(虚构演示)</span>
+        <span class="fld">opening</span> <span class="v2">「接着看昨天那个」</span> <span class="ar">← 采集器原判标题(首问),代表不了整场</span><br>
+        <span class="fld">summary ✦</span> <span class="hl">定位对账差异根因:上游时间戳未归一 UTC</span> <span class="ar">← AI 读「问+答」后写的准确标题</span><br>
+        <span class="fld">digest ✦</span> <span class="v2">目标是排查支付对账 T+1 差异;结论:上游回调时间戳未归一 UTC(clock skew ~7h),用 recon_replay 按 UTC 重放后差异归零;已加自动建单阈值…<span class="ar">(答案侧内容,现在也搜得到)</span></span><br>
         <span class="ar">原判保留在 detail.summary_raw;摘要存独立 sidecar,每次 sync 叠加回条目、重采不丢。</span>
       </div></details>
     </div>
@@ -370,8 +370,8 @@
       <div class="pidx"><span class="lb">进检索</span><span class="fx" title="会话标题">summary</span><span class="fx" title="能拿到的开场文本(有则存)">opening</span></div>
       <details class="ex"><summary>看这类长啥样(真实条目)</summary><div class="exb">
         <span class="cap">cursor · 一条跨天会话(两端归属演示)</span>
-        <span class="fld">summary</span> Retention metrics calculation issue<br>
-        <span class="fld">start → end</span> <span class="v2">2026-03-26 12:19 → 2026-03-27 16:08</span> <span class="ar">← 跨两天,只落在开始日+最后活跃日两端</span><br>
+        <span class="fld">summary</span> Checkout flow A/B bucketing issue<br>
+        <span class="fld">start → end</span> <span class="v2">2026-04-08 11:02 → 2026-04-09 15:37</span> <span class="ar">← 跨两天,只落在开始日+最后活跃日两端</span><br>
         <span class="fld">detail</span> <span class="v2">files 改动数 / add / del(cursor);codex 则是 git_branch + opening</span><br>
         <span class="ar">拿不到消息级文本,故没有 body——这是工具存储的限制,不是设计取巧。</span>
       </div></details>
@@ -387,9 +387,9 @@
       <div class="ptrade"><b>取舍</b> <b>不进按天日记</b>(纯参考、量大);全文归档只留最新版,旧版在 vault git 历史里。</div>
       <div class="pidx"><span class="lb">进检索</span><span class="fx" title="各级标题拼成的目录">headings</span><span class="fx" title="全文快照,≤10万字">content</span></div>
       <details class="ex"><summary>看这类长啥样(真实条目)</summary><div class="exb">
-        <span class="cap">docs · 一篇仓库文档索引</span>
-        <span class="fld">summary</span> DCS <span class="ar">(取自 H1)</span><br>
-        <span class="fld">headings</span> <span class="v2">DCS › 开发 › 本地开发 › 线上部署 › 构建基础镜像 …</span> <span class="ar">← 大纲,用来定位"讲了啥"</span><br>
+        <span class="cap">docs · 一篇仓库文档索引(虚构演示)</span>
+        <span class="fld">summary</span> PAY-CORE 运维手册 <span class="ar">(取自 H1)</span><br>
+        <span class="fld">headings</span> <span class="v2">运维手册 › 部署 › 回滚预案 › 对账任务 › 报警阈值 …</span> <span class="ar">← 大纲,用来定位"讲了啥"</span><br>
         <span class="fld">content</span> <span class="v2">全文快照写进 notes/_archive/…(永不裁剪,删源也不丢)</span>
       </div></details>
     </div>
@@ -404,14 +404,15 @@
       <div class="ptrade"><b>取舍(分层)</b> 知识层(卡)<b>上云可检索</b>,资料层(原始 csv/xlsx)<b>gitignore 留本地</b>——大文件/敏感明细不出本地,样例入库前打码。</div>
       <div class="pidx"><span class="lb">进检索</span><span class="fx" title="卡名">summary</span><span class="fx" title="数据卡正文:列/类型/统计/前5行样例/血缘">content</span></div>
       <details class="ex"><summary>看这类长啥样(真实数据卡)</summary><div class="exb">
-        <span class="cap">data/bv/BV-分桶-不分桶对比.card.md · 蒸馏后的数据卡(上云)</span>
-<pre>title: BV-分桶-不分桶对比
-kind: source          rows: 22 · cols: 14 · size: 15KB
-produced_by: [ads_mkt_bv_attr_user_type_tier_1d.sql]   # 血缘
-raw: _data/BV-分桶-不分桶对比.xlsx     # 原始文件本地留存、不上云
+        <span class="cap">data/recon/对账差异明细-0702.card.md · 蒸馏后的数据卡(上云,虚构演示)</span>
+<pre>title: 对账差异明细-0702
+kind: derived        rows: 48 · cols: 12 · size: 21KB
+inputs: [gateway_callbacks.csv]           # 血缘:上游输入
+produced_by: [recon_diff_export.sql]      # 产出代码
+raw: _data/对账差异明细-0702.xlsx           # 原始文件本地留存、不上云
 
-&gt; 原始数据。在 _data/…(不上云);拉取代码见 ads_mkt_bv_attr_user_type_tier_1d.sql
-## 列(14)  … 类型/统计/前 5 行样例(打码后)</pre>
+&gt; 派生数据。差异按 UTC 重放后归零的凭证;拉取代码见 recon_diff_export.sql
+## 列(12)  … 类型/统计/前 5 行样例(打码后)</pre>
         <span class="ar">卡片上云可检索;原始 xlsx gitignore 留本地。</span>
       </div></details>
     </div>
@@ -446,8 +447,8 @@ secret = Variable.get("secret_api_key")   # 变量名/调用照留,可检索
       <div class="pidx"><span class="lb">进检索</span><span class="fx" title="今日工作/思考/明日计划三段全文">body</span></div>
       <details class="ex"><summary>看这类长啥样(真实日报片段)</summary><div class="exb">
         <span class="cap">report:日期 · 渲染进当天日记顶部作总述</span>
-        <span class="fld">work</span> <span class="v2">- 素材匹配上线备料:对 applovin / google / unity / facebook / moloco 五渠道跑素材匹配 dryrun,核对花费能否对到具体素材。<br>- BF 三方支付注入 AF:做 ads↔dws 对账…</span><br>
-        <span class="ar">全库 79 篇日报;后续由 AI 读库合成(report gen→set),非手写。</span>
+        <span class="fld">work</span> <span class="v2">- 支付网关割接完成,对账差异清零;<br>- 搜索双写开始放量 5%,影子比对 diff 率 0.3%…</span><br>
+        <span class="ar">日报由 AI 读库合成(report gen→set),非手写;历史 xlsx 只是一次性种子。</span>
       </div></details>
     </div>
 
@@ -487,37 +488,30 @@ secret = Variable.get("secret_api_key")   # 变量名/调用照留,可检索
     <p class="sub">条目只打最细的<b>叶子</b>标签;层级写在<b>主题页</b>(parent 可多 = DAG 多父);查询时<b>上卷整棵子树</b>,移子树只改一处。
       下面是全库<b>逐条 AI 判 + 对抗复核</b>后的真实主题树(数字 = 该主题直接条目数,可 <span class="mono">loom topic show</span> 复现):</p>
     <p class="note" style="border-left:2px solid var(--warmd);padding-left:11px;margin:0 0 14px">
-      ⚠ 这棵树是<b>某数据仓库工程师的真实工作</b>分类<b>示例(已脱敏,仅作演示)</b>(数仓/归因/反作弊等)——
-      说明主题层"能长成什么样",不是 loom 预设的固定分类;换个人跑,会按各自的工作自然长出完全不同的树。</p>
+      ⚠ 下面是一棵<b>完全虚构的演示主题树</b>(支付/订单/搜索场景)——只为说明主题层"能长成
+      什么样",不是 loom 预设分类;每个人跑出来的树由自己的真实工作自然长成。</p>
     <div class="tstat">
-      <span>已分类 <b>791</b> / 非日报 1142 条</span><span><b>21</b> 个主题 · 4 层</span>
-      <span><b>17</b> 条多主题</span><span>日报不入主题(多主题叙事层)</span>
+      <span>已分类 <b>1,204</b> / 非日报 1,588 条</span><span><b>14</b> 个主题 · 3 层</span>
+      <span><b>12</b> 条多主题</span><span>日报不入主题(多主题叙事层)</span>
     </div>
     <div class="ttree">
-      <div class="trow"><span class="tn d0"><span class="nm">数仓建设</span><span class="c">伞</span></span></div>
-      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">素材归因</span><span class="c">50</span></span></div>
-      <div class="trow i2"><span class="tick">│└</span><span class="tn d2"><span class="nm">素材匹配重构</span><span class="c">28</span></span></div>
-      <div class="trow i3"><span class="tick">│&nbsp;└</span><span class="tn d3"><span class="nm">serial兜底</span><span class="c">13</span></span></div>
-      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">成本分摊</span><span class="c">35</span></span></div>
-      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">BF三方支付</span><span class="c">11</span></span></div>
-      <div class="trow i2"><span class="tick">│├</span><span class="tn d2"><span class="nm">净额</span><span class="c">28</span></span><span class="mp">↺ 多父:也属素材匹配重构</span></div>
-      <div class="trow i2"><span class="tick">│└</span><span class="tn d2"><span class="nm">三方对账</span><span class="c">16</span></span></div>
-      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">Cohort回收</span><span class="c">59</span></span></div>
-      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">渠道再归因</span><span class="c">21</span></span></div>
-      <div class="trow i1"><span class="tick">└</span><span class="tn d1"><span class="nm">数仓底座</span><span class="c">110</span></span></div>
-      <div class="trow"><span class="tn d0"><span class="nm">分析排查</span><span class="c">域</span></span></div>
-      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">反作弊</span><span class="c">32</span></span></div>
-      <div class="trow i2"><span class="tick">│├</span><span class="tn d2"><span class="nm">作弊排查</span><span class="c">68</span></span></div>
-      <div class="trow i2"><span class="tick">│├</span><span class="tn d2"><span class="nm">假单检测</span><span class="c">49</span></span></div>
-      <div class="trow i2"><span class="tick">│└</span><span class="tn d2"><span class="nm">渠道拉黑</span><span class="c">6</span></span></div>
-      <div class="trow i1"><span class="tick">└</span><span class="tn d1"><span class="nm">临时排查</span><span class="c">59</span></span></div>
-      <div class="trow"><span class="tn d0"><span class="nm">报表周报</span><span class="c">152</span></span></div>
-      <div class="trow"><span class="tn d0"><span class="nm">受众运营</span><span class="c">18</span></span></div>
-      <div class="trow"><span class="tn d0"><span class="nm">loom工具开发</span><span class="c">49</span></span></div>
-      <div class="trow i1"><span class="tick">└</span><span class="tn d1"><span class="nm">loom-飞书drive</span><span class="c">3</span></span></div>
+      <div class="trow"><span class="tn d0"><span class="nm">支付网关</span><span class="c">伞</span></span></div>
+      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">对账服务</span><span class="c">98</span></span></div>
+      <div class="trow i2"><span class="tick">│└</span><span class="tn d2"><span class="nm">幂等重试</span><span class="c">41</span></span></div>
+      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">灰度发布</span><span class="c">55</span></span><span class="mp">↺ 多父:也属订单中心</span></div>
+      <div class="trow i1"><span class="tick">└</span><span class="tn d1"><span class="nm">渠道路由</span><span class="c">37</span></span></div>
+      <div class="trow"><span class="tn d0"><span class="nm">订单中心</span><span class="c">域</span></span></div>
+      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">库存同步</span><span class="c">73</span></span></div>
+      <div class="trow i2"><span class="tick">│└</span><span class="tn d2"><span class="nm">慢查询治理</span><span class="c">29</span></span></div>
+      <div class="trow i1"><span class="tick">└</span><span class="tn d1"><span class="nm">履约链路</span><span class="c">44</span></span></div>
+      <div class="trow"><span class="tn d0"><span class="nm">搜索迁移</span><span class="c">域</span></span></div>
+      <div class="trow i1"><span class="tick">├</span><span class="tn d1"><span class="nm">ES→OpenSearch</span><span class="c">86</span></span></div>
+      <div class="trow i1"><span class="tick">└</span><span class="tn d1"><span class="nm">双写比对</span><span class="c">52</span></span></div>
+      <div class="trow"><span class="tn d0"><span class="nm">监控告警</span><span class="c">64</span></span></div>
+      <div class="trow"><span class="tn d0"><span class="nm">CI流水线</span><span class="c">31</span></span></div>
     </div>
-    <p class="note"><b>loom topic show 数仓建设</b> 上卷整棵子树、一次看全"数仓建设"下所有活;<b>show 素材匹配重构</b> 只看那一件事。
-      <b>净额</b>被 BF三方支付 与 素材匹配重构 两棵共享(多父,DAG),只在它主题页写两个 parent 即可。同一条记录照常出现在它那天的日记里。</p>
+    <p class="note"><b>loom topic show 支付网关</b> 上卷整棵子树、一次看全该域所有活;<b>show 对账服务</b> 只看那一件事。
+      <b>灰度发布</b>被 支付网关 与 订单中心 两棵共享(多父,DAG),只在它主题页写两个 parent 即可。同一条记录照常出现在它那天的日记里。</p>
   </section>
 
   <section id="cases">
@@ -525,36 +519,36 @@ secret = Variable.get("secret_api_key")   # 变量名/调用照留,可检索
     <p class="sub">下面数字都是 <b>loom topic show</b> 的真实输出、可命令复现;分类经<b>逐条核对</b>(已剔除误命中,如混进的 loom 讨论、自指的主题页)。</p>
     <div class="cases">
       <div class="case">
-        <div class="ch"><span class="t">① 素材匹配重构</span><span class="meta">上线 prod · <span class="mono">loom topic show 素材匹配重构 = 32 条</span></span></div>
-        <p>把素材匹配从"管道里堆 serial 特例"重构为分层匹配 + serial 兜底 + 脏数据分离。一件事从设计→落码→验证→交付,痕迹散在四类里,主题层(含子主题 serial兜底)上卷成一条线:</p>
+        <div class="ch"><span class="t">① 对账服务</span><span class="meta">上线 prod · <span class="mono">loom topic show 对账服务 = 98 条</span></span></div>
+        <p>从"每天人工对差异"到"自动建单+幂等重放"。一件事从报警→根因→落码→交付,痕迹散在四类里,主题层(含子主题 幂等重试)上卷成一条线:</p>
         <div class="trace">
-          <span class="tr">💬 <b>对话</b> <span class="c">2</span> 无主花费收尾判断</span><span class="sep">·</span>
-          <span class="tr">💻 <b>提交</b> <span class="c">8</span> clean_name→serial兜底→上线</span><span class="sep">·</span>
-          <span class="tr">📄 <b>文档</b> <span class="c">10</span> 五渠道清洗规则+交接档</span><span class="sep">·</span>
-          <span class="tr">📎 <b>数据/代码</b> <span class="c">12</span> 无主花费凭证+dryrun</span>
+          <span class="tr">💬 <b>对话</b> <span class="c">9</span> 差异根因排查(时区未归一)</span><span class="sep">·</span>
+          <span class="tr">💻 <b>提交</b> <span class="c">31</span> recon 重放→自动建单→上线</span><span class="sep">·</span>
+          <span class="tr">📄 <b>文档</b> <span class="c">22</span> 对账口径 + 割接手册</span><span class="sep">·</span>
+          <span class="tr">📎 <b>数据/代码</b> <span class="c">36</span> 差异明细凭证 + dryrun</span>
         </div>
-        <p><b>对比</b>:关键词搜"素材"给你 300 条一锅粥;这件事精确到这 32 条,一条决策链看到底(日报作为多主题叙事层,不计入单一主题)。</p>
+        <p><b>对比</b>:关键词搜"对账"给你几百条一锅粥;这件事精确到这 98 条,一条决策链看到底(日报作为多主题叙事层,不计入单一主题)。</p>
       </div>
       <div class="case">
-        <div class="ch"><span class="t">② 反作弊</span><span class="meta">从 Databricks 归档聚出 · 6 条</span></div>
-        <p>散在归档里的作弊排查脚本(多游戏 × 多渠道 作弊排查、假单检测、付费排查)聚成一个新主题:</p>
-        <div class="trace"><span class="tr">📎 <b>SQL 脚本</b> <span class="c">6</span> 各渠道作弊排查 + 假单/付费检测</span></div>
-        <p><b>值</b>:旧代码不再是死文件——下次查作弊从这件事进,不必全库大海捞针。</p>
+        <div class="ch"><span class="t">② 慢查询治理</span><span class="meta">从历史归档聚出 · 29 条</span></div>
+        <p>散在归档里的治理脚本(索引重建、explain 快照、压测记录)聚成一个新主题:</p>
+        <div class="trace"><span class="tr">📎 <b>SQL 脚本</b> <span class="c">29</span> 索引方案 + 压测对比 + 回滚预案</span></div>
+        <p><b>值</b>:旧代码不再是死文件——下次库存同步又慢了,从这件事进,不必全库大海捞针。</p>
       </div>
       <div class="case">
-        <div class="ch"><span class="t">③ 一个横跨 43 天的 Claude 会话</span><span class="meta">2026-04-21 → 06-30</span></div>
-        <p>一直开在同一 session 里的长会话,以前只挂开聊那天、后面 42 天全隐形。按天拆分后:</p>
-        <div class="trace"><span class="tr">拆成 <span class="c">43</span> 个当天条目</span><span class="sep">·</span><span class="tr">每天带那天的首问</span><span class="sep">·</span><span class="tr">整段提问可搜</span></div>
-        <p><b>值</b>:每个活跃天都看到当天真实对话;全库 <b>44</b> 个跨天会话被一并"救"回各自的天。</p>
+        <div class="ch"><span class="t">③ 一个横跨 37 天的 AI 会话</span><span class="meta">04-18 → 05-25</span></div>
+        <p>一直开在同一 session 里的长会话,以前只挂开聊那天、后面 36 天全隐形。按天拆分后:</p>
+        <div class="trace"><span class="tr">拆成 <span class="c">37</span> 个当天条目</span><span class="sep">·</span><span class="tr">每天带那天的首问</span><span class="sep">·</span><span class="tr">整段提问可搜</span></div>
+        <p><b>值</b>:每个活跃天都看到当天真实对话;库里 <b>28</b> 个跨天会话被一并"救"回各自的天。</p>
       </div>
       <div class="case">
-        <div class="ch"><span class="t">④ AI 会话摘要:救糊标题 + 让答案侧可搜</span><span class="meta">全库 129/129 会话已生成</span></div>
+        <div class="ch"><span class="t">④ AI 会话摘要:救糊标题 + 让答案侧可搜</span><span class="meta">96/96 会话已生成(示例)</span></div>
         <p>采集器只索引你的提问,长会话首问常含糊。用 <span class="mono">loom session gen</span> 让 AI 读当天<b>问+答</b>原文,写准标题 + 可检索摘要,叠加回条目(重采不丢):</p>
         <div class="trace">
-          <span class="tr">原判 <span class="c">拉取最新代码了吗</span></span><span class="sep">→</span>
-          <span class="tr">✦标题 <span class="c">梳理 Google Ads Asset 从 DWD 到 DWS 全链路 ETL</span></span>
+          <span class="tr">原判 <span class="c">接着看昨天那个</span></span><span class="sep">→</span>
+          <span class="tr">✦标题 <span class="c">定位对账差异根因:上游时间戳未归一 UTC</span></span>
         </div>
-        <p><b>值</b>:答案侧才有的词(如 <span class="mono">auto_stop_mins</span>、<span class="mono">value-based TOS</span>)现在都搜得到——以前它们只在助手回答里、全库检索不到。<b>129</b> 个会话一次工作流(每天一 agent 读 transcript)跑完。</p>
+        <p><b>值</b>:答案侧才有的词(如 <span class="mono">recon_replay</span>、<span class="mono">clock skew</span>)现在都搜得到——以前它们只在助手回答里、全库检索不到。</p>
       </div>
     </div>
   </section>
@@ -574,12 +568,12 @@ secret = Variable.get("secret_api_key")   # 变量名/调用照留,可检索
   <section>
     <h2>一天的全景(具体例子)</h2>
     <div class="day">
-      <div class="bar">📅 <span class="mono">2026-06-29</span> · 素材归因主题域:设计 → 被对抗式审查打回 → 重做正式版</div>
+      <div class="bar">📅 <span class="mono">2026-07-02</span> · 支付网关割接日:清障 → 割接 → 对账差异清零(虚构演示)</div>
       <div class="layers">
-        <div class="ly"><div class="tag">📋 日报</div><div class="t">8 条工作流</div><div class="d">带 ✅/🚧 状态</div></div>
-        <div class="ly"><div class="tag">💻 提交</div><div class="t">9 个提交</div><div class="d">带 body:为什么改+验证</div></div>
+        <div class="ly"><div class="tag">📋 日报</div><div class="t">6 条工作流</div><div class="d">带 ✅/🚧 状态</div></div>
+        <div class="ly"><div class="tag">💻 提交</div><div class="t">11 个提交</div><div class="d">带 body:为什么改+验证</div></div>
         <div class="ly"><div class="tag">💬 会话</div><div class="t">6h 长会话</div><div class="d">按天拆分 + ✦AI 摘要</div></div>
-        <div class="ly"><div class="tag">📎 数据</div><div class="t">2 张数据卡</div><div class="d">拉数凭证</div></div>
+        <div class="ly"><div class="tag">📎 数据</div><div class="t">2 张数据卡</div><div class="d">差异清零凭证</div></div>
       </div>
     </div>
   </section>
@@ -599,15 +593,15 @@ secret = Variable.get("secret_api_key")   # 变量名/调用照留,可检索
   <section>
     <h2>工程质量</h2>
     <div class="quality">
-      <div class="q"><div class="n">3,355</div><div class="l">行 Python</div></div>
+      <div class="q"><div class="n">3,582</div><div class="l">行 Python</div></div>
       <div class="q"><div class="n">0</div><div class="l">第三方依赖</div></div>
-      <div class="q"><div class="n">112</div><div class="l">单元测试全绿</div></div>
+      <div class="q"><div class="n">118</div><div class="l">单元测试全绿</div></div>
       <div class="q"><div class="n">7</div><div class="l">数据来源</div></div>
     </div>
     <p class="note">采集/检索/渲染/主题/散信息/日报/生命周期各自成模块;打码、路径穿越、FTS 召回、原子写、主题上卷都有端到端测试守护。</p>
   </section>
 
-  <footer>loom · 跨来源个人成果台账 · 纯标准库 Python · 代码开源 <b>github.com/joycastle/loom</b>(MIT),数据仓私有 · 数据截至 2026-07-05<span class="pill">MIT</span></footer>
+  <footer>loom · 跨来源个人成果台账 · 纯标准库 Python · 代码开源 <b>github.com/joycastle/loom</b>(MIT),数据仓私有 · 示例数据均为虚构演示 · 2026-07<span class="pill">MIT</span></footer>
 </main>
 </body>
 </html>

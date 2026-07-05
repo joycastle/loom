@@ -52,7 +52,7 @@ Prefer manual? `cd ~/Documents/loom && ./install.sh`, then just `loom sync --pus
 
 ## 🎨 Design highlights
 
-Full illustrated walkthrough: [`docs/loom_showcase.html`](./docs/loom_showcase.html) ([view online](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_showcase.html)).
+Product tour: [loom_tour.html](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_tour.html) · Deep technical walkthrough: [loom_showcase.html](https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_showcase.html).
 
 - **① Flat storage, views on demand.** One truth file keyed by stable `id` (`entries.jsonl`); "by day", "by topic", "by project" are just different cuts. Capture once, visible on every axis.
 - **② Summary + back-link only.** Each entry keeps the valuable short text (title, questions, commit rationale) plus a `ref` pointer; full transcripts / diffs / raw files stay where they live. Thousands of entries, still lightweight, always traceable.
