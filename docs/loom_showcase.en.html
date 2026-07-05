@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23141821'/><g fill='%235AA9A0'><rect x='14' y='21.5' width='72' height='9' rx='4.5'/><rect x='14' y='45.5' width='72' height='9' rx='4.5'/><rect x='14' y='69.5' width='72' height='9' rx='4.5'/></g><g fill='%23E0A84E'><rect x='21.5' y='14' width='9' height='72' rx='4.5'/><rect x='45.5' y='14' width='9' height='72' rx='4.5'/><rect x='69.5' y='14' width='9' height='72' rx='4.5'/></g><g fill='%235AA9A0'><rect x='45.5' y='21.5' width='9' height='9' rx='2.5'/><rect x='21.5' y='45.5' width='9' height='9' rx='2.5'/><rect x='69.5' y='45.5' width='9' height='9' rx='2.5'/><rect x='45.5' y='69.5' width='9' height='9' rx='2.5'/></g></svg>">
+<style>*{margin:0;padding:0}</style>
+<title>loom · Design & Internals</title>
+<style>
+  :root{
+    --ink:#0F1218; --panel:#171B23; --panel2:#1D222C; --line:#2A313D;
+    --tx:#E8EAED; --mut:#8A93A3; --dim:#5C6673;
+    --warm:#E0A84E; --cool:#5AA9A0; --warmd:#8a6320; --r:14px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--tx);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    line-height:1.62;-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1;}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+  .wrap{max-width:1020px;margin:0 auto;padding:0 22px;}
+  a{color:var(--cool);text-decoration:none;} p{margin:0 0 12px;}
+  .warp{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background:repeating-linear-gradient(90deg,transparent 0 46px,rgba(224,168,78,.04) 46px 47px);}
+  .glow{position:fixed;top:-160px;left:50%;transform:translateX(-50%);width:900px;height:420px;z-index:0;
+    pointer-events:none;background:radial-gradient(ellipse at center,rgba(90,169,160,.12),transparent 62%);}
+  main{position:relative;z-index:1;}
+
+  header{padding:56px 0 34px;}
+  .brand{display:flex;align-items:center;gap:13px;margin-bottom:26px;}
+  .brand svg{width:46px;height:46px;display:block;flex-shrink:0;}
+  .brand .bnm{font-size:23px;font-weight:720;letter-spacing:-.01em;
+    background:linear-gradient(92deg,var(--warm),var(--cool));
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+  .eyebrow{font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--mut);display:flex;gap:10px;align-items:center;}
+  .eyebrow::before{content:"";width:26px;height:1px;background:linear-gradient(90deg,var(--warm),var(--cool));}
+  h1{font-size:clamp(31px,5.2vw,52px);line-height:1.05;margin:16px 0 0;font-weight:680;letter-spacing:-.02em;text-wrap:balance;}
+  h1 .thr{background:linear-gradient(92deg,var(--warm),var(--cool));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .lede{color:var(--mut);font-size:clamp(15px,2.1vw,18px);max-width:64ch;margin:18px 0 0;}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin:34px 0 0;background:var(--line);
+    border:1px solid var(--line);border-radius:var(--r);overflow:hidden;}
+  .kpi{background:var(--panel);padding:18px 16px;}
+  .kpi .n{font-size:clamp(23px,3.4vw,33px);font-weight:700;letter-spacing:-.02em;}
+  .kpi .n.warm{color:var(--warm)} .kpi .n.cool{color:var(--cool)}
+  .kpi .l{font-size:12.5px;color:var(--mut);margin-top:3px;}
+  .toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px;}
+  .toc a{font-size:12.5px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 12px;color:var(--mut);}
+  .toc a:hover{color:var(--cool);border-color:var(--cool);}
+
+  section{padding:40px 0;border-top:1px solid var(--line);}
+  h2{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--warm);margin:0 0 8px;font-weight:640;}
+  .sub{color:var(--mut);font-size:15px;max-width:72ch;margin:0 0 22px;}
+  .note{color:var(--mut);font-size:13px;margin-top:12px;}
+  ul.clean{margin:8px 0 0;padding-left:18px;} ul.clean li{margin:5px 0;font-size:14px;} ul.clean li b{color:var(--tx);}
+
+  .figure{background:#0B0E13;border:1px solid var(--line);border-radius:var(--r);padding:14px;overflow-x:auto;}
+  .figure svg{display:block;min-width:660px;width:100%;height:auto;}
+  .dg text{font-family:system-ui,sans-serif;}
+
+  /* data model */
+  .code{background:#0B0E13;border:1px solid var(--line);border-radius:12px;padding:16px 18px;overflow-x:auto;}
+  .code pre{margin:0;font-size:13px;line-height:1.85;white-space:pre;font-family:ui-monospace,Menlo,Consolas,monospace;color:#c9d1dc;}
+  .code .kk{color:var(--warm);} .code .cc{color:var(--cool);} .code .gg{color:var(--dim);}
+  .fields{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:14px;}
+  @media(max-width:680px){.fields{grid-template-columns:1fr;}}
+  .fd{font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 12px;}
+  .fd b{color:var(--cool);} .fd span{color:var(--mut);}
+
+  /* per-type breakdown */
+  .ptype{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin-bottom:14px;}
+  .pt-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+  .pt-h .ic{font-size:18px;}
+  .pt-h .nm{font-size:16px;font-weight:660;}
+  .pt-h .bd{font-size:11px;color:var(--cool);border:1px solid var(--line);border-radius:999px;padding:2px 9px;}
+  .pt-h .bd.k{color:var(--warm);}
+  .pflow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  @media(max-width:680px){.pflow{grid-template-columns:1fr;}}
+  .ps{background:var(--panel2);padding:12px 13px;position:relative;}
+  .ps .k{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:5px;}
+  .ps .k.src{color:var(--mut)} .ps .k.pro{color:var(--warm)} .ps .k.sto{color:var(--cool)}
+  .ps .v{font-size:12.7px;color:var(--tx);line-height:1.5;}
+  .ps .v .mono{font-size:11.5px;color:var(--mut);}
+  .ptrade{margin-top:10px;font-size:12.7px;color:var(--mut);border-left:2px solid var(--warmd);padding:4px 0 4px 11px;}
+  .ptrade b{color:var(--warm);font-weight:600;}
+  .pidx{margin-top:8px;font-size:12px;color:var(--dim);display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .pidx .lb{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);}
+  .pidx b{color:var(--cool);}
+  .fx{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--cool);
+    border:1px solid var(--line);border-radius:6px;padding:2px 7px;background:var(--panel2);cursor:help;}
+  .fx:hover{border-color:var(--cool);}
+  /* expandable "what does it look like" example */
+  .ex{margin-top:11px;}
+  .ex>summary{cursor:pointer;font-size:12px;color:var(--cool);list-style:none;
+    display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:3px 11px;}
+  .ex>summary::-webkit-details-marker{display:none;}
+  .ex>summary::before{content:"▸";color:var(--dim);font-size:10px;}
+  .ex[open]>summary::before{content:"▾";}
+  .ex>summary:hover{color:var(--warm);border-color:var(--warm);}
+  .exb{margin-top:9px;background:#0B0E13;border:1px solid var(--line);border-radius:9px;
+    padding:12px 14px;font-size:12px;line-height:1.65;color:#c9d1dc;overflow-x:auto;}
+  .exb .fld{color:var(--warm);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;}
+  .exb .v2{color:var(--mut);}
+  .exb .ar{color:var(--dim);}
+  .exb .hl{color:var(--cool);}
+  .exb pre{margin:0;white-space:pre-wrap;word-break:break-word;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.6;color:#a9b2bf;}
+  .exb .cap{display:block;color:var(--dim);font-size:10.5px;margin:0 0 7px;letter-spacing:.03em;}
+
+  /* field glossary */
+  .gloss{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
+  @media(max-width:680px){.gloss{grid-template-columns:1fr;}}
+  .gl{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+    display:flex;gap:12px;align-items:flex-start;}
+  .gl .nmfx{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:var(--warm);
+    background:#0B0E13;border:1px solid var(--warmd);border-radius:6px;padding:3px 8px;white-space:nowrap;flex-shrink:0;}
+  .gl .gd{font-size:12.7px;color:var(--mut);line-height:1.55;}
+  .gl .gd b{color:var(--tx);font-weight:600;}
+  .gl .gd .who{color:var(--cool);}
+  .gl .gd .ix{display:block;font-size:10.5px;margin-top:5px;color:var(--dim);letter-spacing:.03em;}
+  .gl .gd .ix.no{color:var(--warmd);}
+
+  /* storage vs views */
+  .axgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:6px;}
+  @media(max-width:680px){.axgrid{grid-template-columns:repeat(2,1fr);}}
+  .ax{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 10px;text-align:center;}
+  .ax .t{font-size:13px;font-weight:600;} .ax .m{font-size:11px;color:var(--mut);margin-top:2px;}
+  .ax .cmd{font-size:11px;color:var(--cool);margin-top:6px;}
+
+  /* pipeline */
+  .pipe{display:flex;flex-wrap:wrap;gap:8px;}
+  .st{flex:1 1 145px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 14px;}
+  .st .no{font-size:11px;color:var(--warm);} .st .t{font-size:14px;font-weight:600;margin:2px 0;} .st .d{font-size:12px;color:var(--mut);}
+
+  .day{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;}
+  .day .bar{padding:12px 16px;border-bottom:1px solid var(--line);font-size:13px;color:var(--mut);}
+  .day .bar .mono{color:var(--tx)}
+  .layers{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);}
+  @media(max-width:680px){.layers{grid-template-columns:repeat(2,1fr);}}
+  .ly{background:var(--panel);padding:14px;} .ly .tag{font-size:11px;color:var(--warm);}
+  .ly .t{font-size:13px;font-weight:600;margin:3px 0;} .ly .d{font-size:12px;color:var(--mut);}
+
+  .quality{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center;}
+  @media(max-width:680px){.quality{grid-template-columns:repeat(2,1fr);}}
+  .q{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 10px;}
+  .q .n{font-size:26px;font-weight:700;color:var(--warm);} .q .l{font-size:12px;color:var(--mut);margin-top:3px;}
+  .ttree{background:#0B0E13;border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;overflow-x:auto;}
+  .trow{display:flex;align-items:center;padding:2.5px 0;white-space:nowrap;font-size:13.5px;}
+  .tick{color:var(--dim);font-family:ui-monospace,monospace;margin-right:2px;}
+  .tn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:4px 11px;background:var(--panel);}
+  .tn .c{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--warm);}
+  .tn.d0{border-color:var(--warmd);} .tn.d0 .nm{color:var(--warm);font-weight:640;}
+  .tn.d1 .nm{color:var(--cool);} .tn.d2 .nm{color:var(--tx);}
+  .tn.d3{background:var(--panel2);} .tn.d3 .nm{color:var(--mut);}
+  .i1{padding-left:24px} .i2{padding-left:50px} .i3{padding-left:76px}
+  .mp{color:var(--warm);font-size:11px;margin-left:8px;}
+  .tstat{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;}
+  .tstat span{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12.5px;color:var(--mut);}
+  .tstat b{color:var(--cool);}
+  .cases{display:flex;flex-direction:column;gap:14px;}
+  .case{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;}
+  .case .ch{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  .case .ch .t{font-size:16px;font-weight:660;} .case .ch .meta{font-size:12px;color:var(--mut);}
+  .case p{font-size:13.5px;color:var(--mut);margin:8px 0 0;} .case p b{color:var(--tx);}
+  .trace{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:11px;}
+  .tr{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 11px;font-size:12.5px;}
+  .tr b{color:var(--cool);} .tr .c{color:var(--warm);font-weight:700;} .trace .sep{color:var(--dim);}
+  footer{padding:34px 0 60px;color:var(--dim);font-size:12.5px;border-top:1px solid var(--line);}
+  .pill{display:inline-block;font-size:11px;color:var(--cool);border:1px solid var(--line);border-radius:999px;padding:2px 9px;margin-left:6px;}
+</style>
+</head>
+<body>
+<div class="warp"></div><div class="glow"></div>
+<div style="position:sticky;top:0;z-index:50;display:flex;justify-content:center;padding:10px 0;background:rgba(15,18,24,.88);backdrop-filter:blur(8px);border-bottom:1px solid #1c222c"><div style="display:flex;border:1px solid #2A313D;border-radius:999px;overflow:hidden"><a href="https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_tour.en.html" style="padding:8px 22px;font-size:13.5px;font-weight:600;text-decoration:none;background:transparent;color:#8A93A3">🎬 Tour</a><a href="https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_showcase.en.html" style="padding:8px 22px;font-size:13.5px;font-weight:600;text-decoration:none;background:rgba(224,168,78,.16);color:#E0A84E">📘 Deep dive</a></div><a href="https://htmlpreview.github.io/?https://github.com/joycastle/loom/blob/main/docs/loom_showcase.html" style="margin-left:10px;align-self:center;padding:6px 14px;font-size:12px;color:#8A93A3;text-decoration:none;border:1px solid #2A313D;border-radius:999px">中文</a></div>
+<main class="wrap">
+
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 100 100" role="img" aria-label="loom">
+        <defs>
+          <linearGradient id="lwarp" gradientUnits="userSpaceOnUse" x1="0" y1="14" x2="0" y2="86">
+            <stop offset="0" stop-color="#F0C270"/><stop offset="1" stop-color="#D89A3C"/></linearGradient>
+          <linearGradient id="lweft" gradientUnits="userSpaceOnUse" x1="14" y1="0" x2="86" y2="0">
+            <stop offset="0" stop-color="#69C2B8"/><stop offset="1" stop-color="#4E9B92"/></linearGradient>
+        </defs>
+        <rect x="2" y="2" width="96" height="96" rx="22" fill="#141821" stroke="#2A313D" stroke-width="1.5"/>
+        <g fill="url(#lweft)"><rect x="14" y="21.5" width="72" height="9" rx="4.5"/>
+          <rect x="14" y="45.5" width="72" height="9" rx="4.5"/><rect x="14" y="69.5" width="72" height="9" rx="4.5"/></g>
+        <g fill="url(#lwarp)"><rect x="21.5" y="14" width="9" height="72" rx="4.5"/>
+          <rect x="45.5" y="14" width="9" height="72" rx="4.5"/><rect x="69.5" y="14" width="9" height="72" rx="4.5"/></g>
+        <g fill="url(#lweft)"><rect x="45.5" y="21.5" width="9" height="9" rx="2.5"/>
+          <rect x="21.5" y="45.5" width="9" height="9" rx="2.5"/><rect x="69.5" y="45.5" width="9" height="9" rx="2.5"/>
+          <rect x="45.5" y="69.5" width="9" height="9" rx="2.5"/></g>
+      </svg>
+      <span class="bnm">loom</span>
+    </div>
+    <div class="eyebrow">Deep dive · System design & internals · All examples are synthetic demo data</div>
+    <h1>Weave scattered work traces<br><span class="thr">into a searchable, cross-linked ledger</span></h1>
+    <p class="lede">loom collects git commits, AI sessions, docs, code, data files, and daily reports — normalizing everything into a flat record store,
+      then derives a full-text search index, per-day journals, topic associations, and a private cloud backup.
+      This page explains: the overall architecture,
+      <b>exactly how each data type is processed and stored</b>, and the trade-offs behind every design decision.</p>
+    <div class="kpis">
+      <div class="kpi"><div class="n warm">1,842</div><div class="l">normalized entries (demo)</div></div>
+      <div class="kpi"><div class="n">6</div><div class="l">ingestion sources (+daily reports / session digests are AI-synthesized)</div></div>
+      <div class="kpi"><div class="n cool">3,582</div><div class="l">lines of Python · 0 dependencies</div></div>
+      <div class="kpi"><div class="n">118</div><div class="l">unit tests, all green</div></div>
+    </div>
+    <div class="toc">
+      <a href="#arch">Architecture</a><a href="#model">Data model</a><a href="#fields">Field glossary</a><a href="#types">Per-type breakdown</a>
+      <a href="#axes">Storage vs views</a><a href="#topic">Topic layer (graph)</a><a href="#cases">Real cases</a>
+      <a href="#flow">Data flow</a><a href="#honest">Honest trade-offs</a>
+    </div>
+  </header>
+
+  <section id="arch">
+    <h2>Architecture — Seven streams, one truth, derive everything</h2>
+    <p class="sub">Like a loom: <b>6 ingestion sources</b> converge at a knot (normalize + redact) → one source of truth → weave out search, journal, topics, cloud backup.
+      <b>Daily reports are not an ingestion source</b> — they are AI-synthesized output derived from other data already in the store, rendered at the top of each day's journal (see right).</p>
+    <div class="figure"><svg class="dg" viewBox="0 0 960 380" role="img" aria-label="Architecture flow diagram">
+      <defs>
+        <linearGradient id="gt" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#E0A84E"/><stop offset="1" stop-color="#5AA9A0"/>
+        </linearGradient>
+        <radialGradient id="gk" cx="0.35" cy="0.35" r="0.75">
+          <stop offset="0" stop-color="#5AA9A0"/><stop offset="1" stop-color="#8a6320"/>
+        </radialGradient>
+      </defs>
+      <!-- Left: 6 ingestion sources -->
+      <g font-size="13" fill="#E8EAED">
+        <rect x="8" y="30" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="50">git commits</text>
+        <rect x="8" y="88" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="108">Claude sessions</text>
+        <rect x="8" y="146" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="166">Cursor sessions</text>
+        <rect x="8" y="204" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="224">Codex sessions</text>
+        <rect x="8" y="262" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="282">Repo docs .md</text>
+        <rect x="8" y="320" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="340">Data · Code · Notes</text>
+      </g>
+      <!-- Convergence lines -->
+      <g fill="none" stroke="url(#gt)" stroke-width="1.6" opacity="0.75">
+        <path d="M184,45 C300,45 390,175 446,175"/>
+        <path d="M184,103 C300,103 400,175 446,175"/>
+        <path d="M184,161 C320,161 410,175 446,175"/>
+        <path d="M184,219 C320,219 410,175 446,175"/>
+        <path d="M184,277 C300,277 400,175 446,175"/>
+        <path d="M184,335 C300,335 390,175 446,175"/>
+      </g>
+      <!-- Knot (normalize + redact) -->
+      <circle cx="480" cy="175" r="36" fill="url(#gk)" stroke="#2A313D"/>
+      <text x="480" y="171" text-anchor="middle" font-size="15" fill="#0F1218" font-weight="700">loom</text>
+      <text x="480" y="189" text-anchor="middle" font-size="9.5" fill="#0F1218">normalize·redact</text>
+      <rect x="410" y="238" width="140" height="30" rx="7" fill="#1D222C" stroke="#8a6320"/>
+      <text x="480" y="258" text-anchor="middle" font-size="12" fill="#E0A84E">entries.jsonl source of truth</text>
+      <path d="M480,211 L480,238" stroke="#8a6320" stroke-width="1.4" fill="none"/>
+      <!-- Derivation lines -->
+      <g fill="none" stroke="url(#gt)" stroke-width="1.6" opacity="0.75">
+        <path d="M516,175 C640,175 700,49 776,49"/>
+        <path d="M516,175 C640,175 700,121 776,121"/>
+        <path d="M516,175 C640,175 700,193 776,193"/>
+        <path d="M516,175 C640,175 700,265 776,265"/>
+        <path d="M516,175 C640,175 700,337 776,337"/>
+      </g>
+      <!-- Right: 5 derived outputs (incl. AI-synthesized daily report) -->
+      <g font-size="13" fill="#E8EAED">
+        <rect x="776" y="34" width="176" height="30" rx="7" fill="#1D222C" stroke="#5AA9A0"/><text x="788" y="54">Search index FTS5</text>
+        <rect x="776" y="106" width="176" height="30" rx="7" fill="#1D222C" stroke="#5AA9A0"/><text x="788" y="126">Per-day journal (md)</text>
+        <rect x="776" y="178" width="176" height="30" rx="7" fill="#1D222C" stroke="#5AA9A0"/><text x="788" y="198">Topic graph (DAG)</text>
+        <rect x="776" y="250" width="176" height="30" rx="7" fill="#1D222C" stroke="#E0A84E"/><text x="788" y="270" fill="#E0A84E">Daily report (AI-synthesized)</text>
+        <rect x="776" y="322" width="176" height="30" rx="7" fill="#1D222C" stroke="#5AA9A0"/><text x="788" y="342">Private cloud backup git</text>
+      </g>
+    </svg></div>
+  </section>
+
+  <section id="model">
+    <h2>Core data model — All sources normalized to the same shape</h2>
+    <p class="sub">One entry = "one thing that happened / one piece of material." Different sources fill different <span class="mono">detail</span> fields — no separate table per source type.</p>
+    <div class="code"><pre>{
+  <span class="kk">"id"</span>:      <span class="cc">"git:data-marketing:0842ee76"</span>,   <span class="gg">// stable primary key → idempotent dedup / day-bucketing</span>
+  <span class="kk">"date"</span>:    <span class="cc">"2026-07-02"</span>,  <span class="kk">"ts"</span>: <span class="cc">"…T22:30:00"</span>,  <span class="kk">"project"</span>: <span class="cc">"data-marketing"</span>,
+  <span class="kk">"tool"</span>:    <span class="cc">"git"</span>,   <span class="kk">"kind"</span>: <span class="cc">"commit"</span>,   <span class="gg">// source / type</span>
+  <span class="kk">"summary"</span>: <span class="cc">"fix(dwb-moloco): clean_name strip dedup suffix…"</span>,
+  <span class="kk">"ref"</span>:     <span class="cc">"0842ee76"</span>,       <span class="gg">// back-link to original; full text stays at source</span>
+  <span class="kk">"detail"</span>:  { <span class="gg">// source-specific: body / opening / file_list / content / path / dated …</span> }
+}</pre></div>
+    <div class="fields">
+      <div class="fd"><b>Stable id</b> <span>Re-ingestion only upserts; id can encode date (claude:session:date).</span></div>
+      <div class="fd"><b>ref back-link</b> <span>Stores pointer + summary; full text stays at source, keeping the store lean.</span></div>
+      <div class="fd"><b>Free-form detail</b> <span>Each source fills its own fields — no extra tables needed.</span></div>
+      <div class="fd"><b>Flat storage</b> <span>Not bucketed by day/project — those are "views."</span></div>
+    </div>
+  </section>
+
+  <section id="fields">
+    <h2>Searchable fields — Know these terms first</h2>
+    <p class="sub">The "Indexed" tags on each type card below refer to these field names. They are the <b>source-specific text slots</b> inside an entry's <span class="mono">detail</span>:
+      <b>Fields marked ◆ are indexed in FTS and reachable by <span class="mono">loom search</span></b>;
+      <span class="mono">ref</span> is a back-link only — not full-text indexed. <span class="note" style="display:inline">(Hover over the field chips on each card for a tooltip.)</span></p>
+    <div class="gloss">
+      <div class="gl"><span class="nmfx">summary</span><div class="gd">
+        <b>One-line title / summary — every entry has one.</b> <span class="who">git = commit subject · AI session = intent title · data = card name · doc = H1</span>
+        <span class="ix">◆ Indexed · the first line shown in journals and search results</span></div></div>
+      <div class="gl"><span class="nmfx">opening</span><div class="gd">
+        <b>Full text of the session's opening message</b> (AI session types only). The literal first real question you typed in that session.
+        <span class="ix">◆ Indexed</span></div></div>
+      <div class="gl"><span class="nmfx">body</span><div class="gd">
+        <b>Long-form text.</b> <span class="who">git = commit body (why + how verified) · Claude = all your prompts for that day merged (≤8,000 chars)</span>
+        <span class="ix">◆ Indexed — full prompts and commit rationale are all searchable</span></div></div>
+      <div class="gl"><span class="nmfx">headings</span><div class="gd">
+        <b>Document outline</b>: all heading levels concatenated (doc type only). Lets you locate "what this doc covers" without reading the full text.
+        <span class="ix">◆ Indexed</span></div></div>
+      <div class="gl"><span class="nmfx">content</span><div class="gd">
+        <b>Full-text snapshot of a doc or code file</b> (≤100k chars; tail truncated if longer). Snapshot survives even if the source file is deleted.
+        <span class="ix">◆ Indexed</span></div></div>
+      <div class="gl"><span class="nmfx">digest</span><div class="gd">
+        <b>AI session digest</b>: after reading the day's full Q&amp;A, the AI writes an accurate title + 2–4 sentence summary (optional generation).
+        Fills the gap when the opening prompt is vague or the answer-side content is unsearchable; once written, the journal title gains ✦.
+        <span class="ix">◆ Indexed (stored in a sidecar file; re-ingestion never clobbers it)</span></div></div>
+      <div class="gl"><span class="nmfx">ref</span><div class="gd">
+        <b>Back-link pointer</b>: git hash / jsonl path / filename. Follow it to see the full diff or complete conversation.
+        <span class="ix no">○ Not indexed — traceability only (keeps the store lean)</span></div></div>
+    </div>
+    <p class="note"><b>Why this split?</b> Each entry keeps only "valuable short text + one back-link"; full diffs, transcripts, and raw files stay at the source for on-demand retrieval.
+      That is why the store holds 1,200+ entries and stays lean, while every entry is one hop away from its original.
+      <span class="mono">detail</span> is the field bag for these slots — no separate table per source type.</p>
+  </section>
+
+  <section id="types">
+    <h2>Per-type breakdown: how each data type is collected, processed, stored, and why</h2>
+    <p class="sub">Seven data types, each with its own parsing and storage strategy. Shared principle: <b>store summary + back-link + searchable text only; full text and raw files stay at source</b>.
+      What can go to the cloud is the text-knowledge layer; heavy or sensitive files stay local. <b>Expand "What does it look like?" at the bottom of each card</b> to see a real entry from the store.</p>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">💻</span><span class="nm">git commits</span><span class="bd k">tool=git</span><span class="bd">kind=commit</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">Source</div><div class="v">Each repo via <span class="mono">git log --all --no-merges --since</span>, filtered to your own commits by email/name</div></div>
+        <div class="ps"><div class="k pro">Processing</div><div class="v">Parse header + body (%b) + file stats (numstat); sentinel-separate body from numstat; renames use new path; dedup on same subject + same delta</div></div>
+        <div class="ps"><div class="k sto">Stored as</div><div class="v">summary = subject; detail = {body ≤4,000, file_list ≤40 (with +/- lines), ins/del/files}; date = author date</div></div>
+      </div>
+      <div class="ptrade"><b>Trade-off</b> Stores the subject + "why it changed" body + file stats, but <b>not the full diff</b> (ref = hash; use `git show` for the full diff) — keeps the store lean while preserving the most valuable decision context.</div>
+      <div class="pidx"><span class="lb">Indexed</span><span class="fx" title="Commit subject (one-line summary)">summary</span><span class="fx" title="Commit body: why changed + how verified">body</span></div>
+      <details class="ex"><summary>What does a stored entry look like? (synthetic demo)</summary><div class="exb">
+        <span class="cap">git:pay-core:83f2ab19 · one commit entry (synthetic demo)</span>
+        <span class="fld">summary</span> fix(recon): idempotency key collision — retry by trace_id (#48)<br>
+        <span class="fld">body</span> <span class="v2">Under high concurrency, duplicate callback delivery collided on the idempotency key; old logic silently dropped duplicates, causing reconciliation gaps. Changed to idempotent retry by trace_id; dryrun replay over 3 days reduced diff to zero…<span class="ar">(why changed + how verified)</span></span><br>
+        <span class="fld">file_list</span> <span class="v2">recon/idempotent.py (+42/-9) · recon/replay_job.py (+18/-2) · …</span><br>
+        <span class="fld">ref</span> <span class="hl">83f2ab19</span> <span class="ar">→ git show for the full diff (not stored)</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">💬</span><span class="nm">Claude Code sessions</span><span class="bd k">tool=claude</span><span class="bd">kind=session</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">Source</div><div class="v"><span class="mono">~/.claude/projects/*/*.jsonl</span> — individual messages with timestamps</div></div>
+        <div class="ps"><div class="k pro">Processing</div><div class="v">UTC → local time; <b>split multi-day sessions by day</b>; skip commands/tools/compression summaries; use the first real user prompt of each day as the title</div></div>
+        <div class="ps"><div class="k sto">Stored as</div><div class="v">id = claude:session:date; detail = {start/end, user/asst message counts, opening ≤1,200, <b>all user prompts for the day body ≤8,000</b>}</div></div>
+      </div>
+      <div class="ptrade"><b>Trade-off</b> Indexes only <b>your prompts</b> (not assistant replies or full transcripts); ref points to the original jsonl for the full conversation — "search what I asked" is precise and the store stays bounded.</div>
+      <div class="pidx"><span class="lb">Indexed</span><span class="fx" title="Session intent title for the day (may be overwritten by AI digest)">summary</span><span class="fx" title="The first real prompt that opened this session">opening</span><span class="fx" title="All user prompts for the day merged (≤8,000 chars)">body</span><span class="fx" title="Optional: AI-generated accurate title + summary from Q&amp;A">digest ✦</span></div>
+      <details class="ex"><summary>What does it look like? + How ✦ AI digest rescues a vague title (real example)</summary><div class="exb">
+        <span class="cap">Example: 96/96 sessions with digest generated (synthetic demo)</span>
+        <span class="fld">opening</span> <span class="v2">"continuing from yesterday"</span> <span class="ar">← raw collector title (first prompt) — doesn't represent the whole session</span><br>
+        <span class="fld">summary ✦</span> <span class="hl">Root-caused reconciliation diff: upstream timestamps not normalized to UTC</span> <span class="ar">← accurate title written by AI after reading the full Q&amp;A</span><br>
+        <span class="fld">digest ✦</span> <span class="v2">Goal was to diagnose a T+1 payment reconciliation diff; conclusion: upstream callback timestamps not normalized to UTC (clock skew ~7h); replaying with recon_replay using UTC reduced diff to zero; auto-ticket threshold added…<span class="ar">(answer-side content — now searchable too)</span></span><br>
+        <span class="ar">Original title preserved in detail.summary_raw; digest stored in a sidecar — re-ingestion merges back, never clobbers.</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">🖱️</span><span class="nm">Cursor / Codex sessions</span><span class="bd k">tool=cursor·codex</span><span class="bd">kind=session</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">Source</div><div class="v">Cursor <span class="mono">state.vscdb</span> / Codex <span class="mono">state_5.sqlite</span>; <b>copy to a temp dir before reading to avoid lock contention</b></div></div>
+        <div class="ps"><div class="k pro">Processing</div><div class="v">Only session-level timestamps available (no per-message text) → attributed to <b>start date + last active date</b> only</div></div>
+        <div class="ps"><div class="k sto">Stored as</div><div class="v">id = tool:session:date; detail = {start/end, changed files/lines (cursor), git_branch (codex), opening}</div></div>
+      </div>
+      <div class="ptrade"><b>Trade-off (data limitation)</b> No per-message text available — attribution is <b>title-level + two endpoints only</b> (intermediate days may be missed). This is a tool storage constraint, not a design shortcut — noted in the code.</div>
+      <div class="pidx"><span class="lb">Indexed</span><span class="fx" title="Session title">summary</span><span class="fx" title="Opening text if available">opening</span></div>
+      <details class="ex"><summary>What does a stored entry look like? (real entry)</summary><div class="exb">
+        <span class="cap">cursor · a multi-day session (two-endpoint attribution demo)</span>
+        <span class="fld">summary</span> Checkout flow A/B bucketing issue<br>
+        <span class="fld">start → end</span> <span class="v2">2026-04-08 11:02 → 2026-04-09 15:37</span> <span class="ar">← spans two days; attributed only to start date + last active date</span><br>
+        <span class="fld">detail</span> <span class="v2">files changed / add / del (cursor); codex has git_branch + opening instead</span><br>
+        <span class="ar">No per-message text available, so no body — this is a tool storage limitation, not a design choice.</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">📄</span><span class="nm">Repo docs .md</span><span class="bd k">tool=docs</span><span class="bd">kind=doc</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">Source</div><div class="v"><span class="mono">.md</span> files across all repos (skipping node_modules/vendor etc.)</div></div>
+        <div class="ps"><div class="k pro">Processing</div><div class="v">Extract H1 title + outline (headings) + full text (≤200k); full-text snapshot written to <span class="mono">vault/notes/_archive</span></div></div>
+        <div class="ps"><div class="k sto">Stored as</div><div class="v">detail = {headings, content ≤200k, path, repo}; archive <b>never trimmed</b> → source file can safely be deleted</div></div>
+      </div>
+      <div class="ptrade"><b>Trade-off</b> <b>Not included in per-day journals</b> (pure reference material, high volume); full-text archive keeps only the latest version — older versions live in vault git history.</div>
+      <div class="pidx"><span class="lb">Indexed</span><span class="fx" title="All headings concatenated as a table of contents">headings</span><span class="fx" title="Full-text snapshot, ≤100k chars">content</span></div>
+      <details class="ex"><summary>What does a stored entry look like? (synthetic demo)</summary><div class="exb">
+        <span class="cap">docs · one repo doc index entry (synthetic demo)</span>
+        <span class="fld">summary</span> PAY-CORE Operations Runbook <span class="ar">(from H1)</span><br>
+        <span class="fld">headings</span> <span class="v2">Operations Runbook › Deployment › Rollback Plan › Reconciliation Jobs › Alert Thresholds …</span> <span class="ar">← outline, used to locate "what this doc covers"</span><br>
+        <span class="fld">content</span> <span class="v2">Full-text snapshot written to notes/_archive/… (never trimmed; survives source deletion)</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">🧮</span><span class="nm">Data files csv / xlsx</span><span class="bd k">loom data add</span><span class="bd">kind=note</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">Source</div><div class="v">Manual <span class="mono">loom data add</span> (query exports, pipeline outputs)</div></div>
+        <div class="ps"><div class="k pro">Processing</div><div class="v">Pure stdlib parsing (csv module / xlsx via zip+xml, handling inlineStr, shared strings, <b>date serial number restoration</b>) → distills a "data card"</div></div>
+        <div class="ps"><div class="k sto">Stored as</div><div class="v"><b>Data card .card.md</b> (columns/types/stats/top-5 sample rows + lineage inputs/produced_by/used_by) into vault; <b>raw file copied to _data/</b></div></div>
+      </div>
+      <div class="ptrade"><b>Trade-off (tiered storage)</b> Knowledge layer (card) <b>goes to cloud, searchable</b>; raw layer (csv/xlsx) <b>gitignored, stays local</b> — large files and sensitive detail never leave the machine; sample rows are redacted before storage.</div>
+      <div class="pidx"><span class="lb">Indexed</span><span class="fx" title="Card name">summary</span><span class="fx" title="Data card body: columns/types/stats/top-5 sample rows/lineage">content</span></div>
+      <details class="ex"><summary>What does a stored data card look like? (synthetic demo)</summary><div class="exb">
+        <span class="cap">data/recon/reconciliation-diff-0702.card.md · distilled data card (cloud-synced, synthetic demo)</span>
+<pre>title: Reconciliation Diff 0702
+kind: derived        rows: 48 · cols: 12 · size: 21KB
+inputs: [gateway_callbacks.csv]           # lineage: upstream input
+produced_by: [recon_diff_export.sql]      # producing code
+raw: _data/reconciliation-diff-0702.xlsx  # raw file stays local, not synced
+
+&gt; Derived data. Proof that diff reached zero after UTC replay; see recon_diff_export.sql
+## Columns (12)  … types/stats/top-5 sample rows (redacted)</pre>
+        <span class="ar">Card is cloud-synced and searchable; raw xlsx is gitignored and stays local.</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">📎</span><span class="nm">Code files sql / py etc.</span><span class="bd k">tool=notes</span><span class="bd">kind=note</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">Source</div><div class="v">Code files ingested into vault/notes via <span class="mono">loom doc add</span></div></div>
+        <div class="ps"><div class="k pro">Processing</div><div class="v">Ingestion-time <b>redaction</b> (values only, variable names preserved); date priority: <b>frontmatter > filename date > mtime</b></div></div>
+        <div class="ps"><div class="k sto">Stored as</div><div class="v">Code stored verbatim (searchable); files without a reliable date are flagged <b>dated=False</b></div></div>
+      </div>
+      <div class="ptrade"><b>Trade-off</b> Code without a reliable date <b>is not inserted into any day's journal</b> (still indexed for search) — prevents a one-time bulk import from inflating hundreds of scratch files into a single day.</div>
+      <div class="pidx"><span class="lb">Indexed</span><span class="fx" title="Full-text code snapshot">content</span></div>
+      <details class="ex"><summary>What does the redaction look like? (demo)</summary><div class="exb">
+        <span class="cap">Only values are redacted before ingestion — variable names and logic are preserved</span>
+<pre>conn = connect(host=DB_HOST,
+               password=<span class="hl">«redacted»</span>)      # value erased
+secret = Variable.get("secret_api_key")   # variable name / call site preserved, searchable
+</pre>
+        <span class="ar">The original always lives in git / the source file (follow the ref); loom only guarantees its derived files never leak secrets.</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">📋</span><span class="nm">Daily reports</span><span class="bd k">Derived · AI-synthesized</span><span class="bd">kind=report</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">Origin</div><div class="v"><b>Not an ingestion source</b> — AI synthesizes from other data already in the store (<span class="mono">loom report gen→AI→set</span>); historical Feishu xlsx files are a one-time seed to help AI stitch context, not an ongoing source</div></div>
+        <div class="ps"><div class="k pro">Processing</div><div class="v">Aggregates real traces for the day → AI writes today's work / reflections / tomorrow's plan; multiple entries for the same day are merged, not overwritten</div></div>
+        <div class="ps"><div class="k sto">Stored as</div><div class="v">id = report:date (idempotent); rendered at the <b>top</b> of that day's journal as narrative summary</div></div>
+      </div>
+      <div class="ptrade"><b>Trade-off</b> Daily reports are <b>output, not input</b>: going forward, the AI reads the store and writes them automatically; re-generation overwrites the same day. Positioned on the right side of the architecture diagram (derived), not as a source.</div>
+      <div class="pidx"><span class="lb">Indexed</span><span class="fx" title="Full text of today's work / reflections / tomorrow's plan">body</span></div>
+      <details class="ex"><summary>What does a daily report look like? (real snippet)</summary><div class="exb">
+        <span class="cap">report:date · rendered at the top of that day's journal as narrative summary</span>
+        <span class="fld">work</span> <span class="v2">- Payment Gateway cutover complete, reconciliation diff cleared to zero;<br>- Search dual-write ramped to 5%, shadow comparison diff rate 0.3%…</span><br>
+        <span class="ar">Daily report is AI-synthesized from the store (report gen→set), not hand-written; historical xlsx is a one-time seed only.</span>
+      </div></details>
+    </div>
+
+    <div class="ptype">
+      <div class="pt-h"><span class="ic">🗒️</span><span class="nm">Quick notes / Feishu records</span><span class="bd k">loom note</span><span class="bd">kind=note</span></div>
+      <div class="pflow">
+        <div class="ps"><div class="k src">Source</div><div class="v"><span class="mono">loom note "text"</span> / Feishu bitable rows fed line-by-line via a thin script (<b>no dedicated collector</b>)</div></div>
+        <div class="ps"><div class="k pro">Processing</div><div class="v">Redact + inject frontmatter → <span class="mono">notes/inbox</span></div></div>
+        <div class="ps"><div class="k sto">Stored as</div><div class="v">Unified as <b>note</b>, same pipeline as docs: indexed, journaled, taggable by the topic layer</div></div>
+      </div>
+      <div class="ptrade"><b>Trade-off</b> No hard-coded collector for any single external source; Feishu is just one of many intake channels. For external sources, the source of truth lives upstream (re-feeding overwrites); for local quick notes, the source of truth is the file.</div>
+      <div class="pidx"><span class="lb">Indexed</span><span class="fx" title="Body of the quick note / external record">content</span></div>
+      <details class="ex"><summary>What does an ingested note look like?</summary><div class="exb">
+        <span class="cap">loom note "text" → notes/inbox/….md (redacted + frontmatter injected)</span>
+<pre>--- type: loom-note   tags: [...]   date: … ---
+&lt;redacted body&gt;
+</pre>
+        <span class="ar">Same pipeline as docs: indexed / journaled / taggable by the topic layer. External sources like Feishu only need a thin script feeding intake.note — no dedicated collector per source.</span>
+      </div></details>
+    </div>
+  </section>
+
+  <section id="axes">
+    <h2>Storage vs views — Store by id, query any axis</h2>
+    <p class="sub">Storage is flat (keyed by id); "by day" and "by topic" are just different slices of the same data. Ingest once, visible from any axis.</p>
+    <div class="axgrid">
+      <div class="ax"><div class="t">By day</div><div class="m">All traces for a date</div><div class="cmd mono">journal/</div></div>
+      <div class="ax"><div class="t">By topic</div><div class="m">One thing · rolled up</div><div class="cmd mono">topic show</div></div>
+      <div class="ax"><div class="t">Full-text</div><div class="m">Substring search</div><div class="cmd mono">search</div></div>
+      <div class="ax"><div class="t">By project</div><div class="m">Repo / category</div><div class="cmd mono">--project</div></div>
+      <div class="ax"><div class="t">By range</div><div class="m">Time window</div><div class="cmd mono">--since/until</div></div>
+    </div>
+  </section>
+
+  <section id="topic">
+    <h2>Topic layer — Multi-level DAG + multi-topic, stitching into "one thing"</h2>
+    <p class="sub">Entries are tagged with the finest-grained <b>leaf</b> label only; hierarchy lives in the <b>topic page</b> (parent can be multi = DAG); queries <b>roll up the full subtree</b>; moving a subtree changes only one place.
+      Below is the real topic tree after <b>per-entry AI classification + adversarial review</b> (numbers = direct entries per topic; reproducible with <span class="mono">loom topic show</span>):</p>
+    <p class="note" style="border-left:2px solid var(--warmd);padding-left:11px;margin:0 0 14px">
+      ⚠ The tree below is a <b>fully synthetic demo topic tree</b> (payment / orders / search domain) — it illustrates what a topic layer <em>can</em> look like, not a preset structure. Everyone's real tree grows naturally from their own work.</p>
+    <div class="tstat">
+      <span>Classified <b>1,204</b> / 1,588 non-report entries</span><span><b>14</b> topics · 3 levels</span>
+      <span><b>12</b> multi-topic entries</span><span>Daily reports excluded from topics (multi-topic narrative layer)</span>
+    </div>
+    <div class="ttree" style="padding:8px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 855 414" style="width:100%;height:auto;display:block"><rect width="855" height="414" rx="12" fill="#0B0E13"/><defs><filter id="tsh" x="-20%" y="-30%" width="140%" height="180%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.35"/></filter></defs><path d="M261,35 C306,35 306,35 351,35" fill="none" stroke="#333d4b" stroke-width="1.6" opacity="0.85"/><path d="M261,35 C306,35 306,89 351,89" fill="none" stroke="#5AA9A0" stroke-width="2" opacity="0.9"/><path d="M261,35 C306,35 306,143 351,143" fill="none" stroke="#333d4b" stroke-width="1.6" opacity="0.85"/><path d="M197,89 C274,89 274,89 351,89" fill="none" stroke="#5AA9A0" stroke-width="2" opacity="0.9"/><path d="M197,89 C274,89 274,197 351,197" fill="none" stroke="#333d4b" stroke-width="1.6" opacity="0.85"/><path d="M197,89 C274,89 274,251 351,251" fill="none" stroke="#333d4b" stroke-width="1.6" opacity="0.85"/><path d="M254,143 C303,143 303,305 351,305" fill="none" stroke="#333d4b" stroke-width="1.6" opacity="0.85"/><path d="M254,143 C303,143 303,359 351,359" fill="none" stroke="#333d4b" stroke-width="1.6" opacity="0.85"/><path d="M533,35 C582,35 582,35 631,35" fill="none" stroke="#333d4b" stroke-width="1.6" opacity="0.85"/><path d="M533,197 C582,197 582,197 631,197" fill="none" stroke="#333d4b" stroke-width="1.6" opacity="0.85"/><g filter="url(#tsh)"><rect x="26" y="18" width="235" height="34" rx="17" fill="rgba(224,168,78,0.16)" stroke="#8a6320" stroke-width="1.4"/></g><text x="39" y="40" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">Payment Gateway</text><rect x="181" y="27" width="73" height="17" rx="8.5" fill="#E0A84E" opacity="0.92"/><text x="218" y="39.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">umbrella</text><g filter="url(#tsh)"><rect x="26" y="72" width="171" height="34" rx="17" fill="rgba(224,168,78,0.16)" stroke="#8a6320" stroke-width="1.4"/></g><text x="39" y="94" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">Order Hub</text><rect x="132" y="81" width="58" height="17" rx="8.5" fill="#E0A84E" opacity="0.92"/><text x="161" y="93.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">domain</text><g filter="url(#tsh)"><rect x="26" y="126" width="228" height="34" rx="17" fill="rgba(224,168,78,0.16)" stroke="#8a6320" stroke-width="1.4"/></g><text x="39" y="148" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">Search Migration</text><rect x="189" y="135" width="58" height="17" rx="8.5" fill="#E0A84E" opacity="0.92"/><text x="218" y="147.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">domain</text><g filter="url(#tsh)"><rect x="26" y="180" width="149" height="34" rx="17" fill="rgba(224,168,78,0.21)" stroke="#8a6320" stroke-width="1.4"/></g><text x="39" y="202" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">Monitoring</text><rect x="140" y="189" width="28" height="17" rx="8.5" fill="#E0A84E" opacity="0.92"/><text x="154" y="201.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">64</text><g filter="url(#tsh)"><rect x="26" y="234" width="157" height="34" rx="17" fill="rgba(224,168,78,0.13)" stroke="#8a6320" stroke-width="1.4"/></g><text x="39" y="256" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">CI Pipeline</text><rect x="148" y="243" width="28" height="17" rx="8.5" fill="#E0A84E" opacity="0.92"/><text x="162" y="255.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">31</text><g filter="url(#tsh)"><rect x="351" y="18" width="182" height="34" rx="17" fill="rgba(224,168,78,0.30)" stroke="#2A313D" stroke-width="1.1"/></g><text x="364" y="40" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">Reconciliation</text><rect x="498" y="27" width="28" height="17" rx="8.5" fill="#5AA9A0" opacity="0.92"/><text x="512" y="39.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">98</text><g filter="url(#tsh)"><rect x="351" y="72" width="182" height="34" rx="17" fill="rgba(224,168,78,0.19)" stroke="#2A313D" stroke-width="1.1"/></g><text x="364" y="94" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">Canary Release ↺</text><rect x="498" y="81" width="28" height="17" rx="8.5" fill="#5AA9A0" opacity="0.92"/><text x="512" y="93.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">55</text><g filter="url(#tsh)"><rect x="351" y="126" width="190" height="34" rx="17" fill="rgba(224,168,78,0.14)" stroke="#2A313D" stroke-width="1.1"/></g><text x="364" y="148" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">Channel Routing</text><rect x="506" y="135" width="28" height="17" rx="8.5" fill="#5AA9A0" opacity="0.92"/><text x="520" y="147.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">37</text><g filter="url(#tsh)"><rect x="351" y="180" width="182" height="34" rx="17" fill="rgba(224,168,78,0.24)" stroke="#2A313D" stroke-width="1.1"/></g><text x="364" y="202" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">Inventory Sync</text><rect x="498" y="189" width="28" height="17" rx="8.5" fill="#5AA9A0" opacity="0.92"/><text x="512" y="201.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">73</text><g filter="url(#tsh)"><rect x="351" y="234" width="157" height="34" rx="17" fill="rgba(224,168,78,0.16)" stroke="#2A313D" stroke-width="1.1"/></g><text x="364" y="256" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">Fulfillment</text><rect x="473" y="243" width="28" height="17" rx="8.5" fill="#5AA9A0" opacity="0.92"/><text x="487" y="255.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">44</text><g filter="url(#tsh)"><rect x="351" y="288" width="179" height="34" rx="17" fill="rgba(224,168,78,0.27)" stroke="#2A313D" stroke-width="1.1"/></g><text x="364" y="310" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">ES→OpenSearch</text><rect x="495" y="297" width="28" height="17" rx="8.5" fill="#5AA9A0" opacity="0.92"/><text x="509" y="309.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">86</text><g filter="url(#tsh)"><rect x="351" y="342" width="190" height="34" rx="17" fill="rgba(224,168,78,0.18)" stroke="#2A313D" stroke-width="1.1"/></g><text x="364" y="364" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">Dual-write Diff</text><rect x="506" y="351" width="28" height="17" rx="8.5" fill="#5AA9A0" opacity="0.92"/><text x="520" y="363.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">52</text><g filter="url(#tsh)"><rect x="631" y="18" width="198" height="34" rx="17" fill="rgba(224,168,78,0.15)" stroke="#2A313D" stroke-width="1.1"/></g><text x="644" y="40" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">Idempotent Retry</text><rect x="794" y="27" width="28" height="17" rx="8.5" fill="#5AA9A0" opacity="0.92"/><text x="808" y="39.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">41</text><g filter="url(#tsh)"><rect x="631" y="180" width="165" height="34" rx="17" fill="rgba(224,168,78,0.12)" stroke="#2A313D" stroke-width="1.1"/></g><text x="644" y="202" font-size="13" fill="#E8EAED" font-family="system-ui,sans-serif">Slow Queries</text><rect x="761" y="189" width="28" height="17" rx="8.5" fill="#5AA9A0" opacity="0.92"/><text x="775" y="201.5" font-size="10.5" font-weight="700" fill="#0F1218" text-anchor="middle" font-family="ui-monospace,monospace">29</text></svg></div>
+    <p class="note"><p class="note"><b>loom topic show Payment Gateway</b> rolls up the entire subtree — see all activity in that domain at once. <b>show Reconciliation</b> scopes to just that one workstream.
+      <b>Canary Release</b> is shared by both Payment Gateway and Order Center (multi-parent, DAG) — just add two parents in its topic page. The same entry still appears in its own day's journal.</p>
+  </section>
+
+  <section id="cases">
+    <h2>Real cases — how the topic layer stitches traces into "one thing"</h2>
+    <p class="sub">All numbers below are real <b>loom topic show</b> output, reproducible from the command line; classification was verified entry-by-entry (false positives removed, e.g. loom meta-discussion and self-referential topic pages).</p>
+    <div class="cases">
+      <div class="case">
+        <div class="ch"><span class="t">① Reconciliation</span><span class="meta">shipped to prod · <span class="mono">loom topic show Reconciliation = 98 entries</span></span></div>
+        <p>From "manual daily diff review" to "auto-ticket + idempotent replay." One workstream from alert → root cause → code → delivery, with traces scattered across four types — the topic layer (including subtopic Idempotent Retry) rolls them into a single timeline:</p>
+        <div class="trace">
+          <span class="tr">💬 <b>Sessions</b> <span class="c">9</span> Diff root-cause investigation (timezone not normalized)</span><span class="sep">·</span>
+          <span class="tr">💻 <b>Commits</b> <span class="c">31</span> recon replay → auto-ticket → prod</span><span class="sep">·</span>
+          <span class="tr">📄 <b>Docs</b> <span class="c">22</span> Reconciliation spec + cutover runbook</span><span class="sep">·</span>
+          <span class="tr">📎 <b>Data/Code</b> <span class="c">36</span> Diff evidence + dryrun artifacts</span>
+        </div>
+        <p><b>Compare:</b> a keyword search for "reconciliation" returns hundreds of unrelated hits; this workstream is precisely scoped to these 98 entries — one decision chain, end to end. (Daily reports are a multi-topic narrative layer and not counted per topic.)</p>
+      </div>
+      <div class="case">
+        <div class="ch"><span class="t">② Slow Query Tuning</span><span class="meta">surfaced from historical archive · 29 entries</span></div>
+        <p>Tuning scripts scattered across the archive (index rebuilds, explain snapshots, load-test records) consolidated into a new topic:</p>
+        <div class="trace"><span class="tr">📎 <b>SQL scripts</b> <span class="c">29</span> Index proposals + load-test comparisons + rollback plan</span></div>
+        <p><b>Value:</b> old code is no longer a dead file — next time Inventory Sync slows down, start from this topic instead of a full-store needle-in-haystack search.</p>
+      </div>
+      <div class="case">
+        <div class="ch"><span class="t">③ A single AI session spanning 37 days</span><span class="meta">04-18 → 05-25</span></div>
+        <p>One long-running session kept in the same window — previously it only showed up on the day it opened; the following 36 days were invisible. After per-day splitting:</p>
+        <div class="trace"><span class="tr">Split into <span class="c">37</span> per-day entries</span><span class="sep">·</span><span class="tr">Each carries that day's first prompt</span><span class="sep">·</span><span class="tr">All prompts searchable</span></div>
+        <p><b>Value:</b> every active day shows its real conversation; <b>28</b> other multi-day sessions were similarly "rescued" back to their correct days.</p>
+      </div>
+      <div class="case">
+        <div class="ch"><span class="t">④ AI session digest: rescuing vague titles + making answer-side content searchable</span><span class="meta">96/96 sessions with digest (example)</span></div>
+        <p>The collector indexes only your prompts; long sessions often open with a vague first message. Use <span class="mono">loom session gen</span> to have the AI read that day's full <b>Q&amp;A</b> and write an accurate title + searchable digest, merged back into the entry (re-ingestion safe):</p>
+        <div class="trace">
+          <span class="tr">Original <span class="c">continuing from yesterday</span></span><span class="sep">→</span>
+          <span class="tr">✦ Title <span class="c">Root-caused reconciliation diff: upstream timestamps not normalized to UTC</span></span>
+        </div>
+        <p><b>Value:</b> terms that only appeared in the assistant's reply (like <span class="mono">recon_replay</span>, <span class="mono">clock skew</span>) are now searchable — previously they lived only in the assistant turn and were invisible to full-store search.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="flow">
+    <h2>Data flow (six steps per sync)</h2>
+    <div class="pipe">
+      <div class="st"><div class="no mono">01</div><div class="t">Collect</div><div class="d">Each source reads the last N days; one source failing does not abort the whole run</div></div>
+      <div class="st"><div class="no mono">02</div><div class="t">Redact</div><div class="d">Strip tokens / secrets / webhooks before ingestion</div></div>
+      <div class="st"><div class="no mono">03</div><div class="t">Upsert</div><div class="d">Merge by id; atomic write (temp file + rename)</div></div>
+      <div class="st"><div class="no mono">04</div><div class="t">Index</div><div class="d">Rebuild FTS from source of truth (deletable, always regenerable)</div></div>
+      <div class="st"><div class="no mono">05</div><div class="t">Render</div><div class="d">Generate journals; hand-written note sections are never overwritten</div></div>
+      <div class="st"><div class="no mono">06</div><div class="t">Push</div><div class="d">vault git push; raw data stays local</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>A full day, in detail (concrete example)</h2>
+    <div class="day">
+      <div class="bar">📅 <span class="mono">2026-07-02</span> · Payment Gateway cutover day: clear blockers → cut over → reconciliation diff zeroed (synthetic demo)</div>
+      <div class="layers">
+        <div class="ly"><div class="tag">📋 Daily report</div><div class="t">6 work items</div><div class="d">with ✅/🚧 status</div></div>
+        <div class="ly"><div class="tag">💻 Commits</div><div class="t">11 commits</div><div class="d">with body: why + verification</div></div>
+        <div class="ly"><div class="tag">💬 Sessions</div><div class="t">6h session</div><div class="d">day-split + ✦ AI digest</div></div>
+        <div class="ly"><div class="tag">📎 Data</div><div class="t">2 data cards</div><div class="d">diff-zeroed proof artifacts</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="honest">
+    <h2>Honest trade-offs</h2>
+    <p class="sub">Known limitations, stated plainly.</p>
+    <ul class="clean">
+      <li><b>Search is keyword-based, not semantic</b> — "cohort" won't recall "retention"; semantic search needs embedding models, which would break the zero-dependency constraint. Not planned for now.</li>
+      <li><b>Only Claude supports per-message splitting</b> — Cursor/Codex have no per-message text; only two-endpoint attribution is possible.</li>
+      <li><b>Assistant replies are not indexed by default</b> — the collector indexes only your prompts; use <span class="mono">loom session gen</span> to have the AI read the full <b>Q&amp;A</b> and generate a digest that brings answer-side content into the index (stored in a sidecar; re-ingestion safe).</li>
+      <li><b>Full rescan on every sync</b> — each sync rescans everything; imperceptible for a single user, incremental mode only needed for very large histories.</li>
+      <li><b>AI classification is not fully automatic</b> — closed-set labels + human review + audit for precision.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Engineering quality</h2>
+    <div class="quality">
+      <div class="q"><div class="n">3,582</div><div class="l">lines of Python</div></div>
+      <div class="q"><div class="n">0</div><div class="l">third-party dependencies</div></div>
+      <div class="q"><div class="n">118</div><div class="l">unit tests, all green</div></div>
+      <div class="q"><div class="n">7</div><div class="l">data sources</div></div>
+    </div>
+    <p class="note">Collection / search / render / topics / notes / reports / lifecycle are each their own module; redaction, path traversal, FTS recall, atomic writes, and topic rollup all have end-to-end test coverage.</p>
+  </section>
+
+  <footer>loom · cross-source personal work ledger · pure stdlib Python · open-source at <b>github.com/joycastle/loom</b> (MIT), data vault is private · all examples are synthetic demo data · 2026-07<span class="pill">MIT</span></footer>
+</main>
+</body>
+</html>
