@@ -1,10 +1,29 @@
-# loom — 跨项目 / 跨 session / 跨 AI 工具 的全量成果台账
+<div align="center">
 
-把散落在「多个 git 仓 + 多个 AI 工具会话(Claude / Codex / Cursor / CodeBuddy)+ 文档 / 代码 / 数据 / 飞书」里的
-**你自己**的工作痕迹,自动**归一成一份扁平记录**,再派生出:按天 markdown 日记、全文检索、主题关联、私有云备份。
-每条都带**回链**,可一跳回到原文;纯标准库 Python,**零第三方依赖**。
+<img src="assets/logo.svg" width="116" alt="loom" />
+
+# loom
+
+**把散落各处的工作痕迹 —— git 提交 · AI 对话 · 文档 · 代码 · 数据 —— 织成一本可检索、可关联的台账**
+
+一份扁平真相 → 派生按天日记 · 全文检索 · 主题关联 · 私有云备份;每条带**回链**,一跳回原文。
+
+<br>
+
+![Python](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)
+![dependencies](https://img.shields.io/badge/dependencies-0-5AA9A0)
+![stdlib only](https://img.shields.io/badge/stdlib-only-5AA9A0)
+![tests](https://img.shields.io/badge/tests-112%20passing-3FB950)
+![single-user](https://img.shields.io/badge/private-first-E0A84E)
+
+[**⚡ 快速落地**](#-5-分钟落地让你的-ai-助手带你走推荐) · [🎨 设计亮点](#-设计亮点为什么是这样) · [🧵 主题层](#主题层把散痕迹聚成一件事) · [⌨️ 命令](#命令) · [🤖 给 AI 助手](./AGENTS.md)
+
+</div>
 
 ---
+
+> 🧵 **loom(织机)** 把散落在「多个 git 仓 + 多个 AI 工具会话(Claude / Codex / Cursor / CodeBuddy)+ 文档 / 代码 / 数据 / 飞书」里的
+> **你自己**的工作痕迹,自动归一成一份扁平记录,再织出可检索、可按主题追溯、可私有云备份的台账。纯标准库 Python,**零第三方依赖**。
 
 ## ⚡ 5 分钟落地:让你的 AI 助手带你走(推荐)
 

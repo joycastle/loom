@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="loom">
+  <defs>
+    <linearGradient id="warp" gradientUnits="userSpaceOnUse" x1="0" y1="14" x2="0" y2="86">
+      <stop offset="0" stop-color="#F0C270"/><stop offset="1" stop-color="#D89A3C"/>
+    </linearGradient>
+    <linearGradient id="weft" gradientUnits="userSpaceOnUse" x1="14" y1="0" x2="86" y2="0">
+      <stop offset="0" stop-color="#69C2B8"/><stop offset="1" stop-color="#4E9B92"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="96" height="96" rx="22" fill="#141821" stroke="#2A313D" stroke-width="1.5"/>
+  <!-- weft (横线,先画,大部分被经线压住) -->
+  <g fill="url(#weft)">
+    <rect x="14" y="21.5" width="72" height="9" rx="4.5"/>
+    <rect x="14" y="45.5" width="72" height="9" rx="4.5"/>
+    <rect x="14" y="69.5" width="72" height="9" rx="4.5"/>
+  </g>
+  <!-- warp (竖线,压在横线之上) -->
+  <g fill="url(#warp)">
+    <rect x="21.5" y="14" width="9" height="72" rx="4.5"/>
+    <rect x="45.5" y="14" width="9" height="72" rx="4.5"/>
+    <rect x="69.5" y="14" width="9" height="72" rx="4.5"/>
+  </g>
+  <!-- 交错处补横线块:奇数格让 weft 反压 warp → 真正的一上一下编织 -->
+  <g fill="url(#weft)">
+    <rect x="45.5" y="21.5" width="9" height="9" rx="2.5"/>
+    <rect x="21.5" y="45.5" width="9" height="9" rx="2.5"/>
+    <rect x="69.5" y="45.5" width="9" height="9" rx="2.5"/>
+    <rect x="45.5" y="69.5" width="9" height="9" rx="2.5"/>
+  </g>
+</svg>
