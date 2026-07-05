@@ -1466,6 +1466,15 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(e["detail"]["body"], "按订单精算")   # 详情含 detail
         self.assertEqual(self.serve.api_entry("没有", {}), {"error": "not found"})
 
+    def test_api_stats(self):
+        st = self.serve.api_stats(self.cfg, store.load())
+        self.assertEqual(st["entries"], 3)
+        self.assertEqual(st["days"], 2)
+        self.assertEqual(st["topics"], 2)                   # bf支付 + 净额 两页
+        self.assertEqual(st["tagged"], 2)
+        self.assertEqual(list(st["tools"])[0], "git")       # 按量排序(并列取先见)
+        self.assertEqual(len(st["recent"]), 3)
+
     def test_fix_mojibake(self):
         garbled = "净额".encode("utf-8").decode("latin-1")   # 模拟裸 UTF-8 过 latin-1
         self.assertEqual(self.serve._fix(garbled), "净额")

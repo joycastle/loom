@@ -124,6 +124,23 @@ def api_day(date, by_id):
     return {"date": date, "total": len(es), "groups": groups}
 
 
+def api_stats(cfg, by_id):
+    """总览:体量数字 + 工具分布 + 最近条目(首页 Dashboard 用)。"""
+    tools, days, projects = defaultdict(int), set(), set()
+    for e in by_id.values():
+        tools[e.get("tool", "?")] += 1
+        if e.get("date"):
+            days.add(e["date"])
+        projects.add(e.get("project", ""))
+    recent = sorted(by_id.values(), key=lambda x: x.get("ts", ""), reverse=True)[:6]
+    tmap = topics.load_map()
+    return {"entries": len(by_id), "days": len(days),
+            "topics": len(topics.pages(cfg)), "projects": len(projects),
+            "tagged": len(tmap),
+            "tools": dict(sorted(tools.items(), key=lambda kv: -kv[1])),
+            "recent": [_card(e, tmap) for e in recent]}
+
+
 def api_entry(eid, by_id):
     e = by_id.get(eid)
     if not e:
@@ -177,6 +194,8 @@ def _make_handler(cfg):
                     self._json(api_days(fresh()))
                 elif u.path == "/api/day":
                     self._json(api_day(q.get("date", ""), fresh()))
+                elif u.path == "/api/stats":
+                    self._json(api_stats(cfg, fresh()))
                 elif u.path == "/api/entry":
                     self._json(api_entry(q.get("id", ""), fresh()))
                 else:
