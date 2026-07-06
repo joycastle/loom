@@ -170,6 +170,26 @@ loom identity add <邮箱/名>|ls  # 增补 git 身份
 loom source enable|disable <name>
 ```
 
+## 配置文件速查(`~/.loom/config.json`)
+
+`loom init` 交互生成此文件;后续可直接编辑,也可用命令行子命令修改。参考格式见 [`config.example.json`](./config.example.json)。
+
+| 字段 | 作用 | 改法 |
+|------|------|------|
+| `repos` | **git 采集哪些本地仓库**。填绝对路径数组,支持 `~`。只扫你在本机克隆的仓。 | `loom repo add ~/path/to/repo` 或直接编辑数组 |
+| `identities.emails` | git 提交过滤:只入库作者邮箱命中这个列表的提交 | `loom identity add you@co.com` |
+| `identities.names` | git 作者名白名单(邮箱取不到时兜底) | 同上 |
+| `sources.claude.projects_dir` | Claude Code 对话记录根目录,默认 `~/.claude/projects` | 很少需要改 |
+| `sources.codex.home` | Codex 数据目录,默认 `~/.codex` | 很少需要改 |
+| `sources.cursor.app_support` | Cursor 数据目录,默认 `~/Library/Application Support/Cursor` | 很少需要改 |
+| `sources.<name>.enabled` | `false` 关闭某个采集器 | `loom source disable cursor` |
+| `feishu.bitables[]` | 需求池多维表格列表(app_token + table_id + 字段映射) | `loom feishu add <飞书表格 URL>` |
+| `vault.dir` | markdown 输出目录,默认 `~/.loom/vault` | 一般不动 |
+| `vault.remote` | vault 私有仓的 git remote URL,空则不上云 | `loom init` 时填,或直接编辑 |
+| `default_since_days` | 首次 `loom collect` 回溯天数 | 按需改大 |
+
+> 凭证(飞书 app_secret 等)不在 config.json 里——统一放 `~/.loom/.env`(chmod 600),`loom init` 会引导填写。
+
 ## 采集来源(从哪读)
 
 下表是**采集器从哪读、读到什么**;每种数据**怎么处理、怎么取舍、进哪些检索字段**见下一节。
