@@ -331,8 +331,21 @@ def cmd_session(cfg, a):
 
 
 def cmd_note(cfg, a):
+    if a.update:
+        if not a.text:
+            print('用法:loom note --update <关键词> "<更新内容>"')
+            return
+        dest, msg = intake.note_update(cfg, a.update, a.text)
+        print(("  ✓ " if dest else "  · ") + msg)
+        if dest:
+            do_collect(cfg, ["notes"], util.since_date(cfg.get("default_since_days", 100)))
+            print("  (检索索引已更新)")
+            if a.push:
+                vault_git(cfg, True)
+        return
     if not a.text:
         print('用法:loom note "<文本>" [--to 类目] [--tags a,b] [--title T] [--push]')
+        print('     loom note --update <关键词> "<更新内容>"')
         return
     tags = [t.strip() for t in (a.tags or "").split(",") if t.strip()]
     dest, msg = intake.note(cfg, a.text, to=a.to, tags=tags, title=a.title)
@@ -526,10 +539,11 @@ def build_parser():
     sp.add_argument("--file")                       # session set:AI 写好的摘要 TSV
     sp.add_argument("--push", action="store_true")
     sp = sub.add_parser("note")
-    sp.add_argument("text")                        # 随手信息文本
+    sp.add_argument("text", nargs="?")             # 随手信息文本(--update 时是更新内容)
     sp.add_argument("--to")
     sp.add_argument("--tags")
     sp.add_argument("--title")
+    sp.add_argument("--update", metavar="关键词")  # 更新已有 note:按关键词搜文件名/标题
     sp.add_argument("--push", action="store_true")
     sp = sub.add_parser("topic")
     sp.add_argument("action", choices=("ls", "gather", "apply", "show"))

@@ -156,6 +156,50 @@ def _frontmatter(title, date, tags, source, status):
             f"source: {source}\nstatus: {status}\ntype: loom-note\n---\n\n")
 
 
+def note_update(cfg, keyword, text):
+    """搜索匹配 keyword 的 note 文件,把新文本追加到末尾(保留 frontmatter)。
+
+    返回 (dest_path, message)。找到多条时取最近修改的那个。
+    """
+    notes_dir = config.notes_dir(cfg)
+    kw = keyword.lower()
+    matches = []
+    for root, dirs, files in os.walk(notes_dir):
+        dirs[:] = [d for d in dirs if d not in {"_attic"}]
+        for fn in files:
+            if fn.endswith(".md") and kw in fn.lower():
+                matches.append(os.path.join(root, fn))
+    if not matches:
+        # 也搜文件内容的 title 行
+        for root, dirs, files in os.walk(notes_dir):
+            dirs[:] = [d for d in dirs if d not in {"_attic"}]
+            for fn in files:
+                if not fn.endswith(".md"):
+                    continue
+                fp = os.path.join(root, fn)
+                try:
+                    with open(fp, encoding="utf-8", errors="replace") as f:
+                        head = f.read(512)
+                    if kw in head.lower():
+                        matches.append(fp)
+                except OSError:
+                    pass
+    if not matches:
+        return None, f"未找到包含 {keyword!r} 的 note"
+    # 取最近修改的
+    target = max(matches, key=os.path.getmtime)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    append_text = f"\n\n---\n*更新 {now}*\n\n{text.strip()}\n"
+    if cfg.get("redact", True):
+        append_text = util.redact(append_text)
+    with open(target, "a", encoding="utf-8") as f:
+        f.write(append_text)
+    rel = os.path.relpath(target, config.vault_dir(cfg))
+    if len(matches) > 1:
+        return target, f"更新 {rel}(共 {len(matches)} 个匹配,取最近修改)"
+    return target, f"更新 {rel}"
+
+
 def note(cfg, text, to=None, tags=None, title=None):
     """随手信息:把一段文本写成 notes/<类目>(默认 inbox)下一条 note(打码 + frontmatter)。
 
