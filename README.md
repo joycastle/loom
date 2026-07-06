@@ -160,6 +160,8 @@ loom doc add <路径…> [--to 类目] [--tags a,b] [--move] [--push]
 loom data add <csv|xlsx…> [--to 主题] [--kind source|derived] [--from 上游…] [--code a.sql b.py] [--used-by 文档]
                                # 数据→数据卡(列/统计/样例,上云可检索)+ 原始入 _data/(本地不上云)+ 绑代码/血缘
 loom note "<文本>" [--to 类目] [--tags a,b]   # 随手/外部散信息入库(打码+可检索+可主题打标)
+loom note --update <关键词> "<更新内容>"      # 追加更新已有 note(按文件名/标题搜,取最近修改的)并即时重索引
+                               # 范式:进行中的事 → --update 追加;新事 → 新建。写日报时一件事只有一条记录
 loom report import <日报.xlsx> | gen <日期> | set   # 日报:导历史种子 / AI 合成 / 回库
 loom session gen <日期> | set <日期> | ls           # AI 会话摘要:读当天问+答→写准标题+可检索摘要
 loom topic ls | gather <主题> | apply | show <主题>  # 主题层:看/聚/打标/上卷查一件事

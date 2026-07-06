@@ -85,6 +85,8 @@ loom sync [--push] [--since]   # collect all sources → render → commit (--pu
 loom search <term> [--project P] [--tool T] [--since D] [--until D]
 loom serve [--port 8787]       # local browse UI (127.0.0.1): search / topic tree / by-day
 loom doc add | data add | note # ingest docs / data files (→ data cards) / loose notes
+loom note --update <keyword> "<update text>"  # append update to existing note (search by filename/title, re-index instantly)
+                               # pattern: in-progress → --update; new topic → new note. One record per thing at report time.
 loom report import|gen|set     # daily reports (AI-synthesized)
 loom session gen|set|ls        # AI session digests (reads Q&A, writes title+digest)
 loom topic ls|gather|apply|show
