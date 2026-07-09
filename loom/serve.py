@@ -8,13 +8,21 @@
 """
 import json
 import os
+import contextlib
+import io
+import subprocess
 import urllib.parse
 from collections import defaultdict
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import config, search, store, topics, util
+from . import collectors, config, digest, render, search, store, topics, util
 
 _ASSET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "browse.html")
+_CLOUD_IGNORE_RULES = ["_data/", ".env", "*.xlsx", "*.pptx", "*.numbers",
+                       "*.pages", "*.key", "*.parquet", "*.pdf", "*.docx"]
+_BINARY_CLOUD_EXTS = (".xlsx", ".pptx", ".numbers", ".pages", ".key", ".parquet",
+                      ".pdf", ".docx")
 
 
 def _fix(v):
@@ -150,6 +158,382 @@ def api_entry(eid, by_id):
     return out
 
 
+# ---------------------------------------------------------------- 管理控制台 API(本地、显式动作、敏感动作二次确认)
+def _fmt_mtime(path):
+    if not os.path.exists(path):
+        return ""
+    return datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _git(vd, args, timeout=20):
+    try:
+        r = subprocess.run(["git", "-C", vd] + args, capture_output=True, text=True,
+                           timeout=timeout)
+        return r.returncode, r.stdout.strip(), r.stderr.strip()
+    except Exception as e:
+        return 1, "", str(e)
+
+
+def _is_git_repo(path):
+    code, out, _ = _git(path, ["rev-parse", "--is-inside-work-tree"], timeout=5)
+    return code == 0 and out == "true"
+
+
+def _env_key_state():
+    keys = {"FEISHU_APP_ID": bool(os.environ.get("FEISHU_APP_ID")),
+            "FEISHU_APP_SECRET": bool(os.environ.get("FEISHU_APP_SECRET"))}
+    if os.path.exists(util.ENV_PATH):
+        try:
+            for line in open(util.ENV_PATH, encoding="utf-8"):
+                if "=" not in line or line.lstrip().startswith("#"):
+                    continue
+                k = line.split("=", 1)[0].strip()
+                if k in keys:
+                    keys[k] = True
+        except Exception:
+            pass
+    return keys
+
+
+def _repo_rows(cfg):
+    rows = []
+    for raw in cfg.get("repos", []):
+        path = util.expand(raw)
+        exists = os.path.isdir(path)
+        is_git = _is_git_repo(path) if exists else False
+        code, branch, _ = _git(path, ["branch", "--show-current"], timeout=5) if exists else (1, "", "")
+        code2, dirty, _ = _git(path, ["status", "--short"], timeout=5) if is_git else (1, "", "")
+        rows.append({"path": path, "exists": exists, "git": is_git,
+                     "branch": branch if code == 0 else "",
+                     "dirty": bool(dirty) if code2 == 0 else False,
+                     "dirty_count": len([x for x in dirty.splitlines() if x.strip()])})
+    return rows
+
+
+def _source_enabled(cfg, name):
+    if name == "git":
+        return bool(cfg.get("repos"))
+    if name == "feishu":
+        return bool(cfg.get("feishu", {}).get("enabled"))
+    return bool(cfg.get("sources", {}).get(name, {}).get("enabled"))
+
+
+def _source_diagnostics(cfg):
+    rows, env = [], _env_key_state()
+    repos = _repo_rows(cfg)
+    for name in collectors.names():
+        enabled = _source_enabled(cfg, name)
+        status, msg, checks = ("off", "已关闭", [])
+        if name == "git":
+            bad = [r["path"] for r in repos if not r["git"]]
+            if not cfg.get("repos"):
+                status, msg = "warn", "未配置 repo"
+            elif bad:
+                status, msg = "error", f"{len(bad)} 个 repo 不可采集"
+            else:
+                status, msg = "ok", f"{len(repos)} 个 repo"
+            checks = [{"label": "repo 数", "ok": bool(cfg.get("repos")), "value": len(repos)},
+                      {"label": "无效 repo", "ok": not bad, "value": len(bad)}]
+        elif name == "feishu":
+            fs = cfg.get("feishu", {})
+            bits = fs.get("bitables", [])
+            missing_secret = [k for k, v in env.items() if not v]
+            broken_bits = [b.get("name", "") for b in bits
+                           if not b.get("app_token") or not b.get("table_id")]
+            if not enabled:
+                status, msg = "off", "未启用"
+            elif missing_secret:
+                status, msg = "error", "缺 FEISHU_APP_ID/FEISHU_APP_SECRET"
+            elif not bits:
+                status, msg = "warn", "已启用但未配置多维表格"
+            elif broken_bits:
+                status, msg = "error", f"{len(broken_bits)} 个表缺 token/table"
+            else:
+                status, msg = "ok", f"{len(bits)} 个多维表格"
+            checks = [{"label": "凭证在 .env", "ok": not missing_secret,
+                       "value": "齐全" if not missing_secret else ",".join(missing_secret)},
+                      {"label": "表配置", "ok": bool(bits) and not broken_bits, "value": len(bits)}]
+        else:
+            src = cfg.get("sources", {}).get(name, {})
+            if not enabled:
+                status, msg = "off", "已关闭"
+            elif name in ("claude", "codex", "cursor", "codebuddy"):
+                key = "home" if name == "codex" else ("projects_dir" if name == "claude" else "app_support")
+                path = util.expand(src.get(key, ""))
+                ok = bool(path and os.path.exists(path))
+                status, msg = ("ok", path) if ok else ("warn", f"路径不存在:{path or key}")
+                checks = [{"label": key, "ok": ok, "value": path}]
+            elif name == "notes":
+                path = config.notes_dir(cfg)
+                ok = os.path.isdir(path)
+                status, msg = ("ok", path) if ok else ("warn", f"目录不存在:{path}")
+                checks = [{"label": "notes 目录", "ok": ok, "value": path}]
+            elif name == "docs":
+                bad = [r["path"] for r in repos if not r["exists"]]
+                status, msg = ("ok", f"{len(repos)} 个 repo") if repos and not bad else \
+                              ("warn", "没有可扫的 repo")
+                checks = [{"label": "repo 数", "ok": bool(repos), "value": len(repos)}]
+        rows.append({"name": name, "enabled": enabled, "status": status,
+                     "message": msg, "checks": checks})
+    return rows
+
+
+def _collection_status(cfg, by_id):
+    tools, kinds, projects, dates = defaultdict(int), defaultdict(int), defaultdict(int), []
+    for e in by_id.values():
+        tools[e.get("tool", "?")] += 1
+        kinds[e.get("kind", "?")] += 1
+        projects[e.get("project", "") or "(空)"] += 1
+        if e.get("date"):
+            dates.append(e["date"])
+    data_m = os.path.getmtime(util.DATA_PATH) if os.path.exists(util.DATA_PATH) else 0
+    idx_m = os.path.getmtime(util.INDEX_PATH) if os.path.exists(util.INDEX_PATH) else 0
+    recent = sorted(by_id.values(), key=lambda x: x.get("ts", ""), reverse=True)[:8]
+    return {"entries": len(by_id), "date_start": min(dates) if dates else "",
+            "date_end": max(dates) if dates else "",
+            "tools": dict(sorted(tools.items(), key=lambda kv: -kv[1])),
+            "kinds": dict(sorted(kinds.items(), key=lambda kv: -kv[1])),
+            "projects": dict(sorted(projects.items(), key=lambda kv: -kv[1])[:12]),
+            "data_path": util.DATA_PATH, "data_mtime": _fmt_mtime(util.DATA_PATH),
+            "index_path": util.INDEX_PATH, "index_mtime": _fmt_mtime(util.INDEX_PATH),
+            "index_ready": os.path.exists(util.INDEX_PATH) and idx_m >= data_m,
+            "recent": [_card(e, topics.load_map()) for e in recent]}
+
+
+def _is_cloud_risky(path):
+    p = path.strip("/")
+    return p == ".env" or p.startswith("_data/") or p.endswith(_BINARY_CLOUD_EXTS)
+
+
+def _vault_status(cfg):
+    vd = config.vault_dir(cfg)
+    exists = os.path.isdir(vd)
+    is_git = os.path.isdir(os.path.join(vd, ".git"))
+    gi = os.path.join(vd, ".gitignore")
+    lines = open(gi, encoding="utf-8").read().splitlines() if os.path.exists(gi) else []
+    have = {ln.strip() for ln in lines}
+    tracked, ignored, dirty, remotes = [], [], "", []
+    if is_git:
+        _, out, _ = _git(vd, ["ls-files"], timeout=10)
+        tracked = [x for x in out.splitlines() if x.strip()]
+        _, out, _ = _git(vd, ["ls-files", "-i", "-c", "--exclude-standard"], timeout=10)
+        ignored = [x for x in out.splitlines() if x.strip()]
+        _, dirty, _ = _git(vd, ["status", "--short"], timeout=10)
+        _, rout, _ = _git(vd, ["remote", "-v"], timeout=10)
+        remotes = [x for x in rout.splitlines() if x.strip()]
+    return {"dir": vd, "exists": exists, "git": is_git, "dirty": bool(dirty),
+            "dirty_count": len([x for x in dirty.splitlines() if x.strip()]),
+            "remote_config": cfg.get("vault", {}).get("remote", ""),
+            "git_remotes": remotes,
+            "gitignore": {"path": gi, "exists": os.path.exists(gi),
+                          "missing": [p for p in _CLOUD_IGNORE_RULES if p not in have]},
+            "tracked_count": len(tracked),
+            "tracked_sample": tracked[:80],
+            "tracked_risky": [p for p in tracked if _is_cloud_risky(p)][:80],
+            "tracked_ignored": ignored[:80],
+            "will_cloud": ["journal/*.md", "notes/**/*.md", "notes/topics/*.md",
+                           ".gitignore", "其它未被 .gitignore 排除的文本知识层文件"],
+            "local_only": [util.ENV_PATH, util.DATA_PATH, util.INDEX_PATH,
+                           os.path.join(vd, "_data/"), "*.xlsx/*.pdf/*.docx 等原始/二进制文件"]}
+
+
+def _broken_items(sources, repos, vault, collected):
+    items = []
+    for s in sources:
+        if s["status"] in ("error", "warn"):
+            items.append({"severity": "error" if s["status"] == "error" else "warn",
+                          "area": "source", "title": s["name"], "detail": s["message"]})
+    for r in repos:
+        if not r["exists"] or not r["git"]:
+            items.append({"severity": "error", "area": "repo",
+                          "title": os.path.basename(r["path"]) or r["path"],
+                          "detail": "路径不存在或不是普通 .git 仓"})
+    if vault["gitignore"]["missing"]:
+        items.append({"severity": "warn", "area": "cloud", "title": "vault .gitignore 不完整",
+                      "detail": ", ".join(vault["gitignore"]["missing"])})
+    if vault["tracked_risky"]:
+        items.append({"severity": "error", "area": "cloud", "title": "有本地专属文件已被 git 跟踪",
+                      "detail": ", ".join(vault["tracked_risky"][:5])})
+    if not collected["index_ready"]:
+        items.append({"severity": "warn", "area": "search", "title": "检索索引缺失或落后",
+                      "detail": "运行 loom sync 或在控制台手动 sync"})
+    return items
+
+
+def api_admin_overview(cfg, by_id):
+    repos = _repo_rows(cfg)
+    sources = _source_diagnostics(cfg)
+    vault = _vault_status(cfg)
+    collected = _collection_status(cfg, by_id)
+    env = _env_key_state()
+    cfg_exists = os.path.exists(util.CONFIG_PATH)
+    env_mode = ""
+    if os.path.exists(util.ENV_PATH):
+        env_mode = oct(os.stat(util.ENV_PATH).st_mode & 0o777)
+    return {"config": {"home": util.HOME, "config_path": util.CONFIG_PATH,
+                       "config_exists": cfg_exists, "env_path": util.ENV_PATH,
+                       "env_exists": os.path.exists(util.ENV_PATH),
+                       "env_mode": env_mode, "env_keys": env,
+                       "redact": cfg.get("redact", True),
+                       "default_since_days": cfg.get("default_since_days", 100),
+                       "owner": cfg.get("owner", {})},
+            "collected": collected, "sources": sources, "repos": repos,
+            "identities": cfg.get("identities", {"emails": [], "names": []}),
+            "feishu": cfg.get("feishu", {}),
+            "vault": vault,
+            "broken": _broken_items(sources, repos, vault, collected)}
+
+
+def _capture(fn, *args, **kwargs):
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        result = fn(*args, **kwargs)
+    text = out.getvalue().strip()
+    etext = err.getvalue().strip()
+    return result, (text + ("\n" + etext if etext else "")).strip()
+
+
+def _confirm(payload, word):
+    return str(payload.get("confirm", "")).strip().lower() == word
+
+
+def _finish_action(cfg, ok=True, message="", output=""):
+    return {"ok": ok, "message": message, "output": output,
+            "overview": api_admin_overview(cfg, store.load())}
+
+
+def _manual_sync(cfg, payload):
+    source = payload.get("source") or "all"
+    if source != "all" and source not in collectors.REGISTRY:
+        return _finish_action(cfg, False, f"未知来源:{source}")
+    push = bool(payload.get("push"))
+    if push and not _confirm(payload, "push"):
+        return {"ok": False, "needs_confirm": "push",
+                "message": "push 会把 vault git 推到 remote,需要二次确认"}
+    util.load_env()
+    since = payload.get("since") or util.since_date(cfg.get("default_since_days", 100))
+    srcs = collectors.names() if source == "all" else [source]
+    by_id = store.load()
+    lines, total = [], 0
+    for s in srcs:
+        try:
+            got = collectors.REGISTRY[s](cfg, since)
+        except Exception as e:
+            lines.append(f"[{s}] 采集失败:{e}")
+            continue
+        if cfg.get("redact", True):
+            got = [util.redact_entry(e) for e in got]
+        if got:
+            store.upsert(by_id, got)
+        total += len(got)
+        lines.append(f"[{s}] {len(got)} 条")
+    nd = digest.apply_all(by_id)
+    store.save(by_id)
+    search.rebuild()
+    days = render.build(cfg, by_id)
+    lines.append(f"[digest] 覆盖 {nd} 条")
+    lines.append(f"[render] {days} 个日记")
+    lines.append(f"采集完成:本轮 {total} 条,库内共 {len(by_id)} 条(since {since})")
+    if payload.get("backup", True):
+        from . import cli as cli_mod
+        _, out = _capture(cli_mod.vault_git, cfg, push)
+        if out:
+            lines.append(out)
+    return _finish_action(cfg, True, "sync 完成", "\n".join(lines))
+
+
+def api_admin_action(cfg, payload):
+    payload = payload or {}
+    action = payload.get("action", "")
+    try:
+        if action == "sync":
+            return _manual_sync(cfg, payload)
+        if action == "vault_backup":
+            push = bool(payload.get("push"))
+            if push and not _confirm(payload, "push"):
+                return {"ok": False, "needs_confirm": "push",
+                        "message": "push 会把 vault git 推到 remote,需要二次确认"}
+            from . import cli as cli_mod
+            _, out = _capture(cli_mod.vault_git, cfg, push)
+            return _finish_action(cfg, True, "vault 备份完成", out)
+        if action == "repo_add":
+            path = config.add_repo(cfg, payload.get("path", ""))
+            config.save(cfg)
+            return _finish_action(cfg, True, f"已加入 repo:{path}")
+        if action == "repo_remove":
+            if not _confirm(payload, "remove"):
+                return {"ok": False, "needs_confirm": "remove",
+                        "message": "移除 repo 配置需要二次确认(不删除本地仓库)"}
+            config.rm_repo(cfg, payload.get("path", ""))
+            config.save(cfg)
+            return _finish_action(cfg, True, "已移除 repo 配置")
+        if action == "identity_add":
+            v = str(payload.get("value", "")).strip()
+            if not v:
+                return _finish_action(cfg, False, "身份不能为空")
+            bucket = "emails" if "@" in v else "names"
+            cfg.setdefault("identities", {}).setdefault(bucket, [])
+            if v not in cfg["identities"][bucket]:
+                cfg["identities"][bucket].append(v)
+            config.save(cfg)
+            return _finish_action(cfg, True, f"已加入 {bucket}:{v}")
+        if action == "identity_remove":
+            if not _confirm(payload, "remove"):
+                return {"ok": False, "needs_confirm": "remove",
+                        "message": "移除身份会影响后续 git 采集过滤,需要二次确认"}
+            v = str(payload.get("value", "")).strip()
+            ids = cfg.setdefault("identities", {"emails": [], "names": []})
+            ids["emails"] = [x for x in ids.get("emails", []) if x != v]
+            ids["names"] = [x for x in ids.get("names", []) if x != v]
+            config.save(cfg)
+            return _finish_action(cfg, True, "已移除身份")
+        if action == "source_set":
+            name = payload.get("name")
+            enabled = bool(payload.get("enabled"))
+            if name == "git":
+                return _finish_action(cfg, False, "git 来源由 repo 列表决定")
+            if name == "feishu":
+                cfg.setdefault("feishu", {})["enabled"] = enabled
+            elif name in collectors.REGISTRY:
+                cfg.setdefault("sources", {}).setdefault(name, {})["enabled"] = enabled
+            else:
+                return _finish_action(cfg, False, f"未知来源:{name}")
+            config.save(cfg)
+            return _finish_action(cfg, True, f"{name} -> {'enable' if enabled else 'disable'}")
+        if action == "feishu_add":
+            url = str(payload.get("url", "")).strip()
+            app_token = str(payload.get("app_token", "")).strip()
+            table_id = str(payload.get("table_id", "")).strip()
+            if url:
+                parsed_token, table_id_from_url = config.parse_bitable_url(url)
+                app_token = parsed_token or app_token or url
+                table_id = table_id or (table_id_from_url or "")
+            name = str(payload.get("name", "")).strip() or "需求池"
+            if not app_token or not table_id:
+                return _finish_action(cfg, False, "缺 app_token/table_id")
+            config.add_bitable(cfg, name, app_token, table_id)
+            config.save(cfg)
+            return _finish_action(cfg, True, f"已加入飞书表:{name}")
+        if action == "feishu_remove":
+            if not _confirm(payload, "remove"):
+                return {"ok": False, "needs_confirm": "remove",
+                        "message": "移除飞书表配置需要二次确认"}
+            name = str(payload.get("name", ""))
+            fs = cfg.setdefault("feishu", {})
+            fs["bitables"] = [b for b in fs.get("bitables", []) if b.get("name") != name]
+            config.save(cfg)
+            return _finish_action(cfg, True, "已移除飞书表配置")
+        if action == "owner_set":
+            owner = cfg.setdefault("owner", {})
+            owner["name"] = str(payload.get("name", owner.get("name", ""))).strip()
+            owner["feishu_name"] = str(payload.get("feishu_name", owner.get("feishu_name", ""))).strip()
+            config.save(cfg)
+            return _finish_action(cfg, True, "已更新身份负责人")
+        return _finish_action(cfg, False, f"未知动作:{action}")
+    except Exception as e:
+        return _finish_action(cfg, False, str(e))
+
+
 # ---------------------------------------------------------------- HTTP 层
 def _make_handler(cfg):
     by_id_cache = {}
@@ -198,11 +582,32 @@ def _make_handler(cfg):
                     self._json(api_stats(cfg, fresh()))
                 elif u.path == "/api/entry":
                     self._json(api_entry(q.get("id", ""), fresh()))
+                elif u.path == "/api/admin/overview":
+                    self._json(api_admin_overview(cfg, fresh()))
                 else:
                     self._json({"error": "no route"}, 404)
             except BrokenPipeError:
                 pass
             except Exception as e:                          # 单请求失败别带崩服务
+                util.log(f"  [serve] {u.path} 失败: {e}")
+                try:
+                    self._json({"error": str(e)}, 500)
+                except Exception:
+                    pass
+
+        def do_POST(self):
+            u = urllib.parse.urlparse(self.path)
+            try:
+                n = int(self.headers.get("Content-Length", "0") or "0")
+                raw = self.rfile.read(n) if n else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                if u.path == "/api/admin/action":
+                    self._json(api_admin_action(cfg, payload))
+                else:
+                    self._json({"error": "no route"}, 404)
+            except BrokenPipeError:
+                pass
+            except Exception as e:
                 util.log(f"  [serve] {u.path} 失败: {e}")
                 try:
                     self._json({"error": str(e)}, 500)

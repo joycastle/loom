@@ -3,42 +3,73 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0E1117">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTAwJz48cmVjdCB3aWR0aD0nMTAwJyBoZWlnaHQ9JzEwMCcgcng9JzIyJyBmaWxsPScjMTQxODIxJy8+PGcgZmlsbD0nIzVBQTlBMCc+PHJlY3QgeD0nMTQnIHk9JzIxLjUnIHdpZHRoPSc3MicgaGVpZ2h0PSc5JyByeD0nNC41Jy8+PHJlY3QgeD0nMTQnIHk9JzQ1LjUnIHdpZHRoPSc3MicgaGVpZ2h0PSc5JyByeD0nNC41Jy8+PHJlY3QgeD0nMTQnIHk9JzY5LjUnIHdpZHRoPSc3MicgaGVpZ2h0PSc5JyByeD0nNC41Jy8+PC9nPjxnIGZpbGw9JyNFMEE4NEUnPjxyZWN0IHg9JzIxLjUnIHk9JzE0JyB3aWR0aD0nOScgaGVpZ2h0PSc3Micgcng9JzQuNScvPjxyZWN0IHg9JzQ1LjUnIHk9JzE0JyB3aWR0aD0nOScgaGVpZ2h0PSc3Micgcng9JzQuNScvPjxyZWN0IHg9JzY5LjUnIHk9JzE0JyB3aWR0aD0nOScgaGVpZ2h0PSc3Micgcng9JzQuNScvPjwvZz48ZyBmaWxsPScjNUFBOUEwJz48cmVjdCB4PSc0NS41JyB5PScyMS41JyB3aWR0aD0nOScgaGVpZ2h0PSc5JyByeD0nMi41Jy8+PHJlY3QgeD0nMjEuNScgeT0nNDUuNScgd2lkdGg9JzknIGhlaWdodD0nOScgcng9JzIuNScvPjxyZWN0IHg9JzY5LjUnIHk9JzQ1LjUnIHdpZHRoPSc5JyBoZWlnaHQ9JzknIHJ4PScyLjUnLz48cmVjdCB4PSc0NS41JyB5PSc2OS41JyB3aWR0aD0nOScgaGVpZ2h0PSc5JyByeD0nMi41Jy8+PC9nPjwvc3ZnPg==">
-<title>loom · 台账浏览</title>
+<title>loom · 本地控制台</title>
 <style>
-:root{--ink:#0F1218;--panel:#171B23;--panel2:#1D222C;--line:#2A313D;
-  --tx:#E8EAED;--mut:#8A93A3;--dim:#5C6673;--warm:#E0A84E;--cool:#5AA9A0;}
+:root{--ink:#0E1117;--panel:#171B22;--panel2:#1E242D;--panel3:#11151C;
+  --line:#2A313C;--line2:#394250;--tx:#E7EAF0;--mut:#9AA3B2;--dim:#667181;
+  --warm:#DCA85F;--cool:#63B3A8;--blue:#6EA8FE;--bad:#E66B6B;--ok:#65C18C;
+  --warn:#DCA85F;--shadow:0 14px 34px rgba(0,0,0,.28);--soft:0 1px 0 rgba(255,255,255,.04) inset}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--ink);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
-  line-height:1.55;font-feature-settings:"tnum" 1;}
+html{background:var(--ink);color-scheme:dark}
+body{min-height:100vh;background:
+  linear-gradient(180deg,#111822 0,#0E1117 280px),
+  repeating-linear-gradient(90deg,rgba(255,255,255,.018) 0 1px,transparent 1px 64px);
+  color:var(--tx);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  line-height:1.55;font-feature-settings:"tnum" 1;font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:rgba(99,179,168,.18);overscroll-behavior-y:contain}
 .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
 a{color:var(--cool);text-decoration:none}
-.wrap{max-width:1120px;margin:0 auto;padding:18px 20px 80px}
-header{display:flex;align-items:center;gap:14px;padding:6px 0 16px;border-bottom:1px solid var(--line)}
-header svg{width:34px;height:34px}
-header .nm{font-size:19px;font-weight:700;background:linear-gradient(92deg,var(--warm),var(--cool));
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.skip{position:fixed;left:16px;top:10px;z-index:20;transform:translateY(-140%);
+  background:var(--tx);color:var(--ink);border-radius:8px;
+  padding:8px 12px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.28)}
+.skip:focus{transform:translateY(0);outline:2px solid var(--cool);outline-offset:2px}
+main{display:block}
+.wrap{max-width:1180px;margin:0 auto;padding:16px 22px 80px}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;
+  padding:10px 0 14px;margin-bottom:4px;background:linear-gradient(180deg,#111822 0,rgba(17,24,34,.92) 72%,rgba(17,24,34,0));
+  backdrop-filter:blur(16px);border-bottom:1px solid rgba(42,49,60,.72)}
+header svg{width:36px;height:36px;filter:drop-shadow(0 8px 18px rgba(0,0,0,.3))}
+header .nm{font-size:19px;font-weight:760;letter-spacing:.01em;background:linear-gradient(92deg,var(--warm),var(--cool));
   -webkit-background-clip:text;background-clip:text;color:transparent}
-nav{display:flex;gap:6px;margin-left:auto}
-nav button{background:var(--panel);border:1px solid var(--line);border-radius:999px;color:var(--mut);
-  padding:6px 16px;font-size:13px;cursor:pointer}
-nav button.on{color:var(--warm);border-color:var(--warm)}
-.view{display:none;padding-top:16px}.view.on{display:block}
+nav{display:flex;gap:4px;margin-left:auto;padding:4px;background:rgba(14,17,23,.56);border:1px solid var(--line);
+  border-radius:12px;box-shadow:var(--soft)}
+nav button{height:32px;min-width:44px;background:transparent;border:1px solid transparent;border-radius:8px;color:var(--mut);
+  padding:0 12px;font-size:13px;cursor:pointer;white-space:nowrap;transition:background .14s,border-color .14s,color .14s}
+nav button:hover{color:var(--tx);background:rgba(255,255,255,.035)}
+nav button.on{color:var(--tx);background:var(--panel2);border-color:var(--line2);box-shadow:var(--soft)}
+button,input,select{font:inherit;color-scheme:dark}
+button,label{touch-action:manipulation}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid rgba(99,179,168,.7);outline-offset:2px}
+button:disabled{cursor:default;opacity:.58}
+.view{display:none;padding-top:18px}.view.on{display:block}
+@media(max-width:720px){.wrap{padding:10px 12px 64px}header{align-items:flex-start;flex-wrap:wrap}
+  nav{order:3;width:100%;overflow-x:auto}nav button{min-height:44px;flex:0 0 auto}.spot{margin-top:24px}
+  input,select,.form input,.form select{font-size:16px!important}
+  .bar input,.bar select,.form input,.form select{height:44px;min-height:44px}
+  .act{min-height:44px}.mini{min-height:44px}}
 /* 首页 Dashboard */
 .spot{max-width:660px;margin:34px auto 8px;position:relative}
-.spot input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:14px;
-  color:var(--tx);padding:16px 52px 16px 20px;font-size:16px;outline:none;transition:all .15s}
-.spot input:focus{border-color:var(--warm);box-shadow:0 0 0 3px rgba(224,168,78,.12),0 8px 32px rgba(0,0,0,.35)}
+.spot input{width:100%;background:rgba(23,27,34,.9);border:1px solid var(--line2);border-radius:12px;
+  color:var(--tx);padding:16px 52px 16px 20px;font-size:16px;outline:none;
+  transition:border-color .15s,box-shadow .15s,background .15s;
+  box-shadow:var(--shadow),var(--soft)}
+.spot input:focus{border-color:var(--cool);box-shadow:0 0 0 3px rgba(99,179,168,.13),0 16px 40px rgba(0,0,0,.38),var(--soft)}
 .spot .kbd{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--dim);
   font-size:11px;border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-family:ui-monospace,monospace}
 .subq{text-align:center;color:var(--dim);font-size:12.5px;margin-bottom:26px}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:760px;margin:0 auto 26px}
 @media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}}
-.stat{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:14px 8px;text-align:center}
+.stat{background:linear-gradient(180deg,rgba(30,36,45,.92),rgba(23,27,34,.92));border:1px solid var(--line);
+  border-radius:10px;padding:14px 8px;text-align:center;box-shadow:var(--soft)}
 .stat .n{font-size:27px;font-weight:750;letter-spacing:-.02em;
   background:linear-gradient(92deg,var(--warm),var(--cool));-webkit-background-clip:text;background-clip:text;color:transparent}
-.stat .l{font-size:11.5px;color:var(--mut);margin-top:2px;letter-spacing:.08em}
-.fab{background:linear-gradient(180deg,#12161e,#0d1117);border:1px solid var(--line);border-radius:14px;
-  padding:16px 18px 12px;max-width:760px;margin:0 auto 22px;overflow-x:auto}
+.stat .l{font-size:11.5px;color:var(--mut);margin-top:2px;letter-spacing:.06em}
+.fab{background:linear-gradient(180deg,var(--panel3),#0D1117);border:1px solid var(--line);border-radius:10px;
+  padding:16px 18px 12px;max-width:760px;margin:0 auto 22px;overflow-x:auto;box-shadow:var(--soft)}
 .fab svg{width:100%;height:auto;display:block}
 .fab .ft{font-size:12px;color:var(--mut);letter-spacing:.08em;margin-bottom:10px}
 .fab .ft b{color:var(--warm);font-weight:600}
@@ -53,27 +84,28 @@ nav button.on{color:var(--warm);border-color:var(--warm)}
 .th-row .tc{width:44px;font-size:11.5px;color:var(--dim);font-family:ui-monospace,monospace}
 /* 搜索 */
 .bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-.bar input,.bar select{background:var(--panel);border:1px solid var(--line);border-radius:9px;
-  color:var(--tx);padding:9px 12px;font-size:14px}
+.bar input,.bar select{height:38px;background:var(--panel);background-color:var(--panel);border:1px solid var(--line);border-radius:8px;
+  color:var(--tx);padding:8px 11px;font-size:14px}
 .bar input[type=search]{flex:1;min-width:220px}
 .hint{color:var(--dim);font-size:12px;margin-bottom:10px}
 /* 卡片 */
-.card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 14px;
-  margin-bottom:8px;cursor:pointer}
-.card:hover{border-color:var(--cool)}
+.card{background:linear-gradient(180deg,rgba(23,27,34,.96),rgba(20,24,31,.96));border:1px solid var(--line);
+  border-radius:9px;padding:12px 14px;margin-bottom:8px;cursor:pointer;box-shadow:var(--soft);
+  transition:border-color .14s,transform .14s,background .14s}
+.card:hover{border-color:rgba(99,179,168,.66);transform:translateY(-1px);background:linear-gradient(180deg,#1B2029,#151922)}
 .card .top{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:12px;color:var(--mut)}
 .card .top .d{color:var(--warm)}
-.card .top .k{border:1px solid var(--line);border-radius:999px;padding:0 8px}
+.card .top .k{border:1px solid var(--line2);border-radius:999px;padding:0 8px;background:rgba(255,255,255,.025)}
 .card .sm{font-size:14px;margin-top:3px;word-break:break-all}
 .card .sn{font-size:12px;color:var(--dim);margin-top:3px}
 .card .tp{font-size:11px;color:var(--cool);margin-top:3px}
-.gh{font-size:13px;color:var(--warm);margin:16px 0 8px;letter-spacing:.06em}
+.gh{font-size:12px;color:var(--warm);margin:16px 0 8px;letter-spacing:.08em;text-transform:uppercase}
 /* 主题图 */
-#tgraph{background:linear-gradient(180deg,#12161e,#0d1117);border:1px solid var(--line);
-  border-radius:14px;overflow-x:auto;margin-bottom:16px;padding:10px 6px}
+#tgraph{background:linear-gradient(180deg,var(--panel3),#0D1117);border:1px solid var(--line);
+  border-radius:10px;overflow-x:auto;margin-bottom:16px;padding:10px 6px;box-shadow:var(--soft)}
 #tgraph svg{display:block}
 .gnode{cursor:pointer}
-.gnode rect{stroke-width:1.2;rx:16;transition:all .12s}
+.gnode rect{stroke-width:1.2;rx:16;transition:stroke .12s,stroke-width .12s,filter .12s,fill-opacity .12s}
 .gnode:hover rect{stroke:var(--cool);filter:brightness(1.15)}
 .gnode.on rect{stroke:var(--warm);stroke-width:1.8}
 .gnode text{fill:var(--tx);font-size:13px;font-family:system-ui,sans-serif;font-weight:500}
@@ -87,7 +119,8 @@ nav button.on{color:var(--warm);border-color:var(--warm)}
 /* 日历 */
 .cols{display:grid;grid-template-columns:320px 1fr;gap:20px}
 @media(max-width:800px){.cols{grid-template-columns:1fr}}
-.cal{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.cal{background:linear-gradient(180deg,rgba(23,27,34,.96),rgba(20,24,31,.96));border:1px solid var(--line);
+  border-radius:10px;padding:12px 14px;margin-bottom:12px;box-shadow:var(--soft)}
 .cal .mh{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .cal .mh span{font-size:14px;color:var(--tx);font-weight:600;letter-spacing:.04em}
 .cal .mh button{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
@@ -106,37 +139,130 @@ nav button.on{color:var(--warm);border-color:var(--warm)}
 .cell.has:hover,.cell.on{outline:2px solid var(--warm);outline-offset:-1px}
 .legend{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--dim);margin:2px 2px 10px}
 .legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+/* 管理控制台 */
+.admin-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:0 0 14px}
+.admin-title{min-width:0}
+.admin-title .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:4px}
+.admin-title h1{font-size:20px;line-height:1.2;font-weight:720;letter-spacing:0;color:var(--tx)}
+.admin-title p{font-size:12.5px;color:var(--dim);margin-top:5px}
+.admin-head .act{flex:0 0 auto}
+.admin-top{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;margin-bottom:14px;
+  border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--line);box-shadow:var(--soft)}
+.answer{position:relative;overflow:hidden;background:linear-gradient(180deg,#171C24,#12161D);
+  padding:14px 16px 13px;min-height:104px}
+.answer:before{content:"";position:absolute;left:16px;top:18px;width:7px;height:7px;border-radius:50%;background:var(--line2)}
+.answer.ok:before{background:var(--ok);box-shadow:0 0 0 3px rgba(101,193,140,.12)}
+.answer.warn:before{background:var(--warn);box-shadow:0 0 0 3px rgba(224,168,78,.12)}
+.answer.bad:before{background:var(--bad);box-shadow:0 0 0 3px rgba(230,107,107,.12)}
+.answer h2{font-size:11px;color:var(--mut);font-weight:650;letter-spacing:.08em;margin:0 0 11px 18px;text-transform:uppercase}
+.answer .big{font-size:22px;font-weight:720;line-height:1.1;color:var(--tx);letter-spacing:0}
+.answer .desc{font-size:12px;color:var(--dim);margin-top:8px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+@media(max-width:760px){.admin-head{align-items:flex-start;flex-direction:column}.admin-top,.admin-grid{grid-template-columns:1fr}}
+.panel{background:linear-gradient(180deg,rgba(23,27,34,.97),rgba(19,23,30,.97));border:1px solid var(--line);
+  border-radius:10px;padding:14px;box-shadow:var(--soft)}
+.manual-panel{grid-column:1/-1}
+.panel h3{font-size:14px;color:var(--tx);font-weight:680;margin-bottom:10px;letter-spacing:.02em}
+.panel .sub{font-size:12px;color:var(--dim);margin:-6px 0 10px}
+.mini{font-size:12px;color:var(--mut);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;
+  padding:2px 8px;font-size:11.5px;color:var(--mut);background:rgba(255,255,255,.022)}
+.pill.ok{color:var(--ok);border-color:rgba(101,193,140,.45);background:rgba(101,193,140,.07)}
+.pill.warn{color:var(--warn);border-color:rgba(224,168,78,.5);background:rgba(224,168,78,.07)}
+.pill.error,.pill.bad{color:var(--bad);border-color:rgba(230,107,107,.55);background:rgba(230,107,107,.07)}
+.pill.off{color:var(--dim);background:rgba(255,255,255,.015)}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:8px;font-size:12px;margin:6px 0;color:var(--mut)}
+.kv b{color:var(--tx);font-weight:500;word-break:break-all}
+.row{display:flex;gap:12px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);
+  padding:10px 0;font-size:12px;color:var(--mut)}
+.row:first-of-type{border-top:0;padding-top:0}
+.row strong{color:var(--tx);font-size:13px;font-weight:600}
+.row code{color:var(--mut);word-break:break-all}
+.barline{display:flex;align-items:center;gap:9px;margin:7px 0;font-size:12px;color:var(--mut)}
+.barline .nm2{width:96px;text-align:right;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.barline .track{flex:1;height:8px;background:var(--panel2);border-radius:5px;overflow:hidden}
+.barline i{display:block;height:100%;background:linear-gradient(90deg,var(--cool),var(--warm));border-radius:5px}
+.form{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 10px;align-items:center}
+.field{display:flex;flex-direction:column;gap:5px;min-width:138px}
+.field span{font-size:11px;color:var(--dim);letter-spacing:.04em}
+.form input:not([type=checkbox]),.form select,.field input:not([type=checkbox]),.field select,.panel-tools input{height:36px;background:var(--panel2);background-color:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--tx);
+  padding:7px 10px;font-size:13px;min-width:140px}
+.form input::placeholder,.field input::placeholder,.panel-tools input::placeholder{color:var(--dim)}
+.form input.path,.field input.path,.panel-tools input.path{flex:1;min-width:260px}
+.sync-form{display:grid;gap:10px;margin-top:12px}
+.sync-line{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.sync-line .field{flex:1 1 144px}
+.sync-line .act{margin-left:auto}
+.toggle-line{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.checkline{display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;background:rgba(255,255,255,.016);color:var(--mut);font-size:12.5px}
+.checkline input[type=checkbox]{appearance:none;-webkit-appearance:none;width:15px;height:15px;min-width:15px;border:1px solid var(--line2);
+  border-radius:4px;background:var(--panel3);display:grid;place-content:center}
+.checkline input[type=checkbox]:checked{border-color:rgba(99,179,168,.75);background:rgba(99,179,168,.15)}
+.checkline input[type=checkbox]:checked:after{content:"";width:7px;height:7px;border-radius:2px;background:var(--cool)}
+.inline-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0 10px}
+.act{background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--tx);
+  min-height:36px;padding:7px 11px;font-size:12.5px;cursor:pointer;transition:border-color .14s,color .14s,background .14s}
+.act:active{transform:translateY(1px)}
+.act:hover{border-color:var(--cool);color:var(--cool)}
+.act.danger:hover{border-color:var(--bad);color:var(--bad)}
+.act.primary{border-color:rgba(90,169,160,.7);color:var(--cool);background:rgba(90,169,160,.08)}
+.act.warn{border-color:rgba(224,168,78,.65);color:var(--warm);background:rgba(224,168,78,.07)}
+.is-busy .act{opacity:.58}
+.log{background:var(--ink);border:1px solid var(--line);border-radius:9px;padding:10px;
+  white-space:pre-wrap;word-break:break-all;font-size:12px;color:var(--mut);max-height:220px;overflow:auto}
+.log[aria-busy="true"]{border-color:rgba(99,179,168,.58);color:var(--tx)}
+.panel-tools{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start}
+.panel-tools .form{margin:0}
+.panel-tools .path{width:100%}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);border-radius:999px;color:var(--mut);font-size:12px;padding:3px 8px;background:rgba(255,255,255,.018)}
+.list{max-height:260px;overflow:auto}
 /* 详情抽屉 */
-#drawer{position:fixed;top:0;right:-560px;width:min(560px,92vw);height:100vh;background:var(--panel2);
-  border-left:1px solid var(--line);transition:right .18s;overflow-y:auto;padding:20px;z-index:9}
+#drawer{position:fixed;top:0;right:-560px;width:min(560px,92vw);height:100vh;background:linear-gradient(180deg,#1C222C,#151A22);
+  border-left:1px solid var(--line2);transition:right .18s;overflow-y:auto;overscroll-behavior:contain;
+  padding:20px;z-index:9;box-shadow:-24px 0 48px rgba(0,0,0,.38)}
 #drawer.on{right:0}
 #drawer h3{font-size:15px;margin-bottom:10px;word-break:break-all}
 #drawer .meta{font-size:12px;color:var(--mut);margin-bottom:12px}
 #drawer pre{background:var(--ink);border:1px solid var(--line);border-radius:9px;padding:12px;
   font-size:12px;white-space:pre-wrap;word-break:break-all;margin:8px 0;max-height:50vh;overflow:auto}
 #drawer .x{position:sticky;top:0;float:right;background:var(--panel);border:1px solid var(--line);
-  border-radius:999px;color:var(--mut);width:30px;height:30px;cursor:pointer}
+  border-radius:8px;color:var(--mut);width:32px;height:32px;cursor:pointer}
 .empty{color:var(--dim);padding:30px 0;text-align:center}
+@media(max-width:720px){
+  nav button,.act{min-height:44px}
+  .bar input,.bar select,.form input:not([type=checkbox]),.form select,.field input:not([type=checkbox]),.field select,.panel-tools input{height:44px;min-height:44px}
+  .sync-line .act{margin-left:0}
+  .panel-tools{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.001ms!important}
+  .card:hover,.act:active{transform:none}
+}
 </style>
 </head>
 <body>
+<a class="skip" href="#main" data-t="跳到内容|Skip to content"></a>
 <div class="wrap">
 <header>
-  <svg viewBox="0 0 100 100"><rect x="2" y="2" width="96" height="96" rx="22" fill="#141821" stroke="#2A313D"/>
+  <svg viewBox="0 0 100 100" aria-hidden="true"><rect x="2" y="2" width="96" height="96" rx="22" fill="#141821" stroke="#2A313D"/>
   <g fill="#5AA9A0"><rect x="14" y="21.5" width="72" height="9" rx="4.5"/><rect x="14" y="45.5" width="72" height="9" rx="4.5"/><rect x="14" y="69.5" width="72" height="9" rx="4.5"/></g>
   <g fill="#E0A84E"><rect x="21.5" y="14" width="9" height="72" rx="4.5"/><rect x="45.5" y="14" width="9" height="72" rx="4.5"/><rect x="69.5" y="14" width="9" height="72" rx="4.5"/></g>
   <g fill="#5AA9A0"><rect x="45.5" y="21.5" width="9" height="9" rx="2.5"/><rect x="21.5" y="45.5" width="9" height="9" rx="2.5"/><rect x="69.5" y="45.5" width="9" height="9" rx="2.5"/><rect x="45.5" y="69.5" width="9" height="9" rx="2.5"/></g></svg>
-  <span class="nm">loom</span><span style="color:var(--dim);font-size:13px" data-t="台账浏览|ledger browser"></span>
-  <nav>
-    <button data-v="search" class="on">🔍 <span data-t="搜索|Search"></span></button>
-    <button data-v="topics">🧵 <span data-t="主题|Topics"></span></button>
-    <button data-v="days">📅 <span data-t="按天|Days"></span></button>
-    <button id="langbtn" title="switch language"></button>
+  <span class="nm" translate="no">loom</span><span style="color:var(--dim);font-size:13px" data-t="本地控制台|local console"></span>
+  <nav aria-label="Primary">
+    <button data-v="search" class="on" aria-current="page"><span data-t="搜索|Search"></span></button>
+    <button data-v="topics"><span data-t="主题|Topics"></span></button>
+    <button data-v="days"><span data-t="按天|Days"></span></button>
+    <button data-v="admin"><span data-t="管理|Admin"></span></button>
+    <button id="langbtn" aria-label="Switch language" title="Switch language"></button>
   </nav>
 </header>
 
+<main id="main">
 <div id="v-search" class="view on">
-  <div class="spot"><input type="search" id="q" autofocus>
+  <div class="spot"><label class="sr-only" for="q" data-t="搜索台账|Search ledger"></label><input type="search" id="q" name="ledger_query" autocomplete="off" spellcheck="false">
     <span class="kbd">⌘K</span></div>
   <div class="subq" id="subq"></div>
   <div id="dash">
@@ -147,9 +273,9 @@ nav button.on{color:var(--warm);border-color:var(--warm)}
   </div>
   <div id="rwrap" style="display:none">
     <div class="bar" style="max-width:760px;margin:0 auto 10px">
-      <select id="f-tool"><option value="" data-t="全部工具|All tools"></option></select>
-      <input id="f-since" type="date" title="起始日期">
-      <input id="f-until" type="date" title="截止日期">
+      <label class="sr-only" for="f-tool" data-t="工具过滤|Tool filter"></label><select id="f-tool" name="tool_filter"><option value="" data-t="全部工具|All Tools"></option></select>
+      <label class="sr-only" for="f-since" data-t="起始日期|Start date"></label><input id="f-since" name="start_date" type="date" title="起始日期" autocomplete="off">
+      <label class="sr-only" for="f-until" data-t="截止日期|End date"></label><input id="f-until" name="end_date" type="date" title="截止日期" autocomplete="off">
     </div>
     <div id="r-search" style="max-width:760px;margin:0 auto"></div>
   </div>
@@ -167,18 +293,95 @@ nav button.on{color:var(--warm);border-color:var(--warm)}
     <div id="dbody"><div class="empty" data-t="← 点日历上有热力的日期|← Pick a highlighted date on the calendar"></div></div>
   </div>
 </div>
+
+<div id="v-admin" class="view">
+  <div class="admin-head">
+    <div class="admin-title">
+      <div class="eyebrow" data-t="本地管理|Local Admin"></div>
+      <h1 data-t="控制台状态|Console Status"></h1>
+      <p data-t="先看采集、故障和上云边界;再做同步和配置。|Check collection, issues, and cloud boundary first; then sync or configure."></p>
+    </div>
+    <button class="act" onclick="loadAdmin()" data-t="刷新状态|Refresh Status"></button>
+  </div>
+  <div class="admin-top" id="admin-answers"></div>
+  <div class="admin-grid">
+    <section class="panel manual-panel">
+      <h3 data-t="手动 sync|Manual sync"></h3>
+      <div class="sub" data-t="本地采集会重建索引和日记;push 需要二次确认。|Local sync rebuilds index and journals; push requires confirmation."></div>
+      <div class="sync-form">
+        <div class="sync-line">
+          <label class="field" for="sync-source"><span data-t="来源|Source"></span><select id="sync-source" name="sync_source"><option value="all">all</option></select></label>
+          <label class="field" for="sync-since"><span data-t="起始日期|Since"></span><input id="sync-since" name="sync_since" type="date" title="since" autocomplete="off"></label>
+          <button class="act primary" onclick="runSync()" data-t="开始 Sync|Run Sync"></button>
+        </div>
+        <div class="toggle-line">
+          <label class="checkline"><input id="sync-backup" type="checkbox" checked> <span data-t="同步后本地备份|Local Backup After Sync"></span></label>
+          <label class="checkline"><input id="sync-push" type="checkbox"> <span data-t="同步后 Push|Push After Sync"></span></label>
+        </div>
+      </div>
+      <div class="inline-actions">
+        <button class="act" onclick="vaultBackup(false)" data-t="仅提交 Vault|Commit Vault"></button>
+        <button class="act warn" onclick="vaultBackup(true)" data-t="提交并 Push|Commit & Push"></button>
+      </div>
+      <pre class="log" id="admin-log" aria-live="polite" aria-busy="false">ready</pre>
+    </section>
+    <section class="panel">
+      <h3 data-t="来源诊断|Source diagnostics"></h3>
+      <div id="admin-sources"></div>
+    </section>
+    <section class="panel">
+      <h3 data-t="Repo 管理|Repo management"></h3>
+      <div class="panel-tools"><label class="sr-only" for="repo-path" data-t="Repo 路径|Repo path"></label><input class="path" id="repo-path" name="repo_path" autocomplete="off" spellcheck="false" placeholder="/Users/me/project…">
+        <button class="act primary" onclick="repoAdd()" data-t="加入|Add"></button></div>
+      <div id="admin-repos" class="list"></div>
+    </section>
+    <section class="panel">
+      <h3 data-t="身份管理|Identity"></h3>
+      <div class="sub" data-t="git 采集会用这些邮箱/姓名过滤“本人”的提交。|Git collection uses these emails/names to identify your commits."></div>
+      <div class="form"><label class="sr-only" for="identity-value" data-t="姓名或邮箱|Name or email"></label><input id="identity-value" name="identity_value" autocomplete="off" spellcheck="false" placeholder="name@example.com…">
+        <button class="act primary" onclick="identityAdd()" data-t="加入|Add"></button></div>
+      <div id="admin-identities"></div>
+    </section>
+    <section class="panel">
+      <h3 data-t="Feishu 配置|Feishu config"></h3>
+      <div class="sub" data-t="凭证只读取 ~/.loom/.env;控制台不写入密钥。|Secrets are only read from ~/.loom/.env; this console does not write credentials."></div>
+      <div class="form">
+        <label class="field" for="fs-name"><span data-t="名称|Name"></span><input id="fs-name" name="feishu_name" autocomplete="off" spellcheck="false" placeholder="需求池…"></label>
+        <label class="field" for="fs-url"><span data-t="地址或 token|URL Or Token"></span><input class="path" id="fs-url" name="feishu_url" autocomplete="off" spellcheck="false" placeholder="Feishu base URL or app_token…"></label>
+        <label class="field" for="fs-table"><span data-t="Table ID|Table ID"></span><input id="fs-table" name="feishu_table_id" autocomplete="off" spellcheck="false" placeholder="table_id…"></label>
+        <button class="act primary" onclick="feishuAdd()" data-t="加入表|Add Table"></button>
+      </div>
+      <div id="admin-feishu"></div>
+    </section>
+    <section class="panel">
+      <h3 data-t="什么会上云|Cloud boundary"></h3>
+      <div id="admin-cloud"></div>
+    </section>
+    <section class="panel">
+      <h3 data-t="采了什么|Collected"></h3>
+      <div id="admin-collected"></div>
+    </section>
+    <section class="panel">
+      <h3 data-t="哪里坏了|Broken"></h3>
+      <div id="admin-broken"></div>
+    </section>
+  </div>
+</div>
+</main>
 </div>
 
-<div id="drawer"><button class="x" onclick="drawer(false)">✕</button><div id="dctn"></div></div>
+<div id="drawer" role="dialog" aria-modal="true" aria-label="Entry detail" aria-hidden="true" tabindex="-1"><button class="x" onclick="drawer(false)" aria-label="Close">✕</button><div id="dctn"></div></div>
 
 <script>
 const LANG=localStorage.getItem('loom_lang')||'zh';
 const T=(zh,en)=>LANG==='en'?en:zh;
-const $=s=>document.querySelector(s), api=(p,o)=>fetch(p+'?'+new URLSearchParams(o)).then(r=>r.json());
+const $=s=>document.querySelector(s), api=(p,o={})=>fetch(p+'?'+new URLSearchParams(o)).then(r=>r.json());
+const post=(p,o)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o)}).then(r=>r.json());
 document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('[data-t]').forEach(el=>{const[z,e]=el.dataset.t.split('|');el.textContent=T(z,e)});
   $('#q').placeholder=T('搜你做过的任何事…(中文子串可用)','Search anything you did… (CJK substring OK)');
   $('#subq').textContent=T('一份台账,织进了你的全部工作痕迹','One ledger, woven from all your work traces');
+  if(window.matchMedia('(pointer:fine)').matches)$('#q').focus({preventScroll:true});
   const b=$('#langbtn');b.textContent=T('EN','中');
   b.onclick=()=>{localStorage.setItem('loom_lang',LANG==='zh'?'en':'zh');location.reload()};
 });
@@ -195,13 +398,26 @@ function groups(g){const order=['report','session','commit','doc','note','requir
   return keys.map(k=>`<div class="gh">${KIND[k]||''} ${esc(k)} (${g[k].length})</div>`+g[k].map(card).join('')).join('')||`<div class="empty">${T('空','Empty')}</div>`}
 
 // 视图切换
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
-  document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on'); $('#v-'+b.dataset.v).classList.add('on');
-  if(b.dataset.v==='topics'&&!window._t){window._t=1;loadTopics()}
-  if(b.dataset.v==='days'&&!window._d){window._d=1;loadDays()}
-});
+const ROUTES={search:'search',topics:'topics',days:'days',admin:'admin'};
+const VIEW_TITLES={search:['搜索','Search'],topics:['主题','Topics'],days:['按天','Days'],admin:['管理','Admin']};
+function viewFromHash(){const h=(location.hash||'#search').slice(1);return ROUTES[h]||'search'}
+function setViewTitle(v){const [zh,en]=VIEW_TITLES[v]||VIEW_TITLES.search;document.title=`loom · ${T(zh,en)}`}
+function showView(v,pushUrl=false){
+  v=ROUTES[v]||'search';
+  document.querySelectorAll('nav button[data-v]').forEach(b=>{
+    const on=b.dataset.v===v;
+    b.classList.toggle('on',on);
+    if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
+  });
+  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('on',x.id==='v-'+v));
+  setViewTitle(v);
+  if(pushUrl&&location.hash!=='#'+v)history.pushState(null,'','#'+v);
+  if(v==='topics'&&!window._t){window._t=1;loadTopics()}
+  if(v==='days'&&!window._d){window._d=1;loadDays()}
+  if(v==='admin'&&!window._a){window._a=1;loadAdmin()}
+}
+document.querySelectorAll('nav button[data-v]').forEach(b=>b.onclick=()=>showView(b.dataset.v,true));
+window.addEventListener('popstate',()=>showView(viewFromHash(),false));
 
 // ---- 首页:搜索 + Dashboard ----
 let deb;
@@ -225,6 +441,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&document.activeElement===$('#q')){$('#q').value='';mode(false)}});
 
 function countUp(el,n){const t0=performance.now();
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){el.textContent=n.toLocaleString();return}
   const step=t=>{const p=Math.min(1,(t-t0)/650);
     el.textContent=Math.round(n*(1-Math.pow(1-p,3))).toLocaleString();
     if(p<1)requestAnimationFrame(step)};requestAnimationFrame(step)}
@@ -268,7 +485,7 @@ async function loadDash(){
      <span class="tc">${n}</span></div>`).join('');
   $('#recent').innerHTML=st.recent.map(card).join('');
 }
-function goDay(ds){document.querySelector('nav button[data-v=days]').click();
+function goDay(ds){showView('days',true);
   setTimeout(()=>loadDay(ds),window._d?0:400)}
 
 // ---- 主题:横向层级 DAG 图 ----
@@ -368,8 +585,120 @@ async function loadDay(date){
   $('#dbody').innerHTML=`<div class="gh" style="font-size:15px;margin-top:0">📅 ${date} · ${r.total}${T(' 条','')}</div>`+groups(r.groups);
 }
 
+// ---- 管理:采集状态 / 故障 / 上云边界 ----
+let ADMIN=null;
+const jsq=s=>esc(String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,' '));
+const pct=(n,max)=>max?Math.max(4,100*n/max).toFixed(1):0;
+function pill(st,txt){return `<span class="pill ${st}">${esc(txt||st)}</span>`}
+function kv(k,v){return `<div class="kv"><span>${esc(k)}</span><b>${esc(v??'')}</b></div>`}
+function bars(map){
+  const entries=Object.entries(map||{}),max=Math.max(1,...entries.map(x=>x[1]));
+  return entries.slice(0,8).map(([k,n])=>`<div class="barline"><span class="nm2" title="${esc(k)}">${esc(k)}</span>
+    <span class="track"><i style="width:${pct(n,max)}%"></i></span><span class="mono">${n}</span></div>`).join('')
+    ||`<div class="empty">${T('暂无数据','No data')}</div>`}
+function chips(xs,cls='chip'){return (xs||[]).map(x=>`<span class="${cls}">${esc(x)}</span>`).join('')}
+function fillSources(){
+  if(!ADMIN)return;
+  const sel=$('#sync-source'),cur=sel.value||'all';
+  sel.innerHTML='<option value="all">all</option>'+ADMIN.sources.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('');
+  sel.value=[...sel.options].some(o=>o.value===cur)?cur:'all';
+}
+function renderAdmin(){
+  const o=ADMIN;if(!o)return;fillSources();
+  const bad=o.broken.filter(x=>x.severity==='error').length,warn=o.broken.filter(x=>x.severity!=='error').length;
+  const cloudBad=o.vault.tracked_risky.length,cloudWarn=o.vault.gitignore.missing.length||!o.vault.git;
+  $('#admin-answers').innerHTML=[
+    `<div class="answer ok"><h2>${T('采了什么','WHAT WAS COLLECTED')}</h2><div class="big">${o.collected.entries.toLocaleString()} ${T('条','entries')}</div>
+      <div class="desc">${esc(o.collected.date_start||'-')} → ${esc(o.collected.date_end||'-')} · ${Object.keys(o.collected.tools).length}${T(' 个来源',' sources')}</div></div>`,
+    `<div class="answer ${bad?'bad':warn?'warn':'ok'}"><h2>${T('哪里坏了','WHAT IS BROKEN')}</h2><div class="big">${bad}${T(' 个错误',' errors')} · ${warn}${T(' 个警告',' warnings')}</div>
+      <div class="desc">${o.broken[0]?esc(o.broken[0].title+' · '+o.broken[0].detail):T('当前没有明显阻塞','No obvious blocker')}</div></div>`,
+    `<div class="answer ${cloudBad?'bad':cloudWarn?'warn':'ok'}"><h2>${T('什么会上云','WHAT GOES TO CLOUD')}</h2><div class="big">${o.vault.tracked_count.toLocaleString()} ${T('个 git 跟踪文件','tracked files')}</div>
+      <div class="desc">${cloudBad?T('有本地专属文件被跟踪','Local-only files are tracked'):T('原始数据/密钥按规则留本地','Raw data/secrets stay local by policy')}</div></div>`
+  ].join('');
+  $('#admin-sources').innerHTML=o.sources.map(s=>`<div class="row">
+    <div><strong>${esc(s.name)}</strong> ${pill(s.status,s.status)}<div><code>${esc(s.message)}</code></div></div>
+    ${s.name==='git'?'':`<button class="act" onclick="sourceSet('${jsq(s.name)}',${!s.enabled})">${s.enabled?T('关闭','Disable'):T('启用','Enable')}</button>`}
+  </div>`).join('');
+  $('#admin-repos').innerHTML=o.repos.length?o.repos.map(r=>`<div class="row">
+    <div><strong>${esc((r.path.split('/').filter(Boolean).pop()||r.path))}</strong> ${pill(r.git?'ok':'error',r.git?'git':'bad')}
+      ${r.dirty?pill('warn',T('有改动','dirty')):''}<div><code>${esc(r.path)}</code></div>
+      <div class="mini">${esc(r.branch||'')} ${r.dirty_count?`· ${r.dirty_count}${T(' 个未提交',' changes')}`:''}</div></div>
+    <button class="act danger" onclick="repoRemove('${jsq(r.path)}')">${T('移除配置','Remove')}</button>
+  </div>`).join(''):`<div class="empty">${T('还没有 repo','No repos')}</div>`;
+  const ids=o.identities||{emails:[],names:[]};
+  $('#admin-identities').innerHTML=`<div class="gh">emails</div><div class="chips">${(ids.emails||[]).map(v=>`<span class="chip">${esc(v)} <button class="act danger" style="padding:1px 5px;margin-left:4px" onclick="identityRemove('${jsq(v)}')">×</button></span>`).join('')||T('空','Empty')}</div>
+    <div class="gh">names</div><div class="chips">${(ids.names||[]).map(v=>`<span class="chip">${esc(v)} <button class="act danger" style="padding:1px 5px;margin-left:4px" onclick="identityRemove('${jsq(v)}')">×</button></span>`).join('')||T('空','Empty')}</div>
+    <div class="gh">owner</div><div class="form"><label class="sr-only" for="owner-name">${T('负责人姓名','Owner Name')}</label><input id="owner-name" name="owner_name" autocomplete="off" spellcheck="false" placeholder="owner.name…" value="${esc(o.config.owner.name||'')}">
+      <label class="sr-only" for="owner-feishu">${T('飞书姓名','Feishu Name')}</label><input id="owner-feishu" name="owner_feishu_name" autocomplete="off" spellcheck="false" placeholder="owner.feishu_name…" value="${esc(o.config.owner.feishu_name||'')}">
+      <button class="act" onclick="ownerSet()">${T('保存','Save')}</button></div>`;
+  const env=o.config.env_keys||{};
+  $('#admin-feishu').innerHTML=`<div class="mini">${pill(o.feishu.enabled?'ok':'off',o.feishu.enabled?T('已启用','enabled'):T('未启用','off'))}
+    ${pill(env.FEISHU_APP_ID?'ok':'error','FEISHU_APP_ID')} ${pill(env.FEISHU_APP_SECRET?'ok':'error','FEISHU_APP_SECRET')}
+    <button class="act" onclick="sourceSet('feishu',${!o.feishu.enabled})">${o.feishu.enabled?T('关闭飞书','Disable Feishu'):T('启用飞书','Enable Feishu')}</button></div>
+    ${(o.feishu.bitables||[]).map(b=>`<div class="row"><div><strong>${esc(b.name)}</strong>
+      <div><code>app_token=${esc(b.app_token)} table=${esc(b.table_id)}</code></div></div>
+      <button class="act danger" onclick="feishuRemove('${jsq(b.name)}')">${T('移除','Remove')}</button></div>`).join('')||`<div class="empty">${T('未配置多维表格','No bitables')}</div>`}`;
+  $('#admin-cloud').innerHTML=kv('vault',o.vault.dir)+kv('git',o.vault.git?T('已初始化','initialized'):T('未初始化','not initialized'))
+    +kv('remote',o.vault.git_remotes.length?o.vault.git_remotes.join(' | '):(o.vault.remote_config||T('未配置','not configured')))
+    +kv('.gitignore missing',o.vault.gitignore.missing.join(', ')||T('无','none'))
+    +kv('tracked risky',o.vault.tracked_risky.join(', ')||T('无','none'))
+    +`<div class="gh">${T('会上云','Clouded')}</div><div class="chips">${chips(o.vault.will_cloud)}</div>
+      <div class="gh">${T('只留本地','Local only')}</div><div class="chips">${chips(o.vault.local_only)}</div>
+      <div class="gh">${T('当前 git 跟踪样例','Tracked sample')}</div><div class="chips">${chips(o.vault.tracked_sample.slice(0,30))||T('空','Empty')}</div>`;
+  $('#admin-collected').innerHTML=kv('entries',o.collected.entries)+kv('range',(o.collected.date_start||'-')+' → '+(o.collected.date_end||'-'))
+    +kv('data',o.collected.data_path+' · '+(o.collected.data_mtime||'-'))+kv('index',o.collected.index_ready?T('可用','ready'):T('缺失/落后','missing/stale'))
+    +`<div class="gh">tools</div>${bars(o.collected.tools)}<div class="gh">kinds</div>${bars(o.collected.kinds)}`;
+  $('#admin-broken').innerHTML=o.broken.length?o.broken.map(x=>`<div class="row"><div>${pill(x.severity==='error'?'error':'warn',x.severity)}
+    <strong>${esc(x.title)}</strong><div><code>${esc(x.area)} · ${esc(x.detail)}</code></div></div></div>`).join('')
+    :`<div class="empty">${T('当前没有明显故障','No obvious issue')}</div>`;
+}
+async function loadAdmin(){ADMIN=await api('/api/admin/overview');renderAdmin()}
+function setLog(s){$('#admin-log').textContent=s||'ok'}
+function setBusy(on){
+  const root=$('#v-admin'),log=$('#admin-log');
+  if(!root)return;
+  root.classList.toggle('is-busy',!!on);
+  root.querySelectorAll('.act').forEach(b=>b.disabled=!!on);
+  if(log)log.setAttribute('aria-busy',on?'true':'false');
+}
+async function adminAction(payload,confirmWord){
+  if(confirmWord&&!confirm(T(`确认执行 ${confirmWord}?`,`Confirm ${confirmWord}?`)))return;
+  if(confirmWord)payload.confirm=confirmWord;
+  setBusy(true);
+  setLog(T('执行中…','Running…'));
+  try{
+    let r=await post('/api/admin/action',payload);
+    if(!r.ok&&r.needs_confirm&&confirm(r.message)){payload.confirm=r.needs_confirm;r=await post('/api/admin/action',payload)}
+    if(r.overview){ADMIN=r.overview;renderAdmin()}
+    setLog((r.ok?'✓ ':'✗ ')+(r.message||'')+(r.output?'\n\n'+r.output:''));
+  }catch(e){
+    setLog('✗ '+(e&&e.message?e.message:String(e)));
+  }finally{
+    setBusy(false);
+  }
+}
+function runSync(){adminAction({action:'sync',source:$('#sync-source').value,since:$('#sync-since').value,
+  backup:$('#sync-backup').checked,push:$('#sync-push').checked},$('#sync-push').checked?'push':null)}
+function vaultBackup(push){adminAction({action:'vault_backup',push},push?'push':null)}
+function repoAdd(){adminAction({action:'repo_add',path:$('#repo-path').value})}
+function repoRemove(path){adminAction({action:'repo_remove',path},'remove')}
+function identityAdd(){adminAction({action:'identity_add',value:$('#identity-value').value})}
+function identityRemove(value){adminAction({action:'identity_remove',value},'remove')}
+function sourceSet(name,enabled){adminAction({action:'source_set',name,enabled})}
+function ownerSet(){adminAction({action:'owner_set',name:$('#owner-name').value,feishu_name:$('#owner-feishu').value})}
+function feishuAdd(){adminAction({action:'feishu_add',name:$('#fs-name').value,url:$('#fs-url').value,table_id:$('#fs-table').value})}
+function feishuRemove(name){adminAction({action:'feishu_remove',name},'remove')}
+
 // ---- 详情 ----
-function drawer(on){$('#drawer').classList.toggle('on',!!on)}
+let lastFocus=null;
+function drawer(on){
+  const d=$('#drawer');
+  const was=d.classList.contains('on');
+  if(on)lastFocus=document.activeElement;
+  d.classList.toggle('on',!!on);
+  d.setAttribute('aria-hidden',on?'false':'true');
+  if(on)d.focus({preventScroll:true});else if(was&&lastFocus&&lastFocus.focus)lastFocus.focus({preventScroll:true});
+}
 async function detail(id){const e=await api('/api/entry',{id});
   const d=e.detail||{};
   let rows=`<h3>${esc(e.summary)}</h3>
@@ -383,6 +712,7 @@ async function detail(id){const e=await api('/api/entry',{id});
   $('#dctn').innerHTML=rows;drawer(true)}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')drawer(false)});
 
+showView(viewFromHash(),false);
 loadDash();
 </script>
 </body>
