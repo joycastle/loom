@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import subprocess
 
 from . import util
 
@@ -69,7 +70,9 @@ def notes_dir(cfg):
 # ---- 增删助手 ----
 def add_repo(cfg, path):
     path = os.path.abspath(util.expand(path))
-    if not os.path.isdir(os.path.join(path, ".git")):
+    r = subprocess.run(["git", "-C", path, "rev-parse", "--is-inside-work-tree"],
+                       capture_output=True, text=True)
+    if r.returncode != 0 or r.stdout.strip() != "true":
         raise ValueError(f"{path} 不是 git 仓")
     if path not in cfg["repos"]:
         cfg["repos"].append(path)
