@@ -376,7 +376,13 @@ button:disabled{cursor:default;opacity:.58}
 const LANG=localStorage.getItem('loom_lang')||'zh';
 const T=(zh,en)=>LANG==='en'?en:zh;
 const $=s=>document.querySelector(s), api=(p,o={})=>fetch(p+'?'+new URLSearchParams(o)).then(r=>r.json());
-const post=(p,o)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o)}).then(r=>r.json());
+const bootParams=new URLSearchParams(location.search),bootToken=bootParams.get('token');
+if(bootToken){sessionStorage.setItem('loom_admin_token',bootToken);history.replaceState(null,'',location.pathname+location.hash)}
+const post=(p,o)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json',
+  'X-Loom-Token':sessionStorage.getItem('loom_admin_token')||''},body:JSON.stringify(o)}).then(async r=>{
+    const data=await r.json();
+    if(r.status===403&&!data.message)data.message=T('管理会话已失效,请从 loom serve 输出的地址重新打开','Admin session expired; reopen the URL printed by loom serve');
+    return data});
 document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('[data-t]').forEach(el=>{const[z,e]=el.dataset.t.split('|');el.textContent=T(z,e)});
   $('#q').placeholder=T('搜你做过的任何事…(中文子串可用)','Search anything you did… (CJK substring OK)');
