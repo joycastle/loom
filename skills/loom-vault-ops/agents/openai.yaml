@@ -1,0 +1,6 @@
+interface:
+  display_name: "Loom Vault Ops"
+  short_description: "检查 vault 备份、gitignore 与 push 风险"
+  default_prompt: "Use $loom-vault-ops to inspect loom vault gitignore, remote, tracked sensitive files, and push risk before backup."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Loom Topic Triage"
+  short_description: "从 gather 到 TSV、apply 与主题复核"
+  default_prompt: "Use $loom-topic-triage to classify loom entries into leaf topics, apply a TSV mapping, and verify each topic."
+policy:
+  allow_implicit_invocation: true

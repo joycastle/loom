@@ -1,0 +1,6 @@
+interface:
+  display_name: "Loom Session Digest"
+  short_description: "基于问答原文生成并写回会话摘要"
+  default_prompt: "Use $loom-session-digest to generate loom session materials, write accurate TSV digests, and store them back."
+policy:
+  allow_implicit_invocation: true

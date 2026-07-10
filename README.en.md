@@ -50,6 +50,16 @@ Open the folder with your favorite AI coding assistant and say:
 
 It will pick up the rules files (`AGENTS.md` for Codex/Cursor/Copilot/Windsurf/CodeBuddy, `CLAUDE.md` for Claude Code) and follow [`ONBOARDING.md`](./ONBOARDING.md) — an AI-facing runbook: **setup → first collection → ingest loose files → private cloud backup → full topic classification → daily routine**.
 
+If you want your AI assistant to run loom workflows from any directory, install the reusable Skills shipped in this repo:
+
+```bash
+mkdir -p ~/.claude/skills "${CODEX_HOME:-$HOME/.codex}/skills"
+cp -R skills/loom-* ~/.claude/skills/
+cp -R skills/loom-* "${CODEX_HOME:-$HOME/.codex}/skills/"
+```
+
+The installable skill packages live in [`skills/`](./skills/) and cover onboarding, topic triage, daily reports, session digests, and vault backup risk checks. They are skills for using loom, not project-local rules for developing this repository.
+
 Prefer manual? `cd ~/Documents/loom && ./install.sh`, then just `loom sync --push` daily.
 
 ## 🎨 Design highlights
