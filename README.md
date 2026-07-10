@@ -59,6 +59,17 @@ git clone https://github.com/joycastle/loom.git ~/Documents/loom
 | Claude Code | [`CLAUDE.md`](./CLAUDE.md)(`@import AGENTS.md`) | ✅ |
 | Cursor(额外保险) | [`.cursor/rules/loom.mdc`](./.cursor/rules/loom.mdc) | ✅ |
 
+如果你希望 AI 助手在任何目录都能直接执行 loom 的高价值流程,可安装本仓的可复用 Skills:
+
+```bash
+mkdir -p ~/.claude/skills "${CODEX_HOME:-$HOME/.codex}/skills"
+cp -R skills/loom-* ~/.claude/skills/
+cp -R skills/loom-* "${CODEX_HOME:-$HOME/.codex}/skills/"
+```
+
+这些技能包位于 [`skills/`](./skills/),覆盖 onboarding、主题归类、日报、会话摘要和 vault
+备份风险检查。它们是"使用 loom"的技能,不是"开发 loom 本仓"的项目内规则。
+
 > 不想用 AI?直接 `cd ~/Documents/loom && ./install.sh`(装 CLI + 交互引导配置 + 首次同步),
 > 之后日常只需一条 `loom sync --push`。
 

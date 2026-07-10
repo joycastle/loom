@@ -1,0 +1,6 @@
+interface:
+  display_name: "Loom Onboarding"
+  short_description: "初始化配置 loom 实例并完成首次同步"
+  default_prompt: "Use $loom-onboarding to initialize loom, configure sources, run the first sync, and explain code/data boundaries."
+policy:
+  allow_implicit_invocation: true
