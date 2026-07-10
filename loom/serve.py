@@ -10,6 +10,7 @@ import json
 import os
 import contextlib
 import io
+import secrets
 import subprocess
 import urllib.parse
 from collections import defaultdict
@@ -23,6 +24,7 @@ _CLOUD_IGNORE_RULES = ["_data/", ".env", "*.xlsx", "*.pptx", "*.numbers",
                        "*.pages", "*.key", "*.parquet", "*.pdf", "*.docx"]
 _BINARY_CLOUD_EXTS = (".xlsx", ".pptx", ".numbers", ".pages", ".key", ".parquet",
                       ".pdf", ".docx")
+_MAX_ADMIN_BODY = 64 * 1024
 
 
 def _fix(v):
@@ -535,7 +537,8 @@ def api_admin_action(cfg, payload):
 
 
 # ---------------------------------------------------------------- HTTP 层
-def _make_handler(cfg):
+def _make_handler(cfg, admin_token=None):
+    admin_token = admin_token or secrets.token_urlsafe(32)
     by_id_cache = {}
 
     def fresh():
@@ -598,13 +601,34 @@ def _make_handler(cfg):
         def do_POST(self):
             u = urllib.parse.urlparse(self.path)
             try:
-                n = int(self.headers.get("Content-Length", "0") or "0")
-                raw = self.rfile.read(n) if n else b"{}"
-                payload = json.loads(raw.decode("utf-8") or "{}")
-                if u.path == "/api/admin/action":
-                    self._json(api_admin_action(cfg, payload))
-                else:
+                if u.path != "/api/admin/action":
                     self._json({"error": "no route"}, 404)
+                    return
+                if not secrets.compare_digest(self.headers.get("X-Loom-Token", ""),
+                                              admin_token):
+                    self._json({"ok": False, "error": "forbidden",
+                                "message": "管理会话无效,请使用本次 loom serve 输出的地址重新打开"}, 403)
+                    return
+                origin = self.headers.get("Origin", "")
+                if origin:
+                    parsed = urllib.parse.urlparse(origin)
+                    if parsed.scheme != "http" or parsed.netloc != self.headers.get("Host", ""):
+                        self._json({"ok": False, "error": "bad_origin",
+                                    "message": "拒绝来自其它网页的管理请求"}, 403)
+                        return
+                content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+                if content_type != "application/json":
+                    self._json({"ok": False, "error": "unsupported_media_type",
+                                "message": "管理接口只接受 application/json"}, 415)
+                    return
+                n = int(self.headers.get("Content-Length", "0") or "0")
+                if n <= 0 or n > _MAX_ADMIN_BODY:
+                    self._json({"ok": False, "error": "invalid_body_size",
+                                "message": "管理请求体为空或超过 64 KiB"}, 413)
+                    return
+                raw = self.rfile.read(n)
+                payload = json.loads(raw.decode("utf-8"))
+                self._json(api_admin_action(cfg, payload))
             except BrokenPipeError:
                 pass
             except Exception as e:
@@ -618,8 +642,10 @@ def _make_handler(cfg):
 
 
 def serve(cfg, port=8787):
-    srv = ThreadingHTTPServer(("127.0.0.1", port), _make_handler(cfg))
-    print(f"loom 浏览页:http://127.0.0.1:{port}  (仅本机可访问,Ctrl-C 退出)")
+    admin_token = secrets.token_urlsafe(32)
+    srv = ThreadingHTTPServer(("127.0.0.1", port), _make_handler(cfg, admin_token))
+    url = f"http://127.0.0.1:{port}/?token={urllib.parse.quote(admin_token)}"
+    print(f"loom 浏览页:{url}  (仅本机可访问,Ctrl-C 退出)", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -1553,7 +1553,8 @@ class ServeTest(unittest.TestCase):
         import http.client
         import threading
         from http.server import ThreadingHTTPServer
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), self.serve._make_handler(self.cfg))
+        token = "test-admin-token"
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), self.serve._make_handler(self.cfg, token))
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         try:
             c = http.client.HTTPConnection("127.0.0.1", srv.server_port, timeout=5)
@@ -1564,12 +1565,39 @@ class ServeTest(unittest.TestCase):
             self.assertEqual(json.loads(c.getresponse().read())["collected"]["entries"], 3)
             c.request("POST", "/api/admin/action",
                       body=json.dumps({"action": "identity_add", "value": "迪仔"}),
-                      headers={"Content-Type": "application/json"})
+                      headers={"Content-Type": "application/json", "X-Loom-Token": token})
             self.assertTrue(json.loads(c.getresponse().read())["ok"])
             c.request("GET", "/")
             self.assertIn(b"loom", c.getresponse().read()[:2000])   # 首页出得来
             c.request("GET", "/api/nope")
             self.assertEqual(c.getresponse().status, 404)
+        finally:
+            srv.shutdown()
+
+    def test_admin_http_rejects_cross_site_or_unauthenticated_posts(self):
+        import http.client
+        import threading
+        from http.server import ThreadingHTTPServer
+        token = "test-admin-token"
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), self.serve._make_handler(self.cfg, token))
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        body = json.dumps({"action": "identity_add", "value": "attacker@example.com"})
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_port, timeout=5)
+            c.request("POST", "/api/admin/action", body=body,
+                      headers={"Content-Type": "text/plain"})
+            self.assertEqual(c.getresponse().status, 403)
+
+            c.request("POST", "/api/admin/action", body=body,
+                      headers={"Content-Type": "text/plain", "X-Loom-Token": token})
+            self.assertEqual(c.getresponse().status, 415)
+
+            c.request("POST", "/api/admin/action", body=body,
+                      headers={"Content-Type": "application/json", "X-Loom-Token": token,
+                               "Origin": "https://evil.example"})
+            self.assertEqual(c.getresponse().status, 403)
+            self.assertNotIn("attacker@example.com",
+                             self.cfg.get("identities", {}).get("emails", []))
         finally:
             srv.shutdown()
 
