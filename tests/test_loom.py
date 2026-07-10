@@ -196,6 +196,25 @@ class ConfigTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.add_repo(cfg, _TMP_HOME)  # 不是 git 仓
 
+    def test_add_repo_accepts_git_worktree(self):
+        root = tempfile.mkdtemp(prefix="loom-config-repo-")
+        wt = tempfile.mkdtemp(prefix="loom-config-wt-")
+        env = {**os.environ, "GIT_AUTHOR_NAME": "A", "GIT_AUTHOR_EMAIL": "a@x",
+               "GIT_COMMITTER_NAME": "A", "GIT_COMMITTER_EMAIL": "a@x"}
+        subprocess.run(["git", "-C", root, "init", "-q"], check=True, env=env)
+        with open(os.path.join(root, "README.md"), "w", encoding="utf-8") as f:
+            f.write("hello")
+        subprocess.run(["git", "-C", root, "add", "README.md"], check=True, env=env)
+        subprocess.run(["git", "-C", root, "commit", "-q", "-m", "init"],
+                       check=True, env=env)
+        os.rmdir(wt)
+        subprocess.run(["git", "-C", root, "worktree", "add", "-q", wt],
+                       check=True, env=env)
+
+        cfg = json.loads(json.dumps(config.DEFAULT_CONFIG))
+        self.assertEqual(config.add_repo(cfg, wt), wt)
+        self.assertEqual(cfg["repos"], [wt])
+
     def test_load_merges_defaults(self):
         # 只写部分配置,load 应补齐默认键(旧配置平滑升级)
         partial = {"owner": {"name": "测试"}}
@@ -1475,6 +1494,56 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(set(st["tools"]), {"git", "claude", "notes"})   # 并列不断顺序
         self.assertEqual(len(st["recent"]), 3)
 
+    def test_api_admin_overview_answers_core_questions(self):
+        ov = self.serve.api_admin_overview(self.cfg, store.load())
+        self.assertEqual(ov["collected"]["entries"], 3)      # 采了什么
+        self.assertEqual(ov["collected"]["tools"]["git"], 1)
+        self.assertIn("vault", ov)
+        self.assertIn(util.ENV_PATH, ov["vault"]["local_only"])   # 什么不上云
+        self.assertTrue(any(x["title"] == "vault .gitignore 不完整"
+                            for x in ov["broken"]))          # 哪里坏了
+
+    def test_admin_repo_rows_accepts_git_worktree(self):
+        root = tempfile.mkdtemp(prefix="loom-admin-repo-")
+        wt = tempfile.mkdtemp(prefix="loom-admin-wt-")
+        env = {**os.environ, "GIT_AUTHOR_NAME": "A", "GIT_AUTHOR_EMAIL": "a@x",
+               "GIT_COMMITTER_NAME": "A", "GIT_COMMITTER_EMAIL": "a@x"}
+        subprocess.run(["git", "-C", root, "init", "-q"], check=True, env=env)
+        with open(os.path.join(root, "README.md"), "w", encoding="utf-8") as f:
+            f.write("hello")
+        subprocess.run(["git", "-C", root, "add", "README.md"], check=True, env=env)
+        subprocess.run(["git", "-C", root, "commit", "-q", "-m", "init"],
+                       check=True, env=env)
+        os.rmdir(wt)
+        subprocess.run(["git", "-C", root, "worktree", "add", "-q", wt],
+                       check=True, env=env)
+
+        rows = self.serve._repo_rows({"repos": [wt]})
+        self.assertTrue(rows[0]["git"])
+
+    def test_api_admin_action_guards_sensitive_config_removal(self):
+        repo = tempfile.mkdtemp(prefix="loom-admin-repo-")
+        self.cfg["repos"] = [repo]
+        r = self.serve.api_admin_action(self.cfg, {"action": "repo_remove", "path": repo})
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["needs_confirm"], "remove")
+        self.assertEqual(self.cfg["repos"], [repo])
+
+        r = self.serve.api_admin_action(self.cfg, {"action": "repo_remove", "path": repo,
+                                                   "confirm": "remove"})
+        self.assertTrue(r["ok"])
+        self.assertEqual(self.cfg["repos"], [])
+
+    def test_api_admin_action_updates_non_sensitive_config(self):
+        r = self.serve.api_admin_action(self.cfg, {"action": "identity_add",
+                                                   "value": "me@example.com"})
+        self.assertTrue(r["ok"])
+        self.assertIn("me@example.com", self.cfg["identities"]["emails"])
+        r = self.serve.api_admin_action(self.cfg, {"action": "source_set",
+                                                   "name": "notes", "enabled": True})
+        self.assertTrue(r["ok"])
+        self.assertTrue(self.cfg["sources"]["notes"]["enabled"])
+
     def test_fix_mojibake(self):
         garbled = "净额".encode("utf-8").decode("latin-1")   # 模拟裸 UTF-8 过 latin-1
         self.assertEqual(self.serve._fix(garbled), "净额")
@@ -1491,6 +1560,12 @@ class ServeTest(unittest.TestCase):
             c.request("GET", "/api/search?q=%E5%87%80%E9%A2%9D")
             hits = json.loads(c.getresponse().read())["hits"]
             self.assertEqual(len(hits), 2)                  # 两条净额相关都命中
+            c.request("GET", "/api/admin/overview")
+            self.assertEqual(json.loads(c.getresponse().read())["collected"]["entries"], 3)
+            c.request("POST", "/api/admin/action",
+                      body=json.dumps({"action": "identity_add", "value": "迪仔"}),
+                      headers={"Content-Type": "application/json"})
+            self.assertTrue(json.loads(c.getresponse().read())["ok"])
             c.request("GET", "/")
             self.assertIn(b"loom", c.getresponse().read()[:2000])   # 首页出得来
             c.request("GET", "/api/nope")
