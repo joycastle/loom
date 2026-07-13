@@ -1593,7 +1593,10 @@ class ServeTest(unittest.TestCase):
                       headers={"Content-Type": "application/json", "X-Loom-Token": token})
             self.assertTrue(json.loads(c.getresponse().read())["ok"])
             c.request("GET", "/")
-            self.assertIn(b"loom", c.getresponse().read()[:2000])   # 首页出得来
+            page = c.getresponse().read()
+            self.assertIn(b"loom", page[:2000])                    # 首页出得来
+            self.assertIn(b'id="themebtn"', page)                  # 亮/暗主题入口
+            self.assertIn(b'class="admin-shell"', page)            # 管理并入原 UI
             c.request("GET", "/api/nope")
             self.assertEqual(c.getresponse().status, 404)
         finally:
