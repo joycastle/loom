@@ -349,7 +349,7 @@ def _repo_rows(cfg):
 
 def _source_enabled(cfg, name):
     if name == "git":
-        return bool(cfg.get("repos"))
+        return bool(cfg.get("sources", {}).get("git", {}).get("enabled", True))
     if name == "feishu":
         return bool(cfg.get("feishu", {}).get("enabled"))
     return bool(cfg.get("sources", {}).get(name, {}).get("enabled"))
@@ -363,7 +363,9 @@ def _source_diagnostics(cfg):
         status, msg, checks = ("off", "已关闭", [])
         if name == "git":
             bad = [r["path"] for r in repos if not r["git"]]
-            if not cfg.get("repos"):
+            if not enabled:
+                status, msg = "off", "已关闭（仓库配置仍保留）"
+            elif not cfg.get("repos"):
                 status, msg = "warn", "未配置 repo"
             elif bad:
                 status, msg = "error", f"{len(bad)} 个 repo 不可采集"
@@ -633,8 +635,6 @@ def _api_admin_action(cfg, payload):
         if action == "source_set":
             name = payload.get("name")
             enabled = bool(payload.get("enabled"))
-            if name == "git":
-                return _finish_action(cfg, False, "git 来源由 repo 列表决定")
             if name == "feishu":
                 cfg.setdefault("feishu", {})["enabled"] = enabled
             elif name in collectors.REGISTRY:

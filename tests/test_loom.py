@@ -1568,6 +1568,13 @@ class ServeTest(unittest.TestCase):
                                                    "name": "notes", "enabled": True})
         self.assertTrue(r["ok"])
         self.assertTrue(self.cfg["sources"]["notes"]["enabled"])
+        r = self.serve.api_admin_action(self.cfg, {"action": "source_set",
+                                                   "name": "git", "enabled": False})
+        self.assertTrue(r["ok"])
+        self.assertFalse(self.cfg["sources"]["git"]["enabled"])
+        git_row = next(x for x in self.serve._source_diagnostics(self.cfg)
+                       if x["name"] == "git")
+        self.assertEqual(git_row["status"], "off")
 
     def test_fix_mojibake(self):
         garbled = "净额".encode("utf-8").decode("latin-1")   # 模拟裸 UTF-8 过 latin-1

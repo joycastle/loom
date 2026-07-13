@@ -28,6 +28,8 @@ FILES_CAP = 40     # 每提交存的文件明细上限(渲染时再截更短)
 
 
 def collect(cfg, since):
+    if not cfg.get("sources", {}).get("git", {}).get("enabled", True):
+        return []
     emails = {e.lower() for e in cfg["identities"]["emails"]}
     names = {n.lower() for n in cfg["identities"]["names"]}
     entries = []

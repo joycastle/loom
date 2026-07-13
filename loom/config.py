@@ -14,6 +14,7 @@ DEFAULT_CONFIG = {
     "redact": True,          # 采集入库前抹掉 token/密钥值(推云端/Basic Memory 防泄露);私有可信仓可设 false
     "repos": [],
     "sources": {
+        "git":       {"enabled": True},
         "claude":    {"enabled": True, "projects_dir": "~/.claude/projects"},
         "codex":     {"enabled": True, "home": "~/.codex"},
         "cursor":    {"enabled": True, "app_support": "~/Library/Application Support/Cursor"},
