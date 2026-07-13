@@ -15,13 +15,32 @@ def _since(cfg, arg):
     return arg or util.since_date(cfg.get("default_since_days", 100))
 
 
+def _sync_sources(cfg, requested="all"):
+    """Resolve CLI sources with the same grouped switches as the console."""
+    if requested and requested != "all":
+        if requested == "git":
+            return [name for name in ("git", "docs")
+                    if name in collectors.REGISTRY and collectors.is_syncable(name)]
+        return [requested]
+    return [name for name in collectors.sync_names()
+            if config.source_enabled(cfg, name)]
+
+
 def do_collect(cfg, sources, since):
     by_id = store.load()
     redact = cfg.get("redact", True)
     total = 0
     for s in sources:
         try:                                    # 一个源坏了不该掀翻整个 sync(个人数据源会腐烂)
-            got = collectors.REGISTRY[s](cfg, since)
+            collector_cfg = cfg
+            if s == "docs":
+                # docs 已折入 Git；覆盖旧配置中的独立开关，保持 CLI/管理页语义一致。
+                collector_cfg = dict(cfg)
+                collector_cfg["sources"] = dict(cfg.get("sources", {}))
+                collector_cfg["sources"]["docs"] = dict(
+                    cfg.get("sources", {}).get("docs", {}),
+                    enabled=config.source_enabled(cfg, "docs"))
+            got = collectors.REGISTRY[s](collector_cfg, since)
         except Exception as e:
             util.log(f"  [{s}] 采集失败,跳过: {e}")
             continue
@@ -75,51 +94,134 @@ def _untrack_ignored(vd):
     r = subprocess.run(["git", "-c", "core.quotepath=false", "-C", vd,
                         "ls-files", "-i", "-c", "--exclude-standard"],
                        capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout or "读取已跟踪文件失败").strip())
     files = [f for f in r.stdout.splitlines() if f.strip()]
     if files:
-        subprocess.run(["git", "-C", vd, "rm", "--cached", "--quiet", "--"] + files,
-                       capture_output=True)
+        removed = subprocess.run(
+            ["git", "-C", vd, "rm", "--cached", "--quiet", "--"] + files,
+            capture_output=True, text=True)
+        if removed.returncode != 0:
+            raise RuntimeError((removed.stderr or removed.stdout or
+                                "移出应本地留存文件失败").strip())
     return files
 
 
 def vault_git(cfg, push):
     vd = config.vault_dir(cfg)
     os.makedirs(vd, exist_ok=True)
-    if not os.path.isdir(os.path.join(vd, ".git")):
-        subprocess.run(["git", "-C", vd, "init", "-q"])
-    _ensure_gitignore(vd)                       # 先立规矩,再 add
-    untracked = _untrack_ignored(vd)            # 历史上误跟踪的原始数据/二进制,移出云端(本地保留)
+    result = {"ok": False, "status": "error", "stage": "not_started",
+              "commit": "not_started",
+              "push": "not_requested" if not push else "not_started", "message": "",
+              "errors": []}
+
+    def run(args):
+        try:
+            r = subprocess.run(["git", "-C", vd] + args, capture_output=True,
+                               text=True, timeout=120)
+            detail = (r.stderr or r.stdout or "").strip()
+            return r, detail
+        except Exception as e:
+            return None, str(e)
+
+    def fail(stage, detail):
+        technical = detail or "未知错误"
+        low = technical.lower()
+        if "index.lock" in low:
+            hint = "Git 仓库正被其它进程占用，请稍后重试"
+        elif "未配置 remote" in technical:
+            hint = technical
+        elif stage == "推送":
+            hint = "无法推送到远程仓库，请检查 remote、网络和权限"
+        elif stage == "提交":
+            hint = "无法创建本地提交，请检查 Git 身份或提交钩子"
+        elif stage == "初始化":
+            hint = "无法初始化本地 Git 仓库"
+        else:
+            hint = "无法准备待备份文件，请查看技术日志"
+        message = f"{stage}失败:{hint}"
+        result["errors"].append({"stage": stage, "message": detail or "未知错误"})
+        result["stage"] = {"初始化": "init", "准备": "prepare",
+                           "提交": "commit", "推送": "push"}.get(stage, "unknown")
+        result["message"] = message
+        if stage in ("初始化", "准备", "提交"):
+            result["commit"] = "failed"
+        if stage == "推送":
+            result["push"] = "failed"
+        print(message)
+        if technical != hint:
+            print(technical)
+        return result
+
+    probe, _ = run(["rev-parse", "--git-dir"])
+    if not probe or probe.returncode != 0:
+        initialized, detail = run(["init", "-q"])
+        if not initialized or initialized.returncode != 0:
+            return fail("初始化", detail)
+    try:
+        _ensure_gitignore(vd)                   # 先立规矩,再 add
+        untracked = _untrack_ignored(vd)        # 历史误跟踪文件移出云端(本地保留)
+    except Exception as e:
+        return fail("准备", str(e))
     if untracked:
         print(f"已从云端移出 {len(untracked)} 个应本地留存的文件(本地仍在):")
         for f in untracked[:10]:
             print("  -", f)
         if len(untracked) > 10:
             print(f"  …及其余 {len(untracked) - 10} 个")
-    subprocess.run(["git", "-C", vd, "add", "-A"])
+    added, detail = run(["add", "-A"])
+    if not added or added.returncode != 0:
+        return fail("准备", detail)
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    r = subprocess.run(["git", "-C", vd, "commit", "-q", "-m", f"loom sync {stamp}"])
-    print(f"已提交 vault ({stamp})" if r.returncode == 0 else "无变更,跳过提交")
+    changed, detail = run(["diff", "--cached", "--quiet"])
+    if not changed or changed.returncode not in (0, 1):
+        return fail("准备", detail)
+    if changed.returncode == 1:
+        committed, detail = run(["commit", "-q", "-m", f"loom sync {stamp}"])
+        if not committed or committed.returncode != 0:
+            return fail("提交", detail)
+        result["commit"] = "created"
+        print(f"已提交 vault ({stamp})")
+    else:
+        result["commit"] = "unchanged"
+        print("无变更,跳过提交")
     if push:
-        remote = subprocess.run(["git", "-C", vd, "remote"],
-                                capture_output=True, text=True).stdout.strip()
-        if remote:
-            subprocess.run(["git", "-C", vd, "push", "-q"])
-            print("已 push 到云端")
-        else:
-            print("未配置 remote,跳过 push(loom 或 gh 里配 vault.remote)")
+        remotes, detail = run(["remote"])
+        if not remotes or remotes.returncode != 0:
+            return fail("推送", detail)
+        if not remotes.stdout.strip():
+            return fail("推送", "未配置 remote（请在 loom 或 gh 中配置 vault.remote）")
+        pushed, detail = run(["push", "-q"])
+        if not pushed or pushed.returncode != 0:
+            return fail("推送", detail)
+        result["push"] = "success"
+        print("已 push 到云端")
+    result["ok"] = True
+    result["status"] = "success"
+    result["stage"] = "complete"
+    result["message"] = "备份并推送完成" if push else "本地备份完成"
+    return result
+
+
+def _vault_git_checked(cfg, push):
+    """CLI commands must exit non-zero when an explicitly requested backup fails."""
+    result = vault_git(cfg, push)
+    if not result.get("ok"):
+        raise SystemExit(1)
+    return result
 
 
 # ---------------------------------------------------------------- 命令
 def cmd_sync(cfg, a):
-    srcs = [a.source] if a.source and a.source != "all" else collectors.names()
+    srcs = _sync_sources(cfg, a.source)
     by_id = do_collect(cfg, srcs, _since(cfg, a.since))
     n = render.build(cfg, by_id)
     print(f"渲染完成:{n} 个日记")
-    vault_git(cfg, a.push)
+    _vault_git_checked(cfg, a.push)
 
 
 def cmd_collect(cfg, a):
-    srcs = [a.source] if a.source and a.source != "all" else collectors.names()
+    srcs = _sync_sources(cfg, a.source)
     do_collect(cfg, srcs, _since(cfg, a.since))
 
 
@@ -204,7 +306,7 @@ def cmd_doc(cfg, a):
             for dest, msg in intake.apply_triage(cfg, mapping):
                 print(("  ✓ " if dest else "  · ") + msg)
             if a.push:
-                vault_git(cfg, True)
+                _vault_git_checked(cfg, True)
         else:
             print(intake.triage_manifest(cfg, subdir=a.to or "inbox"))
         return
@@ -228,7 +330,7 @@ def cmd_doc(cfg, a):
         ok += 1 if dest else 0
     print(f"入库 {ok}/{len(results)} 个 → {config.notes_dir(cfg)}/{a.to or 'inbox'}")
     if a.push and ok:
-        vault_git(cfg, True)
+        _vault_git_checked(cfg, True)
 
 
 def cmd_data(cfg, a):
@@ -245,7 +347,7 @@ def cmd_data(cfg, a):
     print(f"数据入库 {ok}/{len(a.path)} 个 → {config.notes_dir(cfg)}/{a.to or 'data'}"
           "(数据卡上云,原始留 _data/ 本地)")
     if a.push and ok:
-        vault_git(cfg, True)
+        _vault_git_checked(cfg, True)
 
 
 def _store_reports(cfg, entries, push):
@@ -257,7 +359,7 @@ def _store_reports(cfg, entries, push):
     search.rebuild()
     render.build(cfg, by_id)
     if push:
-        vault_git(cfg, True)
+        _vault_git_checked(cfg, True)
 
 
 def cmd_report(cfg, a):
@@ -295,7 +397,7 @@ def cmd_report(cfg, a):
     dates = sorted(e["date"] for e in entries)
     print(f"导入 {len(entries)} 篇日报({dates[0]}–{dates[-1]})→ 并入 {n} 个日记,已可检索")
     if a.push:
-        vault_git(cfg, True)
+        _vault_git_checked(cfg, True)
 
 
 def cmd_session(cfg, a):
@@ -321,7 +423,7 @@ def cmd_session(cfg, a):
         render.build(cfg, by_id)
         print(f"已写入 {len(applied)} 条会话摘要 → 覆盖标题、进检索、渲染进日记")
         if a.push:
-            vault_git(cfg, True)
+            _vault_git_checked(cfg, True)
         return
     if a.action == "ls":
         d = digest.load()
@@ -341,7 +443,7 @@ def cmd_note(cfg, a):
             do_collect(cfg, ["notes"], util.since_date(cfg.get("default_since_days", 100)))
             print("  (检索索引已更新)")
             if a.push:
-                vault_git(cfg, True)
+                _vault_git_checked(cfg, True)
         return
     if not a.text:
         print('用法:loom note "<文本>" [--to 类目] [--tags a,b] [--title T] [--push]')
@@ -353,7 +455,7 @@ def cmd_note(cfg, a):
     if dest:
         print("  (下次 loom sync 后进检索 / 可被 loom topic 打标)")
         if a.push:
-            vault_git(cfg, True)
+            _vault_git_checked(cfg, True)
 
 
 def cmd_topic(cfg, a):
@@ -372,7 +474,7 @@ def cmd_topic(cfg, a):
         print(f"已归类 {n} 条" + (f";新建主题 {len(created)}:{', '.join(created)}" if created else ""))
         search.rebuild()
         if a.push:
-            vault_git(cfg, True)
+            _vault_git_checked(cfg, True)
         return
     if a.action == "show":
         if not a.query:
@@ -410,7 +512,7 @@ def cmd_deprecate(cfg, a):
     render.build(cfg, by_id)
     print(f"已处理 {ok} 项;索引已刷新(废弃内容移出检索)")
     if a.push:
-        vault_git(cfg, True)
+        _vault_git_checked(cfg, True)
 
 
 def cmd_serve(cfg, a):
@@ -418,7 +520,12 @@ def cmd_serve(cfg, a):
 
 
 def cmd_source(cfg, a):
-    cfg["sources"].setdefault(a.name, {})["enabled"] = (a.action == "enable")
+    if a.name == "docs":
+        raise SystemExit("项目文档已并入 Git；请改用 loom source enable|disable git")
+    enabled = (a.action == "enable")
+    cfg["sources"].setdefault(a.name, {})["enabled"] = enabled
+    if a.name == "git":
+        cfg["sources"].setdefault("docs", {})["enabled"] = enabled
     config.save(cfg); print(f"{a.name} -> {a.action}")
 
 
@@ -495,7 +602,7 @@ def build_parser():
     for name in ("sync", "collect"):
         sp = sub.add_parser(name)
         sp.add_argument("--since")
-        sp.add_argument("--source", choices=collectors.names() + ["all"], default="all")
+        sp.add_argument("--source", choices=collectors.sync_names() + ["all"], default="all")
         if name == "sync":
             sp.add_argument("--push", action="store_true")
     sub.add_parser("build")

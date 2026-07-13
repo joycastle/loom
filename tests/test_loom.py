@@ -6,6 +6,7 @@ DATA_PATH/INDEX_PATH 定死了,晚设会污染真实实例。
 """
 import json
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -18,6 +19,7 @@ from loom import config, render, search, store, util          # noqa: E402
 from loom.collectors import cursor as cursor_col               # noqa: E402
 from loom.collectors import git as git_col                     # noqa: E402
 from loom.collectors import claude as claude_col                # noqa: E402
+from loom.collectors import codebuddy as codebuddy_col          # noqa: E402
 from loom.collectors import docs as docs_col                    # noqa: E402
 from loom.collectors import notes as notes_col                  # noqa: E402
 import subprocess                                              # noqa: E402
@@ -215,6 +217,27 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.add_repo(cfg, wt), wt)
         self.assertEqual(cfg["repos"], [wt])
 
+    def test_scan_finds_worktree_and_add_rejects_same_common_repo_twice(self):
+        parent = tempfile.mkdtemp(prefix="loom-config-scan-")
+        root, wt = os.path.join(parent, "main"), os.path.join(parent, "linked")
+        os.makedirs(root)
+        env = {**os.environ, "GIT_AUTHOR_NAME": "A", "GIT_AUTHOR_EMAIL": "a@x",
+               "GIT_COMMITTER_NAME": "A", "GIT_COMMITTER_EMAIL": "a@x"}
+        subprocess.run(["git", "-C", root, "init", "-q"], check=True, env=env)
+        with open(os.path.join(root, "README.md"), "w", encoding="utf-8") as f:
+            f.write("hello")
+        subprocess.run(["git", "-C", root, "add", "README.md"], check=True, env=env)
+        subprocess.run(["git", "-C", root, "commit", "-q", "-m", "init"],
+                       check=True, env=env)
+        subprocess.run(["git", "-C", root, "worktree", "add", "-q", wt],
+                       check=True, env=env)
+
+        self.assertEqual(set(config.scan_repos(parent)), {root, wt})
+        cfg = json.loads(json.dumps(config.DEFAULT_CONFIG))
+        config.add_repo(cfg, root)
+        with self.assertRaisesRegex(ValueError, "属于同一 Git 仓库"):
+            config.add_repo(cfg, wt)
+
     def test_load_merges_defaults(self):
         # 只写部分配置,load 应补齐默认键(旧配置平滑升级)
         partial = {"owner": {"name": "测试"}}
@@ -225,6 +248,17 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(cfg["owner"]["name"], "测试")
             self.assertIn("cursor", cfg["sources"])       # 默认键补齐
             self.assertIn("bitables", cfg["feishu"])
+        finally:
+            os.remove(util.CONFIG_PATH)
+
+    def test_load_preserves_legacy_docs_opt_out(self):
+        legacy = {"sources": {"git": {"enabled": True}, "docs": {"enabled": False}}}
+        with open(util.CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(legacy, f)
+        try:
+            cfg = config.load()
+            self.assertFalse(cfg["sources"]["git"]["enabled"])
+            self.assertFalse(config.source_enabled(cfg, "docs"))
         finally:
             os.remove(util.CONFIG_PATH)
 
@@ -375,6 +409,42 @@ class GitCollectorTest(unittest.TestCase):
         out = [x for x in git_col.collect(self.cfg, "2000-01-01") if x["summary"] == "wip"]
         self.assertEqual(len(out), 2)                  # 去重按改动量区分 → 都保留
 
+    def test_collects_commits_from_git_worktree(self):
+        wt = tempfile.mkdtemp(prefix="loom-worktree-")
+        os.rmdir(wt)
+        self._g("worktree", "add", "-q", "-b", "worktree-test", wt)
+        env = dict(os.environ, GIT_AUTHOR_NAME="tester", GIT_AUTHOR_EMAIL="me@test.dev",
+                   GIT_COMMITTER_NAME="tester", GIT_COMMITTER_EMAIL="me@test.dev")
+        with open(os.path.join(wt, "worktree.txt"), "w", encoding="utf-8") as f:
+            f.write("from worktree\n")
+        subprocess.run(["git", "-C", wt, "add", "worktree.txt"], check=True,
+                       env=env, capture_output=True)
+        subprocess.run(["git", "-C", wt, "commit", "-q", "-m", "feat: worktree commit"],
+                       check=True, env=env, capture_output=True)
+
+        cfg = {"repos": [wt],
+               "identities": {"emails": ["me@test.dev"], "names": []}}
+        result = git_col.collect_diagnostic(cfg, "2000-01-01")
+        self.assertEqual(result["errors"], [])
+        self.assertIn("feat: worktree commit", {e["summary"] for e in result["entries"]})
+        self.assertTrue(os.path.isfile(os.path.join(wt, ".git")))  # worktree 的 .git 是文件
+
+        both = dict(cfg, repos=[self.repo, wt])
+        deduped = git_col.collect_diagnostic(both, "2000-01-01")
+        matched = [e for e in deduped["entries"] if e["summary"] == "feat: worktree commit"]
+        self.assertEqual(len(matched), 1)              # 主仓 + worktree 不重复入库
+        self.assertEqual(matched[0]["project"], os.path.basename(self.repo))
+
+    def test_collect_diagnostic_rejects_bare_repo(self):
+        bare = tempfile.mkdtemp(prefix="loom-bare-")
+        subprocess.run(["git", "-C", bare, "init", "--bare", "-q"], check=True,
+                       capture_output=True)
+        cfg = {"repos": [bare],
+               "identities": {"emails": ["me@test.dev"], "names": []}}
+        result = git_col.collect_diagnostic(cfg, "2000-01-01")
+        self.assertEqual(result["entries"], [])
+        self.assertTrue(result["errors"])
+
 
 class ClaudeCollectorTest(unittest.TestCase):
     def setUp(self):
@@ -473,6 +543,110 @@ class ClaudeCollectorTest(unittest.TestCase):
         self.assertEqual(by_date["2026-06-01"]["summary"], "归因管道")     # 首日用整会话标题
         self.assertTrue(by_date["2026-06-02"]["summary"].startswith("第二天"))  # 续日用当天首问
         self.assertEqual(by_date["2026-06-02"]["detail"]["user"], 1)     # 只算当天的消息
+
+
+class CodeBuddyCollectorTest(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="loom-codebuddy-")
+        self.app_support = os.path.join(self.root, "CodeBuddy")
+        self.extension_data = os.path.join(self.root, "CodeBuddyExtension", "Data")
+        os.makedirs(self.app_support)
+
+        self.cid = "craft-session-001"
+        self.team_cid = "team-session-001"
+        db = os.path.join(self.app_support, "codebuddy-sessions.vscdb")
+        with sqlite3.connect(db) as conn:
+            conn.execute("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value BLOB)")
+            conn.execute("INSERT INTO ItemTable(key,value) VALUES (?,?)", (
+                f"session:{self.cid}", json.dumps({
+                    "conversationId": self.cid, "cwd": "/Users/test/data-marketing",
+                    "title": "元数据标题", "createdAt": "2026-07-06T10:00:00",
+                }, ensure_ascii=False)))
+
+        history = os.path.join(
+            self.extension_data, "user-a", "CodeBuddyIDE", "profile-a",
+            "history", "workspace-a")
+        os.makedirs(history)
+        with open(os.path.join(history, "index.json"), "w", encoding="utf-8") as f:
+            json.dump({"conversations": [
+                {"id": self.cid, "type": "craft", "name": "归因模型修整",
+                 "lastMessageAt": "2026-07-07T12:00:00"},
+                {"id": self.team_cid, "type": "team-member", "name": "内部子任务",
+                 "lastMessageAt": "2026-07-07T12:01:00"},
+            ]}, f, ensure_ascii=False)
+
+        self._write_conversation(history, self.cid, [
+            ("user-message-001", "user", "2026-07-06T10:00:00",
+             "<user_info>仓库和系统上下文不应入库</user_info>"
+             "<user_query>修复归因模型</user_query>"),
+            ("assistant-msg-001", "assistant", "2026-07-06T10:05:00", "已处理"),
+            ("user-message-002", "user", "2026-07-07T11:30:00",
+             "<user_query>继续补测试</user_query>"),
+        ], broken_id="broken-message-001")
+        self._write_conversation(history, self.team_cid, [
+            ("team-message-001", "user", "2026-07-07T12:01:00",
+             "<user_query>这条 team-member 不能进入台账</user_query>"),
+        ])
+        self.cfg = {"sources": {"codebuddy": {
+            "enabled": True, "app_support": self.app_support,
+            "extension_data": self.extension_data,
+        }}}
+
+    @staticmethod
+    def _write_conversation(history, cid, rows, broken_id=None):
+        conv_dir = os.path.join(history, cid)
+        msg_dir = os.path.join(conv_dir, "messages")
+        os.makedirs(msg_dir)
+        pointers = []
+        for mid, role, created_at, text in rows:
+            pointers.append({"id": mid, "role": role, "type": "message", "isComplete": True})
+            envelope = {"role": role, "content": [{"type": "text", "text": text}]}
+            outer = {"role": role, "createdAt": created_at,
+                     "message": json.dumps(envelope, ensure_ascii=False)}
+            with open(os.path.join(msg_dir, mid + ".json"), "w", encoding="utf-8") as f:
+                json.dump(outer, f, ensure_ascii=False)
+        if broken_id:
+            pointers.append({"id": broken_id, "role": "user", "type": "message"})
+            with open(os.path.join(msg_dir, broken_id + ".json"), "w", encoding="utf-8") as f:
+                f.write("{损坏的历史消息")
+        with open(os.path.join(conv_dir, "index.json"), "w", encoding="utf-8") as f:
+            json.dump({"messages": pointers, "requests": []}, f, ensure_ascii=False)
+
+    def test_collects_craft_user_queries_by_day_and_reports_partial_history(self):
+        result = codebuddy_col.collect_diagnostic(self.cfg, "2000-01-01")
+        self.assertEqual(result["status"], "partial")               # 一条坏消息不拖垮其余历史
+        self.assertTrue(result["errors"])
+        self.assertEqual(result["sessions"], 1)                     # team-member 不算主会话
+        by_date = {e["date"]: e for e in result["entries"]}
+        self.assertEqual(set(by_date), {"2026-07-06", "2026-07-07"})
+
+        first = by_date["2026-07-06"]
+        self.assertEqual(first["id"], f"codebuddy:{self.cid}:2026-07-06")
+        self.assertEqual(first["project"], "data-marketing")       # session DB 补工作区
+        self.assertEqual(first["summary"], "归因模型修整")          # 首日采用会话标题
+        self.assertEqual(first["detail"]["opening"], "修复归因模型")
+        self.assertNotIn("user_info", first["detail"]["body"])
+        self.assertNotIn("系统上下文", first["detail"]["body"])
+
+        second = by_date["2026-07-07"]
+        self.assertEqual(second["summary"], "继续补测试")            # 续日使用当天首问
+        self.assertNotIn("team-member", json.dumps(result["entries"], ensure_ascii=False))
+        self.assertNotIn("内部子任务", json.dumps(result["entries"], ensure_ascii=False))
+
+    def test_collect_contract_since_filter_and_missing_history(self):
+        entries = codebuddy_col.collect(self.cfg, "2026-07-07")
+        self.assertIsInstance(entries, list)                         # 保持通用 collector 契约
+        self.assertEqual([e["date"] for e in entries], ["2026-07-07"])
+
+        missing = {"sources": {"codebuddy": {
+            "enabled": True,
+            "app_support": os.path.join(self.root, "missing-app"),
+            "extension_data": os.path.join(self.root, "missing-history"),
+        }}}
+        result = codebuddy_col.collect_diagnostic(missing, "2000-01-01")
+        self.assertEqual(result["status"], "success")               # 未安装/无历史是 0 条，不是假故障
+        self.assertEqual(result["entries"], [])
+        self.assertEqual(result["sessions"], 0)
 
 
 class DocsCollectorTest(unittest.TestCase):
@@ -1323,7 +1497,94 @@ class VaultGitignoreTest(unittest.TestCase):
             os.path.join(vd, "topic", "_data", "raw.xlsx")))
 
 
+class VaultGitResultTest(unittest.TestCase):
+    def setUp(self):
+        from loom import cli
+        self.cli = cli
+        self.vd = tempfile.mkdtemp(prefix="loom-vault-result-")
+        for args in (["init", "-q"], ["config", "user.email", "t@t"],
+                     ["config", "user.name", "tester"]):
+            subprocess.run(["git", "-C", self.vd, *args], check=True,
+                           capture_output=True)
+        self.cfg = {"vault": {"dir": self.vd}}
+
+    def test_local_backup_distinguishes_commit_and_no_change(self):
+        with open(os.path.join(self.vd, "note.md"), "w", encoding="utf-8") as f:
+            f.write("hello")
+        first = self.cli.vault_git(self.cfg, False)
+        self.assertTrue(first["ok"])
+        self.assertEqual(first["stage"], "complete")
+        self.assertEqual(first["commit"], "created")
+        self.assertEqual(first["push"], "not_requested")
+
+        second = self.cli.vault_git(self.cfg, False)
+        self.assertTrue(second["ok"])
+        self.assertEqual(second["commit"], "unchanged")
+
+    def test_requested_push_without_remote_is_failure(self):
+        with open(os.path.join(self.vd, "note.md"), "w", encoding="utf-8") as f:
+            f.write("hello")
+        result = self.cli.vault_git(self.cfg, True)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["stage"], "push")
+        self.assertEqual(result["commit"], "created")
+        self.assertEqual(result["push"], "failed")
+        self.assertIn("未配置 remote", result["message"])
+
+    def test_push_command_failure_is_not_reported_as_success(self):
+        with open(os.path.join(self.vd, "note.md"), "w", encoding="utf-8") as f:
+            f.write("hello")
+        subprocess.run(["git", "-C", self.vd, "remote", "add", "origin",
+                        os.path.join(self.vd, "missing-remote.git")], check=True,
+                       capture_output=True)
+        result = self.cli.vault_git(self.cfg, True)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["stage"], "push")
+        self.assertEqual(result["push"], "failed")
+        self.assertIn("推送失败", result["message"])
+
+
 class DoCollectTest(unittest.TestCase):
+    def test_cli_uses_git_as_the_project_document_switch(self):
+        from loom import cli
+        from loom import collectors
+        cfg = {"sources": {"git": {"enabled": False}, "docs": {"enabled": True}},
+               "feishu": {"enabled": False}}
+        selected = cli._sync_sources(cfg)
+        self.assertNotIn("git", selected)
+        self.assertNotIn("docs", selected)                 # 旧 docs=true 不得绕过 Git 关闭
+
+        cfg["sources"]["git"]["enabled"] = True
+        cfg["sources"]["docs"]["enabled"] = False
+        selected = cli._sync_sources(cfg)
+        self.assertNotIn("git", selected)
+        self.assertNotIn("docs", selected)                 # 旧 docs=false 也不得被升级后扩大采集
+
+        cfg["sources"]["docs"]["enabled"] = True
+        selected = cli._sync_sources(cfg)
+        self.assertIn("git", selected)
+        self.assertIn("docs", selected)
+        if "docs" in collectors.REGISTRY and collectors.is_syncable("docs"):
+            self.assertEqual(cli._sync_sources(cfg, "git"), ["git", "docs"])
+
+    def test_legacy_docs_source_command_is_rejected_and_git_updates_both_flags(self):
+        from loom import cli
+        cfg = {"sources": {"git": {"enabled": True}, "docs": {"enabled": True}}}
+        original_save = cli.config.save
+        cli.config.save = lambda value: None
+        try:
+            docs_args = type("Args", (), {"name": "docs", "action": "disable"})()
+            with self.assertRaisesRegex(SystemExit, "项目文档已并入 Git"):
+                cli.cmd_source(cfg, docs_args)
+            self.assertTrue(cfg["sources"]["docs"]["enabled"])
+
+            git_args = type("Args", (), {"name": "git", "action": "disable"})()
+            cli.cmd_source(cfg, git_args)
+            self.assertFalse(cfg["sources"]["git"]["enabled"])
+            self.assertFalse(cfg["sources"]["docs"]["enabled"])
+        finally:
+            cli.config.save = original_save
+
     def test_one_failing_collector_does_not_abort_others(self):
         from loom import cli
         from loom import collectors
@@ -1485,6 +1746,38 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(e["detail"]["body"], "按订单精算")   # 详情含 detail
         self.assertEqual(self.serve.api_entry("没有", {}), {"error": "not found"})
 
+    def test_api_search_paginates_all_records_with_stable_filters(self):
+        rows = []
+        for i in range(45):
+            day = "2026-06-02" if i >= 30 else "2026-06-01"
+            rows.append(_entry(
+                f"row:{i:02d}", day, "proj", "git" if i % 2 == 0 else "notes",
+                "commit", ("needle " if i % 3 == 0 else "other ") + str(i),
+                ts=day + "T10:00:00"))
+        store.save({e["id"]: e for e in rows})
+        search.rebuild()
+
+        first = self.serve.api_search(self.cfg, "", page=1, page_size=20)
+        second = self.serve.api_search(self.cfg, "", page=2, page_size=20)
+        last = self.serve.api_search(self.cfg, "", page=99, page_size=20)
+        self.assertEqual((first["total"], first["pages"], first["page_size"]), (45, 3, 20))
+        self.assertEqual(len(first["hits"]), 20)
+        self.assertEqual(len(second["hits"]), 20)
+        self.assertEqual((last["page"], len(last["hits"])), (3, 5))  # 越界落到末页
+        ids = [e["id"] for e in first["hits"] + second["hits"] + last["hits"]]
+        self.assertEqual(len(ids), len(set(ids)))                       # 同时间戳也不跨页重漏
+        self.assertEqual(ids, sorted(ids, reverse=True))
+
+        filtered = self.serve.api_search(
+            self.cfg, "needle", tool="git", since="2026-06-02", page=1, page_size=10)
+        self.assertEqual(filtered["total"], 3)                         # q/工具/日期同层过滤
+        self.assertEqual({e["id"] for e in filtered["hits"]},
+                         {"row:30", "row:36", "row:42"})
+        hundred = self.serve.api_search(self.cfg, "", page_size=999)
+        self.assertEqual(hundred["page_size"], 100)                    # 服务端硬上限
+        empty = self.serve.api_search(self.cfg, "not-found", page=80, page_size=20)
+        self.assertEqual((empty["total"], empty["page"], empty["pages"]), (0, 1, 1))
+
     def test_api_stats(self):
         st = self.serve.api_stats(self.cfg, store.load())
         self.assertEqual(st["entries"], 3)
@@ -1511,7 +1804,39 @@ class ServeTest(unittest.TestCase):
         self.assertIn("recent", ov)
         self.assertFalse(ov["feishu_bridge"]["connected"])
         self.assertEqual(ov["admin"]["feishu"]["bitables"], [{"name": "需求池"}])
+        self.assertIn("resources", ov)                    # 管理首屏单请求拿齐资源数据
         self.assertNotIn("secret-app-token", json.dumps(ov, ensure_ascii=False))
+
+    def test_console_overview_scans_repositories_only_once(self):
+        original = self.serve._repo_rows
+        calls = []
+
+        def fake_repo_rows(cfg):
+            calls.append(cfg)
+            return []
+
+        self.serve._repo_rows = fake_repo_rows
+        try:
+            ov = self.serve.api_console_overview(self.cfg, store.load())
+        finally:
+            self.serve._repo_rows = original
+        self.assertEqual(len(calls), 1)                    # overview 与来源诊断复用扫描结果
+        self.assertIn("admin", ov)
+        self.assertIn("resources", ov)
+
+    def test_admin_action_finish_uses_lightweight_refresh_signal(self):
+        original = self.serve.api_admin_overview
+
+        def should_not_scan(*args, **kwargs):
+            raise AssertionError("action response must not rebuild the full overview")
+
+        self.serve.api_admin_overview = should_not_scan
+        try:
+            result = self.serve._finish_action(self.cfg, True, "done")
+        finally:
+            self.serve.api_admin_overview = original
+        self.assertTrue(result["refresh"])
+        self.assertEqual(result["overview"], {"refresh": True})
 
     def test_console_resources_reports_actual_components(self):
         r = self.serve.api_console_resources(self.cfg, store.load())
@@ -1527,6 +1852,37 @@ class ServeTest(unittest.TestCase):
         self.assertIn(util.ENV_PATH, ov["vault"]["local_only"])   # 什么不上云
         self.assertTrue(any(x["title"] == "vault .gitignore 不完整"
                             for x in ov["broken"]))          # 哪里坏了
+
+    def test_codebuddy_is_available_and_docs_are_folded_into_git(self):
+        from loom import collectors
+        self.assertIn("codebuddy", collectors.sync_names())
+        self.assertFalse(config.DEFAULT_CONFIG["sources"]["codebuddy"]["enabled"])
+        ov = self.serve.api_admin_overview(self.cfg, store.load())
+        row = next(s for s in ov["sources"] if s["name"] == "codebuddy")
+        categories = {s["name"]: s["category"] for s in ov["sources"]}
+        self.assertEqual(categories["git"], "development")
+        self.assertEqual(categories["feishu"], "collaboration")
+        self.assertEqual(categories["notes"], "knowledge")
+        self.assertNotIn("docs", categories)              # 项目文档并入 Git，不单列管理项
+        git_row = next(s for s in ov["sources"] if s["name"] == "git")
+        self.assertIn("项目文档", git_row["message"])
+        self.assertTrue(row["available"])
+        self.assertFalse(row["enabled"])
+        self.assertEqual(row["status"], "off")
+        self.assertTrue(any(x["label"] == "会话历史" for x in row["checks"]))
+        self.assertFalse(any(x["title"] == "codebuddy" for x in ov["broken"]))
+
+        console = self.serve.api_console_overview(self.cfg, store.load())
+        self.assertEqual(console["available_sources"], len(collectors.sync_names()) - 1)
+        cfg_without_git = {**self.cfg, "sources": {"git": {"enabled": False},
+                                                    "docs": {"enabled": True}}}
+        self.assertFalse(self.serve._source_enabled(cfg_without_git, "docs"))
+        result = self.serve._manual_sync(
+            self.cfg, {"source": "codebuddy", "since": "2026-07-01", "backup": False})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["sync"]["sources"][0]["name"], "codebuddy")
+        self.assertIn("已关闭", result["sync"]["sources"][0]["message"])
 
     def test_admin_repo_rows_accepts_git_worktree(self):
         root = tempfile.mkdtemp(prefix="loom-admin-repo-")
@@ -1575,6 +1931,109 @@ class ServeTest(unittest.TestCase):
         git_row = next(x for x in self.serve._source_diagnostics(self.cfg)
                        if x["name"] == "git")
         self.assertEqual(git_row["status"], "off")
+        source_dir = tempfile.mkdtemp(prefix="loom-source-path-")
+        r = self.serve.api_admin_action(self.cfg, {"action": "source_path_set",
+                                                   "name": "claude", "path": source_dir})
+        self.assertTrue(r["ok"])
+        self.assertEqual(self.cfg["sources"]["claude"]["projects_dir"], source_dir)
+        r = self.serve.api_admin_action(self.cfg, {"action": "source_path_set",
+                                                   "name": "codebuddy", "path": source_dir})
+        self.assertTrue(r["ok"])
+        self.assertEqual(self.cfg["sources"]["codebuddy"]["extension_data"], source_dir)
+        r = self.serve.api_admin_action(self.cfg, {"action": "source_path_set",
+                                                   "name": "docs", "path": source_dir})
+        self.assertFalse(r["ok"])
+
+    def test_manual_sync_reports_success_partial_and_error(self):
+        from loom import collectors
+
+        def ok(cfg, since):
+            return [_entry("sync:ok", "2026-07-13", "p", "notes", "note", "已采集")]
+
+        def empty(cfg, since):
+            return []
+
+        def boom(cfg, since):
+            raise RuntimeError("来源连接失败")
+
+        original = dict(collectors.REGISTRY)
+        try:
+            collectors.REGISTRY.clear()
+            collectors.REGISTRY.update({"ok": ok, "empty": empty})
+            cfg = {"vault": self.cfg["vault"], "redact": False,
+                   "sources": {"ok": {"enabled": True}, "empty": {"enabled": True}}}
+            result = self.serve._manual_sync(
+                cfg, {"source": "all", "since": "2026-07-01", "backup": False})
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["status"], "success")
+            self.assertEqual(result["sync"]["collected"], 1)
+            self.assertEqual([r["count"] for r in result["sync"]["sources"]], [1, 0])
+
+            collectors.REGISTRY["boom"] = boom
+            cfg["sources"]["boom"] = {"enabled": True}
+            result = self.serve._manual_sync(
+                cfg, {"source": "all", "since": "2026-07-01", "backup": False})
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["status"], "partial")
+            failed = next(r for r in result["sync"]["sources"] if r["name"] == "boom")
+            self.assertEqual(failed["status"], "error")
+            self.assertIn("来源连接失败", failed["message"])
+            self.assertIn("sync:ok", store.load())       # 其它来源仍正常入库
+
+            collectors.REGISTRY.clear()
+            collectors.REGISTRY["boom"] = boom
+            cfg["sources"] = {"boom": {"enabled": True}}
+            result = self.serve._manual_sync(
+                cfg, {"source": "all", "since": "2026-07-01", "backup": False})
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["status"], "error")
+        finally:
+            collectors.REGISTRY.clear()
+            collectors.REGISTRY.update(original)
+
+    def test_manual_sync_honors_diagnostic_partial_result(self):
+        from loom import collectors
+        name = "diagnostic-test"
+        entry = _entry("sync:partial", "2026-07-13", "p", "git", "commit", "部分采集")
+        collectors.REGISTRY[name] = lambda cfg, since: [entry]
+        collectors.DIAGNOSTIC_REGISTRY[name] = lambda cfg, since: {
+            "entries": [entry], "errors": ["另一个仓库读取失败"]}
+        try:
+            cfg = {"vault": self.cfg["vault"], "redact": False,
+                   "sources": {name: {"enabled": True}}}
+            result = self.serve._manual_sync(
+                cfg, {"source": name, "since": "2026-07-01", "backup": False})
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["status"], "partial")
+            self.assertEqual(result["sync"]["sources"][0]["status"], "partial")
+            self.assertEqual(result["sync"]["sources"][0]["count"], 1)
+        finally:
+            collectors.REGISTRY.pop(name, None)
+            collectors.DIAGNOSTIC_REGISTRY.pop(name, None)
+
+    def test_manual_sync_becomes_partial_when_backup_fails(self):
+        from loom import cli, collectors
+        name = "backup-test"
+        original_backup = cli.vault_git
+        collectors.REGISTRY[name] = lambda cfg, since: []
+        cli.vault_git = lambda cfg, push: {
+            "ok": False, "status": "error", "commit": "created", "push": "failed",
+            "message": "推送失败:remote unavailable", "errors": []}
+        try:
+            cfg = {"vault": self.cfg["vault"], "redact": False,
+                   "sources": {name: {"enabled": True}}}
+            result = self.serve._manual_sync(
+                cfg, {"source": name, "since": "2026-07-01", "backup": True})
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["status"], "partial")
+            self.assertFalse(result["sync"]["backup"]["ok"])
+
+            action = self.serve.api_admin_action(cfg, {"action": "vault_backup", "push": False})
+            self.assertFalse(action["ok"])
+            self.assertEqual(action["status"], "error")
+        finally:
+            cli.vault_git = original_backup
+            collectors.REGISTRY.pop(name, None)
 
     def test_fix_mojibake(self):
         garbled = "净额".encode("utf-8").decode("latin-1")   # 模拟裸 UTF-8 过 latin-1
@@ -1594,7 +2053,13 @@ class ServeTest(unittest.TestCase):
             hits = json.loads(c.getresponse().read())["hits"]
             self.assertEqual(len(hits), 2)                  # 两条净额相关都命中
             c.request("GET", "/api/admin/overview")
-            self.assertEqual(json.loads(c.getresponse().read())["collected"]["entries"], 3)
+            response = c.getresponse()
+            self.assertEqual(response.status, 403)                 # 旧管理接口也不得绕过 token
+            self.assertEqual(json.loads(response.read())["error"], "forbidden")
+            c.request("GET", "/api/admin/overview", headers={"X-Loom-Token": token})
+            response = c.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(json.loads(response.read())["collected"]["entries"], 3)
             c.request("POST", "/api/admin/action",
                       body=json.dumps({"action": "identity_add", "value": "迪仔"}),
                       headers={"Content-Type": "application/json", "X-Loom-Token": token})
@@ -1604,10 +2069,108 @@ class ServeTest(unittest.TestCase):
             self.assertIn(b"loom", page[:2000])                    # 首页出得来
             self.assertIn(b'id="themebtn"', page)                  # 亮/暗主题入口
             self.assertIn(b'class="admin-shell"', page)            # 管理并入原 UI
+            self.assertEqual(page.count(b'class="panel privacy-metric-panel"'), 2)  # 隐私页双卡等高
+            self.assertIn(b'#admin-pane-privacy .admin-grid{align-items:stretch}', page)
+            self.assertIn(b'data-v="home"', page)                  # 独立首页，不再拿搜索页冒充首页
+            self.assertIn(b'data-v="ledger"', page)                # 搜索筛选收进台账
+            self.assertIn(b'data-v="calendar"', page)              # “按天”改成产品化的日历
+            self.assertIn(b'id="home-sync-btn"', page)             # 核心同步能力前置到首页
+            self.assertIn(b"search:'ledger'", page)                # 旧链接继续兼容
+            self.assertIn(b"days:'calendar'", page)
+            self.assertIn(b'--page-track:960px;--hero-track:760px;--reading-track:760px', page)  # 首页上下同宽
+            self.assertIn(b'grid-template-columns:1fr;gap:20px', page)
+            self.assertIn(b'scrollbar-gutter:stable', page)         # 异步高度变化不再左右跳
+            self.assertIn(b'window.scrollTo(0,0)', page)            # 换页不继承长页面滚动位置
+            self.assertNotIn(b'data-v="search"', page)
+            self.assertNotIn(b'data-v="days"', page)
+            self.assertIn(b'class="source-groups"', page)          # 来源按用途分组而非平铺
+            self.assertIn(b"data-source-category", page)           # 新来源只需声明类别
+            self.assertIn(b'id="language-select"', page)           # 语言偏好归入设置
+            self.assertNotIn(b'id="langbtn"', page)                # 顶部不再放语言切换
+            self.assertIn(b'class="switch"', page)                 # 来源启停使用图形开关
+            self.assertIn(b'id="source-config"', page)             # 来源配置共用弹窗
+            self.assertIn(b'id="sync-result"', page)               # 同步结果按来源展示
+            self.assertIn(b'id="backup-result"', page)             # 独立备份结果就地展示
+            self.assertIn(b'id="drawer-backdrop"', page)           # 点详情外空白可关闭侧栏
+            self.assertIn(b'drawer(false,false)', page)             # 换页面关闭且不恢复隐藏焦点
+            self.assertIn(b'inset:64px 0 0', page)                  # 遮罩/抽屉不挡顶部换页导航
+            self.assertIn(b'top:64px;right:-560px', page)
+            self.assertIn(b'padding:20px;z-index:4', page)          # drawer 始终低于 sticky header
+            self.assertIn(b'header:after', page)                    # 顶栏分割线横跨整页，不被抽屉切断
+            self.assertIn(b'z-index:4;border-radius:0', page)
+            self.assertIn(b'id="drawer" role="dialog" aria-modal="false"', page)
+            self.assertIn(b'id="f-page-size"', page)               # 台账统一分页，默认 20 / 最大 100
+            self.assertIn(b'<option value="20" selected>', page)
+            self.assertIn(b'<option value="100">100</option>', page)
+            self.assertIn(b'id="ledger-pagination"', page)
+            self.assertIn(b'page:LEDGER_PAGE,page_size:LEDGER_PAGE_SIZE', page)
+            self.assertNotIn(b'function renderLedgerRecent', page)  # 空搜索也走完整分页数据
+            self.assertIn(b'id="admin-load-state"', page)          # 首屏与刷新有明确加载态
+            self.assertIn(b'if(ADMIN_LOAD)return ADMIN_LOAD', page)  # 连点刷新合并为同一请求
+            self.assertIn(b"const payload=await api('/api/console/v1/overview')", page)
+            self.assertNotIn(b"Promise.all([api('/api/admin/overview')", page)
+            self.assertIn("管理会话已失效".encode(), page)           # 403 不再表现为空白
+            self.assertIn(b"status==='partial'", page)              # 部分失败不再当成功
+            self.assertIn("当前版本暂不支持采集".encode(), page)      # 未实现来源不冒充正常
+            self.assertNotIn("持续采集".encode(), page)             # 不重复展示文字开关状态
+            self.assertNotIn("下一阶段".encode(), page)             # 概览不暴露产品路线图
             c.request("GET", "/api/nope")
             self.assertEqual(c.getresponse().status, 404)
         finally:
             srv.shutdown()
+
+    def test_concurrent_http_reads_use_isolated_entry_snapshots(self):
+        import http.client
+        import threading
+        from http.server import ThreadingHTTPServer
+        barrier = threading.Barrier(2)
+        seen, stats_sizes, errors = [], [], []
+        original_days, original_stats = self.serve.api_days, self.serve.api_stats
+
+        def fake_days(by_id):
+            seen.append(by_id)
+            barrier.wait(timeout=5)
+            by_id.clear()                                  # 只应影响本请求的快照
+            barrier.wait(timeout=5)
+            return {"days": []}
+
+        def fake_stats(cfg, by_id):
+            seen.append(by_id)
+            barrier.wait(timeout=5)
+            barrier.wait(timeout=5)
+            stats_sizes.append(len(by_id))
+            return {"entries": len(by_id)}
+
+        self.serve.api_days, self.serve.api_stats = fake_days, fake_stats
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), self.serve._make_handler(self.cfg, "token"))
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+        def request(path):
+            try:
+                c = http.client.HTTPConnection("127.0.0.1", srv.server_port, timeout=6)
+                c.request("GET", path)
+                response = c.getresponse()
+                response.read()
+                if response.status != 200:
+                    raise AssertionError("unexpected HTTP status: %s" % response.status)
+            except BaseException as exc:
+                errors.append(exc)
+
+        workers = [threading.Thread(target=request, args=(path,))
+                   for path in ("/api/days", "/api/stats")]
+        try:
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join(timeout=7)
+        finally:
+            srv.shutdown()
+            self.serve.api_days, self.serve.api_stats = original_days, original_stats
+        self.assertFalse(any(worker.is_alive() for worker in workers))
+        self.assertEqual(errors, [])
+        self.assertEqual(len(seen), 2)
+        self.assertIsNot(seen[0], seen[1])
+        self.assertEqual(stats_sizes, [3])
 
     def test_console_http_requires_token_and_sets_security_headers(self):
         import http.client

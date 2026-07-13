@@ -18,7 +18,11 @@ DEFAULT_CONFIG = {
         "claude":    {"enabled": True, "projects_dir": "~/.claude/projects"},
         "codex":     {"enabled": True, "home": "~/.codex"},
         "cursor":    {"enabled": True, "app_support": "~/Library/Application Support/Cursor"},
-        "codebuddy": {"enabled": True, "app_support": "~/Library/Application Support/CodeBuddy"},
+        "codebuddy": {
+            "enabled": False,
+            "app_support": "~/Library/Application Support/CodeBuddy",
+            "extension_data": "~/Library/Application Support/CodeBuddyExtension/Data",
+        },
         "docs":      {"enabled": True},   # 索引各仓 .md(全文归档,不进日记)
         "notes":     {"enabled": True},   # 索引 vault/notes/ 手动加的文档(loom doc add 闭环)
     },
@@ -38,7 +42,18 @@ def load():
         cfg = json.load(f)
     # 补齐缺省键,便于旧配置平滑升级
     merged = json.loads(json.dumps(DEFAULT_CONFIG))
+    # 旧版本允许单独关闭 docs。迁移到“项目文档并入 Git”之前先继承这项
+    # 明确选择，不能因为补入默认 git=true 就悄悄恢复全文采集。
+    old_sources = cfg.get("sources", {})
+    old_docs = old_sources.get("docs", {}) if isinstance(old_sources, dict) else {}
     _deep_update(merged, cfg)
+    if isinstance(old_docs, dict) and "enabled" in old_docs:
+        if old_docs["enabled"] is False:
+            # 隐私上采取保守迁移：旧 docs=false 优先，宁可暂停组合来源，
+            # 也不能在升级后扩大采集范围。用户重新开启 Git 时会同时对齐两项。
+            merged["sources"]["git"]["enabled"] = False
+        elif isinstance(old_sources, dict) and "git" not in old_sources:
+            merged["sources"]["git"]["enabled"] = True
     return merged
 
 
@@ -60,6 +75,29 @@ def _deep_update(base, overlay):
             base[k] = v
 
 
+def source_enabled(cfg, name):
+    """Return the product-level switch state for a collector.
+
+    Repository documents are presented as part of Git in the console, so Git is
+    their single source of truth even when an older config still contains a
+    separate ``sources.docs.enabled`` value.
+    """
+    if name in ("git", "docs"):
+        sources = cfg.get("sources", {})
+        docs = sources.get("docs", {})
+        if isinstance(docs, dict) and docs.get("enabled") is False:
+            return False
+        if "git" in sources:
+            return bool(sources.get("git", {}).get("enabled", True))
+        # 未经 config.load() 合并的旧配置也要尊重显式 docs 选择。
+        if isinstance(docs, dict) and "enabled" in docs:
+            return bool(docs["enabled"])
+        return True
+    if name == "feishu":
+        return bool(cfg.get("feishu", {}).get("enabled"))
+    return bool(cfg.get("sources", {}).get(name, {}).get("enabled"))
+
+
 def vault_dir(cfg):
     return util.expand(cfg["vault"]["dir"])
 
@@ -69,16 +107,48 @@ def journal_dir(cfg):
 
 
 def notes_dir(cfg):
-    return os.path.join(vault_dir(cfg), "notes")
+    custom = cfg.get("sources", {}).get("notes", {}).get("dir", "")
+    return util.expand(custom) if custom else os.path.join(vault_dir(cfg), "notes")
 
 
 # ---- 增删助手 ----
+def git_worktree_info(path):
+    """Return canonical Git worktree metadata; reject bare and non-repositories."""
+    path = os.path.abspath(util.expand(path))
+    if not os.path.isdir(path):
+        return None
+    try:
+        inside = subprocess.run(
+            ["git", "-C", path, "rev-parse", "--is-inside-work-tree"],
+            capture_output=True, text=True, timeout=10)
+        if inside.returncode != 0 or inside.stdout.strip() != "true":
+            return None
+        common = subprocess.run(
+            ["git", "-C", path, "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, timeout=10)
+        root = subprocess.run(
+            ["git", "-C", path, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=10)
+    except Exception:
+        return None
+    if common.returncode != 0 or root.returncode != 0:
+        return None
+    common_dir = common.stdout.strip()
+    if not os.path.isabs(common_dir):
+        common_dir = os.path.join(path, common_dir)
+    return {"path": path, "root": os.path.realpath(root.stdout.strip()),
+            "common_dir": os.path.realpath(common_dir)}
+
+
 def add_repo(cfg, path):
     path = os.path.abspath(util.expand(path))
-    r = subprocess.run(["git", "-C", path, "rev-parse", "--is-inside-work-tree"],
-                       capture_output=True, text=True)
-    if r.returncode != 0 or r.stdout.strip() != "true":
+    info = git_worktree_info(path)
+    if not info:
         raise ValueError(f"{path} 不是 git 仓")
+    for existing in cfg["repos"]:
+        other = git_worktree_info(existing)
+        if other and other["common_dir"] == info["common_dir"] and other["path"] != path:
+            raise ValueError(f"{path} 与已配置的 {other['path']} 属于同一 Git 仓库")
     if path not in cfg["repos"]:
         cfg["repos"].append(path)
     return path
@@ -93,15 +163,17 @@ def scan_repos(root):
     """在 root 下(深度<=3)找所有 .git 仓,返回仓根路径列表。"""
     root = util.expand(root)
     found = []
-    for dirpath, dirnames, _ in os.walk(root):
+    for dirpath, dirnames, filenames in os.walk(root):
         depth = dirpath[len(root):].count(os.sep)
         if depth > 3:
             dirnames[:] = []
             continue
+        if ".git" in dirnames or ".git" in filenames:
+            if git_worktree_info(dirpath):
+                found.append(dirpath)
         if ".git" in dirnames:
-            found.append(dirpath)
             dirnames[:] = [d for d in dirnames if d != ".git"]
-    return sorted(found)
+    return sorted(set(found))
 
 
 FEISHU_TOKEN_RE = re.compile(r"(?:/base/|/wiki/|obj_token=)([A-Za-z0-9]{20,})")
