@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0E1117">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTAwJz48cmVjdCB3aWR0aD0nMTAwJyBoZWlnaHQ9JzEwMCcgcng9JzIyJyBmaWxsPScjMTQxODIxJy8+PGcgZmlsbD0nIzVBQTlBMCc+PHJlY3QgeD0nMTQnIHk9JzIxLjUnIHdpZHRoPSc3MicgaGVpZ2h0PSc5JyByeD0nNC41Jy8+PHJlY3QgeD0nMTQnIHk9JzQ1LjUnIHdpZHRoPSc3MicgaGVpZ2h0PSc5JyByeD0nNC41Jy8+PHJlY3QgeD0nMTQnIHk9JzY5LjUnIHdpZHRoPSc3MicgaGVpZ2h0PSc5JyByeD0nNC41Jy8+PC9nPjxnIGZpbGw9JyNFMEE4NEUnPjxyZWN0IHg9JzIxLjUnIHk9JzE0JyB3aWR0aD0nOScgaGVpZ2h0PSc3Micgcng9JzQuNScvPjxyZWN0IHg9JzQ1LjUnIHk9JzE0JyB3aWR0aD0nOScgaGVpZ2h0PSc3Micgcng9JzQuNScvPjxyZWN0IHg9JzY5LjUnIHk9JzE0JyB3aWR0aD0nOScgaGVpZ2h0PSc3Micgcng9JzQuNScvPjwvZz48ZyBmaWxsPScjNUFBOUEwJz48cmVjdCB4PSc0NS41JyB5PScyMS41JyB3aWR0aD0nOScgaGVpZ2h0PSc5JyByeD0nMi41Jy8+PHJlY3QgeD0nMjEuNScgeT0nNDUuNScgd2lkdGg9JzknIGhlaWdodD0nOScgcng9JzIuNScvPjxyZWN0IHg9JzY5LjUnIHk9JzQ1LjUnIHdpZHRoPSc5JyBoZWlnaHQ9JzknIHJ4PScyLjUnLz48cmVjdCB4PSc0NS41JyB5PSc2OS41JyB3aWR0aD0nOScgaGVpZ2h0PSc5JyByeD0nMi41Jy8+PC9nPjwvc3ZnPg==">
 <title>loom · 本地控制台</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('loom_theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light')}catch(e){}</script>
 <style>
 :root{--ink:#0E1117;--panel:#171B22;--panel2:#1E242D;--panel3:#11151C;
   --line:#2A313C;--line2:#394250;--tx:#E7EAF0;--mut:#9AA3B2;--dim:#667181;
@@ -41,7 +42,7 @@ nav button{height:32px;min-width:44px;background:transparent;border:1px solid tr
   padding:0 12px;font-size:13px;cursor:pointer;white-space:nowrap;transition:background .14s,border-color .14s,color .14s}
 nav button:hover{color:var(--tx);background:rgba(255,255,255,.035)}
 nav button.on{color:var(--tx);background:var(--panel2);border-color:var(--line2);box-shadow:var(--soft)}
-button,input,select{font:inherit;color-scheme:dark}
+button,input,select{font:inherit;color-scheme:inherit}
 button,label{touch-action:manipulation}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid rgba(99,179,168,.7);outline-offset:2px}
 button:disabled{cursor:default;opacity:.58}
@@ -146,8 +147,10 @@ button:disabled{cursor:default;opacity:.58}
 .admin-title h1{font-size:20px;line-height:1.2;font-weight:720;letter-spacing:0;color:var(--tx)}
 .admin-title p{font-size:12.5px;color:var(--dim);margin-top:5px}
 .admin-head .act{flex:0 0 auto}
-.admin-tabs{display:flex;gap:4px;margin-bottom:14px;padding:4px;background:rgba(14,17,23,.56);border:1px solid var(--line);border-radius:10px;overflow-x:auto}
-.admin-tabs button{height:32px;background:transparent;border:1px solid transparent;border-radius:7px;color:var(--mut);padding:0 12px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.admin-shell{display:grid;grid-template-columns:168px minmax(0,1fr);gap:14px;align-items:start}
+.admin-workspace{min-width:0}
+.admin-tabs{position:sticky;top:72px;display:flex;flex-direction:column;gap:4px;padding:5px;background:rgba(14,17,23,.56);border:1px solid var(--line);border-radius:10px}
+.admin-tabs button{height:38px;background:transparent;border:1px solid transparent;border-radius:7px;color:var(--mut);padding:0 12px;font-size:12.5px;text-align:left;cursor:pointer;white-space:nowrap}
 .admin-tabs button:hover{color:var(--tx);background:rgba(255,255,255,.035)}
 .admin-tabs button.on{color:var(--tx);background:var(--panel2);border-color:var(--line2);box-shadow:var(--soft)}
 .admin-pane{display:none}.admin-pane.on{display:block}
@@ -163,6 +166,7 @@ button:disabled{cursor:default;opacity:.58}
 .answer .big{font-size:22px;font-weight:720;line-height:1.1;color:var(--tx);letter-spacing:0}
 .answer .desc{font-size:12px;color:var(--dim);margin-top:8px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+@media(max-width:900px){.admin-shell{grid-template-columns:1fr}.admin-tabs{position:static;flex-direction:row;overflow-x:auto}.admin-tabs button{text-align:center}.admin-top{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.admin-head{align-items:flex-start;flex-direction:column}.admin-top,.admin-grid{grid-template-columns:1fr}}
 .panel{background:linear-gradient(180deg,rgba(23,27,34,.97),rgba(19,23,30,.97));border:1px solid var(--line);
   border-radius:10px;padding:14px;box-shadow:var(--soft)}
@@ -234,6 +238,7 @@ button:disabled{cursor:default;opacity:.58}
 .resource-row .track{height:8px;border-radius:5px;background:var(--panel2);overflow:hidden}
 .resource-row i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,var(--cool),var(--warm))}
 .recent-admin .row{align-items:flex-start}.recent-admin .row button{flex:0 0 auto}
+.admin-details{margin-top:10px}.admin-details summary{cursor:pointer;color:var(--dim);font-size:12px}.admin-details[open] summary{margin-bottom:8px;color:var(--mut)}
 /* 详情抽屉 */
 #drawer{position:fixed;top:0;right:-560px;width:min(560px,92vw);height:100vh;background:linear-gradient(180deg,#1C222C,#151A22);
   border-left:1px solid var(--line2);transition:right .18s;overflow-y:auto;overscroll-behavior:contain;
@@ -255,6 +260,26 @@ button:disabled{cursor:default;opacity:.58}
   .bridge-strip{align-items:flex-start;flex-direction:column}
   .resource-row{grid-template-columns:100px 1fr 70px}
 }
+html[data-theme="light"]{--ink:#F3F6F4;--panel:#FFFFFF;--panel2:#EEF3F0;--panel3:#F8FAF9;
+  --line:#D9E2DD;--line2:#C4D0C9;--tx:#17211C;--mut:#66736C;--dim:#89948E;
+  --warm:#A86C19;--cool:#177C68;--blue:#356FAF;--bad:#B64D4D;--ok:#27805C;
+  --warn:#A86C19;--shadow:0 14px 34px rgba(31,55,44,.09);--soft:0 1px 0 rgba(255,255,255,.9) inset;
+  background:var(--ink);color-scheme:light}
+html[data-theme="light"] body{background:linear-gradient(180deg,#EDF4F0 0,#F7F9F8 280px),repeating-linear-gradient(90deg,rgba(23,124,104,.035) 0 1px,transparent 1px 64px)}
+html[data-theme="light"] header{background:linear-gradient(180deg,rgba(237,244,240,.98) 0,rgba(237,244,240,.92) 72%,rgba(237,244,240,0));border-bottom-color:rgba(196,208,201,.85)}
+html[data-theme="light"] nav,html[data-theme="light"] .admin-tabs{background:rgba(255,255,255,.72)}
+html[data-theme="light"] nav button:hover,html[data-theme="light"] .admin-tabs button:hover{background:rgba(23,124,104,.055)}
+html[data-theme="light"] .spot input{background:rgba(255,255,255,.94)}
+html[data-theme="light"] .stat,html[data-theme="light"] .card,html[data-theme="light"] .cal,
+html[data-theme="light"] .panel{background:linear-gradient(180deg,#FFFFFF,#FAFCFB)}
+html[data-theme="light"] .card:hover{background:linear-gradient(180deg,#FFFFFF,#F5FAF7);border-color:rgba(23,124,104,.5)}
+html[data-theme="light"] .fab,html[data-theme="light"] #tgraph{background:linear-gradient(180deg,#F8FAF9,#F1F5F3)}
+html[data-theme="light"] .gedge{stroke:#BCC8C1}
+html[data-theme="light"] .answer{background:linear-gradient(180deg,#FFFFFF,#F7FAF8)}
+html[data-theme="light"] .pill,html[data-theme="light"] .chip,html[data-theme="light"] .checkline{background:rgba(23,124,104,.025)}
+html[data-theme="light"] .log,html[data-theme="light"] #drawer pre,html[data-theme="light"] .evidence-stat{background:#F5F8F6}
+html[data-theme="light"] #drawer{background:linear-gradient(180deg,#FFFFFF,#F4F8F6);box-shadow:-24px 0 48px rgba(24,54,40,.16)}
+html[data-theme="light"] .cell.h3{color:#4A2E08}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.001ms!important}
   .card:hover,.act:active{transform:none}
@@ -275,6 +300,7 @@ button:disabled{cursor:default;opacity:.58}
     <button data-v="topics"><span data-t="主题|Topics"></span></button>
     <button data-v="days"><span data-t="按天|Days"></span></button>
     <button data-v="admin"><span data-t="管理|Admin"></span></button>
+    <button id="themebtn" aria-label="切换亮暗主题" title="切换亮暗主题"></button>
     <button id="langbtn" aria-label="Switch language" title="Switch language"></button>
   </nav>
 </header>
@@ -322,18 +348,20 @@ button:disabled{cursor:default;opacity:.58}
     </div>
     <button class="act" onclick="loadAdmin()" data-t="刷新状态|Refresh Status"></button>
   </div>
+  <div class="admin-shell">
   <div class="admin-tabs" role="tablist" aria-label="管理分区">
     <button class="on" data-admin-pane="overview" data-t="概览|Overview"></button>
     <button data-admin-pane="sources" data-t="来源|Sources"></button>
     <button data-admin-pane="privacy" data-t="数据与隐私|Data & Privacy"></button>
     <button data-admin-pane="settings" data-t="配置|Settings"></button>
   </div>
+  <div class="admin-workspace">
 
   <div class="admin-pane on" id="admin-pane-overview">
     <div class="admin-top" id="admin-answers"></div>
     <div class="admin-grid">
-      <section class="panel manual-panel"><div class="bridge-strip" id="admin-bridge"></div></section>
-      <section class="panel manual-panel">
+      <section class="panel"><div class="bridge-strip" id="admin-bridge"></div></section>
+      <section class="panel">
         <h3 data-t="手动 sync|Manual sync"></h3>
         <div class="sub" data-t="本地采集会重建索引和日记;push 需要二次确认。|Local sync rebuilds index and journals; push requires confirmation."></div>
         <div class="sync-form"><div class="sync-line">
@@ -344,8 +372,7 @@ button:disabled{cursor:default;opacity:.58}
           <label class="checkline"><input id="sync-backup" type="checkbox" checked> <span data-t="同步后本地备份|Local Backup After Sync"></span></label>
           <label class="checkline"><input id="sync-push" type="checkbox"> <span data-t="同步后 Push|Push After Sync"></span></label>
         </div></div>
-        <div class="inline-actions"><button class="act" onclick="vaultBackup(false)" data-t="仅提交 Vault|Commit Vault"></button><button class="act warn" onclick="vaultBackup(true)" data-t="提交并 Push|Commit & Push"></button></div>
-        <pre class="log" id="admin-log" aria-live="polite" aria-busy="false">ready</pre>
+        <details class="admin-details"><summary data-t="查看执行日志|Show execution log"></summary><pre class="log" id="admin-log" aria-live="polite" aria-busy="false">ready</pre></details>
       </section>
       <section class="panel"><h3 data-t="今日工作证据|Today's evidence"></h3><div id="admin-evidence"></div></section>
       <section class="panel recent-admin"><h3 data-t="最近记录|Recent records"></h3><div id="admin-recent"></div></section>
@@ -367,12 +394,14 @@ button:disabled{cursor:default;opacity:.58}
     <section class="panel manual-panel"><h3 data-t="同步与隐私边界|Sync & privacy boundary"></h3><div class="sub" data-t="飞书上传尚未启用;这里先明确什么可以上传、什么默认留在本地。|Feishu upload is not enabled yet; this defines what may upload and what stays local."></div><div id="admin-privacy"></div></section>
     <section class="panel"><h3 data-t="本地资源占用|Local resources"></h3><div id="admin-resources"></div></section>
     <section class="panel"><h3 data-t="采了什么|Collected"></h3><div id="admin-collected"></div></section>
-    <section class="panel manual-panel"><h3 data-t="Vault 上云边界|Vault cloud boundary"></h3><div id="admin-cloud"></div></section>
+    <section class="panel manual-panel"><h3 data-t="Vault 上云边界|Vault cloud boundary"></h3><div id="admin-cloud"></div><div class="inline-actions"><button class="act" onclick="vaultBackup(false)" data-t="仅提交 Vault|Commit Vault"></button><button class="act warn" onclick="vaultBackup(true)" data-t="提交并 Push|Commit & Push"></button></div></section>
   </div></div>
 
   <div class="admin-pane" id="admin-pane-settings"><div class="admin-grid">
     <section class="panel manual-panel"><h3 data-t="身份管理|Identity"></h3><div class="sub" data-t="git 采集会用这些邮箱/姓名过滤“本人”的提交。|Git collection uses these emails/names to identify your commits."></div><div class="form"><label class="sr-only" for="identity-value" data-t="姓名或邮箱|Name or email"></label><input id="identity-value" name="identity_value" autocomplete="off" spellcheck="false" placeholder="name@example.com…"><button class="act primary" onclick="identityAdd()" data-t="加入|Add"></button></div><div id="admin-identities"></div></section>
   </div></div>
+  </div>
+  </div>
 </div>
 </main>
 </div>
@@ -397,6 +426,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   if(window.matchMedia('(pointer:fine)').matches)$('#q').focus({preventScroll:true});
   const b=$('#langbtn');b.textContent=T('EN','中');
   b.onclick=()=>{localStorage.setItem('loom_lang',LANG==='zh'?'en':'zh');location.reload()};
+  const tb=$('#themebtn');
+  const paintTheme=()=>{const light=document.documentElement.dataset.theme==='light';tb.textContent=light?'☀':'☾';tb.title=T(light?'切换到暗色':'切换到亮色',light?'Switch to dark':'Switch to light');document.querySelector('meta[name=theme-color]').content=light?'#F3F6F4':'#0E1117'};
+  paintTheme();
+  tb.onclick=()=>{const next=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=next;localStorage.setItem('loom_theme',next);paintTheme()};
 });
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const KIND={session:'💬',commit:'💻',doc:'📄',note:'📎',report:'📋',requirement:'📥'};
@@ -485,7 +518,7 @@ async function loadDash(){
       svg+=`<text x="${x}" y="9" font-size="9" fill="#5C6673">${LANG==='en'?['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1]:(+m+'月')}</text>`}
     const weave=(c.w+c.r)%2?'#5AA9A0':'#E0A84E';                 // 经纬交替 = 织物纹理
     svg+=`<rect class="fcell" x="${x}" y="${y}" width="${CW-PAD}" height="${CH-PAD}" rx="3"
-      fill="${c.c?weave:'#1a202b'}" fill-opacity="${c.c?al(c.c):1}" stroke="none"
+      fill="${c.c?weave:'var(--panel2)'}" fill-opacity="${c.c?al(c.c):1}" stroke="none"
       onclick="goDay('${c.ds}')"><title>${c.ds}${c.c?' · '+c.c+T(' 条',' entries'):''}</title></rect>`}
   (LANG==='en'?['Mo','We','Fr','Su']:['一','三','五','日']).forEach((w,i)=>{svg+=`<text x="2" y="${16+[0,2,4,6][i]*CH+10}" font-size="9" fill="#5C6673">${w}</text>`});
   svg+='</svg>';
@@ -675,7 +708,7 @@ function renderAdmin(){
 function showAdminPane(name){document.querySelectorAll('.admin-pane').forEach(x=>x.classList.toggle('on',x.id==='admin-pane-'+name));document.querySelectorAll('[data-admin-pane]').forEach(x=>x.classList.toggle('on',x.dataset.adminPane===name))}
 document.querySelectorAll('[data-admin-pane]').forEach(x=>x.onclick=()=>showAdminPane(x.dataset.adminPane));
 async function loadAdmin(){[ADMIN,CONSOLE,RESOURCES]=await Promise.all([api('/api/admin/overview'),api('/api/console/v1/overview'),api('/api/console/v1/resources')]);renderAdmin()}
-function setLog(s){$('#admin-log').textContent=s||'ok'}
+function setLog(s){const log=$('#admin-log');log.textContent=s||'ok';const box=log.closest('details');if(box&&s&&s!=='ready')box.open=true}
 function setBusy(on){
   const root=$('#v-admin'),log=$('#admin-log');
   if(!root)return;
