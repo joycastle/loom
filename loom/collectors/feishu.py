@@ -9,7 +9,7 @@ from .. import util
 _token_cache = {}
 
 
-def token(base_url):
+def token(base_url, errors=None):
     """取 tenant_access_token(env 凭证,进程内缓存)。"""
     if base_url in _token_cache:
         return _token_cache[base_url]
@@ -17,11 +17,15 @@ def token(base_url):
     app_secret = os.environ.get("FEISHU_APP_SECRET")
     if not app_id or not app_secret:
         util.log("  [feishu] 缺 FEISHU_APP_ID/FEISHU_APP_SECRET(见 ~/.loom/.env),跳过")
+        if errors is not None:
+            errors.append("缺少 FEISHU_APP_ID/FEISHU_APP_SECRET")
         return None
     data = util.http_json("POST", f"{base_url}/auth/v3/tenant_access_token/internal",
                           body={"app_id": app_id, "app_secret": app_secret})
     if data.get("code") != 0:
         util.log(f"  [feishu] 取 token 失败: {data.get('msg')}")
+        if errors is not None:
+            errors.append(f"获取访问凭证失败:{data.get('msg') or data.get('code')}")
         return None
     tok = data["tenant_access_token"]
     _token_cache[base_url] = tok
@@ -57,7 +61,7 @@ def _field_date(v):
     return None
 
 
-def _list_records(base_url, token, app_token, table_id):
+def _list_records(base_url, token, app_token, table_id, errors=None, label=""):
     items = []
     page_token = None
     while True:
@@ -69,6 +73,8 @@ def _list_records(base_url, token, app_token, table_id):
         data = util.http_json("GET", url, headers={"Authorization": f"Bearer {token}"})
         if data.get("code") != 0:
             util.log(f"  [feishu] 拉记录失败: {data.get('msg')}")
+            if errors is not None:
+                errors.append(f"{label or table_id}:拉取失败:{data.get('msg') or data.get('code')}")
             break
         d = data.get("data", {})
         items.extend(d.get("items", []))
@@ -79,22 +85,25 @@ def _list_records(base_url, token, app_token, table_id):
     return items
 
 
-def collect(cfg, since):
+def collect_diagnostic(cfg, since):
     fs = cfg.get("feishu", {})
     if not fs.get("enabled") or not fs.get("bitables"):
-        return []
+        return {"entries": [], "errors": []}
     util.load_env()
     base_url = fs.get("base_url", "https://open.feishu.cn/open-apis")
-    tok = token(base_url)
+    errors = []
+    tok = token(base_url, errors)
     if not tok:
-        return []
+        return {"entries": [], "errors": errors}
     who = (cfg.get("owner", {}) or {}).get("feishu_name", "").strip()
     entries = []
     for bt in fs["bitables"]:
         if not bt.get("app_token") or not bt.get("table_id"):
             util.log(f"  [feishu] {bt.get('name')} 缺 app_token/table_id,跳过")
+            errors.append(f"{bt.get('name') or '未命名表'}:缺 app_token/table_id")
             continue
-        recs = _list_records(base_url, tok, bt["app_token"], bt["table_id"])
+        recs = _list_records(base_url, tok, bt["app_token"], bt["table_id"],
+                             errors, bt.get("name", ""))
         for r in recs:
             f = r.get("fields", {})
             people = _field_people(f.get(bt["person_field"]))
@@ -114,4 +123,8 @@ def collect(cfg, since):
                 "summary": f"{title}  [{status}]" if status else title, "ref": url,
                 "detail": {"status": status, "owners": people},
             })
-    return entries
+    return {"entries": entries, "errors": errors}
+
+
+def collect(cfg, since):
+    return collect_diagnostic(cfg, since)["entries"]

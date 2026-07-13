@@ -16,6 +16,7 @@ import subprocess
 import threading
 import urllib.parse
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -47,16 +48,57 @@ def _card(e, tmap=None):
             "ref": e.get("ref", ""), "topics": (tmap or {}).get(e["id"], [])}
 
 
-def api_search(cfg, q, project=None, tool=None, since=None, until=None, limit=60):
+def _search_page_size(page_size=None, legacy_limit=None):
+    """规范搜索页大小；显式 page_size 默认 20，旧 limit 参数继续可用。"""
+    raw = page_size if page_size not in (None, "") else legacy_limit
+    try:
+        size = int(raw) if raw not in (None, "") else 20
+    except (TypeError, ValueError):
+        size = 20
+    if size <= 0:
+        # 旧 limit 的 0/负数过去会被 search.query 夹到 1，保留这个边界行为；
+        # 新分页参数无效时则回到产品默认值。
+        return 1 if page_size in (None, "") and legacy_limit not in (None, "") else 20
+    return min(size, 100)
+
+
+def _search_page(page):
+    try:
+        return max(1, int(page))
+    except (TypeError, ValueError):
+        return 1
+
+
+def api_search(cfg, q, project=None, tool=None, since=None, until=None, limit=None,
+               page=1, page_size=None):
+    """搜索/浏览台账，并返回稳定的分页元数据。
+
+    ``limit`` 是旧客户端参数；未传 ``page_size`` 时仍把它当作页大小使用。
+    新客户端默认每页 20 条，服务端统一封顶 100 条。
+    """
     tmap = topics.load_map()
-    hits = search.query(q or "", limit=limit, project=project or None,
-                        tool=tool or None, since=since or None, until=until or None)
+    size = _search_page_size(page_size, limit)
+    requested_page = _search_page(page)
+    hits, total = search.query_page(
+        q or "", limit=size, offset=(requested_page - 1) * size,
+        project=project or None, tool=tool or None,
+        since=since or None, until=until or None)
+    pages = max(1, (total + size - 1) // size)
+    current_page = min(requested_page, pages)
+    if current_page != requested_page:
+        # 页码在删除记录或修改筛选条件后可能过期；自动落到最后一页，避免
+        # 明明有数据却返回空白列表。
+        hits, _ = search.query_page(
+            q or "", limit=size, offset=(current_page - 1) * size,
+            project=project or None, tool=tool or None,
+            since=since or None, until=until or None)
     out = []
     for h in hits:
         c = _card(h, tmap)
         c["snip"] = h.get("snip", "")
         out.append(c)
-    return {"hits": out}
+    return {"hits": out, "total": total, "page": current_page,
+            "page_size": size, "pages": pages}
 
 
 def api_topics(cfg):
@@ -261,17 +303,20 @@ def api_console_resources(cfg, by_id):
 
 
 def api_console_overview(cfg, by_id):
-    admin = api_admin_overview(cfg, by_id)
+    # Console 首屏共享同一份主题映射和管理诊断；响应同时携带资源数据，
+    # 前端无需再为同一次渲染重复请求 admin/resources。
+    tmap = topics.load_map()
+    admin = api_admin_overview(cfg, by_id, tmap=tmap)
     # Console 只需要连接状态，不把 app_token/table_id 等配置细节返回浏览器。
     feishu_cfg = admin.get("feishu", {})
     admin["feishu"] = {"enabled": bool(feishu_cfg.get("enabled")),
                         "bitables": [{"name": b.get("name", "")}
                                      for b in feishu_cfg.get("bitables", [])]}
     today = datetime.now().strftime("%Y-%m-%d")
-    tmap = topics.load_map()
     today_rows = [e for e in by_id.values() if e.get("date") == today]
     recent = sorted(today_rows or by_id.values(), key=lambda x: x.get("ts", ""), reverse=True)[:6]
-    active = sum(1 for s in admin["sources"] if s["enabled"])
+    active = sum(1 for s in admin["sources"] if s["enabled"] and s["available"])
+    available = sum(1 for s in admin["sources"] if s["available"])
     summarized = sum(1 for e in today_rows if (e.get("detail") or {}).get("digest"))
     classified = sum(1 for e in today_rows if tmap.get(e.get("id", "")))
     resources = api_console_resources(cfg, by_id)
@@ -281,12 +326,14 @@ def api_console_overview(cfg, by_id):
         "today": today,
         "today_entries": len(today_rows),
         "active_sources": active,
+        "available_sources": available,
         "issues": len(admin["broken"]),
         "summarized": summarized,
         "classified": classified,
         "local_bytes": local_bytes,
         "recent": [dict(_card(e, tmap), state=_record_state(e, tmap)) for e in recent],
         "admin": admin,
+        "resources": resources,
         "feishu_bridge": {
             "connected": False,
             "status": "planned",
@@ -312,8 +359,7 @@ def _git(vd, args, timeout=20):
 
 
 def _is_git_repo(path):
-    code, out, _ = _git(path, ["rev-parse", "--is-inside-work-tree"], timeout=5)
-    return code == 0 and out == "true"
+    return config.git_worktree_info(path) is not None
 
 
 def _env_key_state():
@@ -333,46 +379,75 @@ def _env_key_state():
 
 
 def _repo_rows(cfg):
-    rows = []
-    for raw in cfg.get("repos", []):
+    def inspect(raw):
         path = util.expand(raw)
         exists = os.path.isdir(path)
         is_git = _is_git_repo(path) if exists else False
         code, branch, _ = _git(path, ["branch", "--show-current"], timeout=5) if exists else (1, "", "")
         code2, dirty, _ = _git(path, ["status", "--short"], timeout=5) if is_git else (1, "", "")
-        rows.append({"path": path, "exists": exists, "git": is_git,
-                     "branch": branch if code == 0 else "",
-                     "dirty": bool(dirty) if code2 == 0 else False,
-                     "dirty_count": len([x for x in dirty.splitlines() if x.strip()])})
-    return rows
+        return {"path": path, "exists": exists, "git": is_git,
+                "branch": branch if code == 0 else "",
+                "dirty": bool(dirty) if code2 == 0 else False,
+                "dirty_count": len([x for x in dirty.splitlines() if x.strip()])}
+
+    repos = list(cfg.get("repos", []))
+    if len(repos) < 2:
+        return [inspect(raw) for raw in repos]
+    # 各仓库的 git 子进程彼此独立；有限并发可显著缩短管理页等待，map 保持配置顺序。
+    with ThreadPoolExecutor(max_workers=min(4, len(repos))) as pool:
+        return list(pool.map(inspect, repos))
 
 
 def _source_enabled(cfg, name):
-    if name == "git":
-        return bool(cfg.get("sources", {}).get("git", {}).get("enabled", True))
-    if name == "feishu":
-        return bool(cfg.get("feishu", {}).get("enabled"))
-    return bool(cfg.get("sources", {}).get(name, {}).get("enabled"))
+    return config.source_enabled(cfg, name)
 
 
-def _source_diagnostics(cfg):
+def _source_diagnostics(cfg, repos=None):
     rows, env = [], _env_key_state()
-    repos = _repo_rows(cfg)
+    # api_admin_overview 已经扫描过仓库时复用结果；保留独立调用兼容性。
+    repos = _repo_rows(cfg) if repos is None else repos
     for name in collectors.names():
+        # docs collector 和历史记录中的 tool=docs 继续保留，但管理页归入 Git 来源。
+        if name == "docs":
+            continue
         enabled = _source_enabled(cfg, name)
+        available = collectors.is_syncable(name)
         status, msg, checks = ("off", "已关闭", [])
-        if name == "git":
+        if not available:
+            enabled = False
+            status, msg = "unavailable", "当前版本暂不支持该来源"
+        elif name == "git":
             bad = [r["path"] for r in repos if not r["git"]]
             if not enabled:
-                status, msg = "off", "已关闭（仓库配置仍保留）"
+                status, msg = "off", "已关闭（Git 提交与项目文档配置仍保留）"
             elif not cfg.get("repos"):
-                status, msg = "warn", "未配置 repo"
+                status, msg = "warn", "未配置仓库，无法采集 Git 提交与项目文档"
             elif bad:
-                status, msg = "error", f"{len(bad)} 个 repo 不可采集"
+                status, msg = "error", f"{len(bad)} 个仓库不可采集 Git 提交与项目文档"
             else:
-                status, msg = "ok", f"{len(repos)} 个 repo"
-            checks = [{"label": "repo 数", "ok": bool(cfg.get("repos")), "value": len(repos)},
-                      {"label": "无效 repo", "ok": not bad, "value": len(bad)}]
+                status, msg = "ok", f"{len(repos)} 个仓库 · 采集 Git 提交与项目文档"
+            checks = [{"label": "仓库数", "ok": bool(cfg.get("repos")), "value": len(repos)},
+                      {"label": "Git 提交与项目文档", "ok": bool(repos) and not bad,
+                       "value": "可采集" if repos and not bad else "不可采集"},
+                      {"label": "无效仓库", "ok": not bad, "value": len(bad)}]
+        elif name == "codebuddy":
+            probe = collectors.codebuddy.probe(cfg)
+            path = probe["extension_data"]
+            count = probe["conversations"]
+            if not enabled:
+                status, msg = "off", f"已关闭 · 本地发现 {count} 个会话 · {path}"
+            elif not probe["history_exists"]:
+                status, msg = "warn", f"历史目录不存在:{path}"
+            elif probe["errors"]:
+                status, msg = "warn", f"发现 {count} 个会话，部分索引无法读取 · {path}"
+            else:
+                status, msg = "ok", f"{count} 个本地会话 · {path}"
+            checks = [
+                {"label": "会话历史", "ok": probe["history_exists"], "value": path},
+                {"label": "会话数", "ok": not probe["errors"], "value": count},
+                {"label": "元数据库", "ok": probe["session_db_exists"],
+                 "value": probe["session_db"]},
+            ]
         elif name == "feishu":
             fs = cfg.get("feishu", {})
             bits = fs.get("bitables", [])
@@ -396,7 +471,7 @@ def _source_diagnostics(cfg):
             src = cfg.get("sources", {}).get(name, {})
             if not enabled:
                 status, msg = "off", "已关闭"
-            elif name in ("claude", "codex", "cursor", "codebuddy"):
+            elif name in ("claude", "codex", "cursor"):
                 key = "home" if name == "codex" else ("projects_dir" if name == "claude" else "app_support")
                 path = util.expand(src.get(key, ""))
                 ok = bool(path and os.path.exists(path))
@@ -407,17 +482,15 @@ def _source_diagnostics(cfg):
                 ok = os.path.isdir(path)
                 status, msg = ("ok", path) if ok else ("warn", f"目录不存在:{path}")
                 checks = [{"label": "notes 目录", "ok": ok, "value": path}]
-            elif name == "docs":
-                bad = [r["path"] for r in repos if not r["exists"]]
-                status, msg = ("ok", f"{len(repos)} 个 repo") if repos and not bad else \
-                              ("warn", "没有可扫的 repo")
-                checks = [{"label": "repo 数", "ok": bool(repos), "value": len(repos)}]
-        rows.append({"name": name, "enabled": enabled, "status": status,
+        rows.append({"name": name, "category": collectors.source_category(name),
+                     "enabled": enabled, "configured_enabled": _source_enabled(cfg, name),
+                     "available": available,
+                     "status": status,
                      "message": msg, "checks": checks})
     return rows
 
 
-def _collection_status(cfg, by_id):
+def _collection_status(cfg, by_id, tmap=None):
     tools, kinds, projects, dates = defaultdict(int), defaultdict(int), defaultdict(int), []
     for e in by_id.values():
         tools[e.get("tool", "?")] += 1
@@ -428,6 +501,7 @@ def _collection_status(cfg, by_id):
     data_m = os.path.getmtime(util.DATA_PATH) if os.path.exists(util.DATA_PATH) else 0
     idx_m = os.path.getmtime(util.INDEX_PATH) if os.path.exists(util.INDEX_PATH) else 0
     recent = sorted(by_id.values(), key=lambda x: x.get("ts", ""), reverse=True)[:8]
+    tmap = topics.load_map() if tmap is None else tmap
     return {"entries": len(by_id), "date_start": min(dates) if dates else "",
             "date_end": max(dates) if dates else "",
             "tools": dict(sorted(tools.items(), key=lambda kv: -kv[1])),
@@ -436,7 +510,7 @@ def _collection_status(cfg, by_id):
             "data_path": util.DATA_PATH, "data_mtime": _fmt_mtime(util.DATA_PATH),
             "index_path": util.INDEX_PATH, "index_mtime": _fmt_mtime(util.INDEX_PATH),
             "index_ready": os.path.exists(util.INDEX_PATH) and idx_m >= data_m,
-            "recent": [_card(e, topics.load_map()) for e in recent]}
+            "recent": [_card(e, tmap) for e in recent]}
 
 
 def _is_cloud_risky(path):
@@ -499,11 +573,11 @@ def _broken_items(sources, repos, vault, collected):
     return items
 
 
-def api_admin_overview(cfg, by_id):
+def api_admin_overview(cfg, by_id, tmap=None):
     repos = _repo_rows(cfg)
-    sources = _source_diagnostics(cfg)
+    sources = _source_diagnostics(cfg, repos)
     vault = _vault_status(cfg)
-    collected = _collection_status(cfg, by_id)
+    collected = _collection_status(cfg, by_id, tmap=tmap)
     env = _env_key_state()
     cfg_exists = os.path.exists(util.CONFIG_PATH)
     env_mode = ""
@@ -536,9 +610,28 @@ def _confirm(payload, word):
     return str(payload.get("confirm", "")).strip().lower() == word
 
 
-def _finish_action(cfg, ok=True, message="", output=""):
-    return {"ok": ok, "message": message, "output": output,
-            "overview": api_admin_overview(cfg, store.load())}
+def _finish_action(cfg, ok=True, message="", output="", **extra):
+    # 旧前端只用 overview 的 truthy 值触发 loadAdmin；返回轻量刷新信号，
+    # 避免动作结束时先完整扫描一次、随后页面刷新又扫描一次。
+    result = {"ok": ok, "message": message, "output": output,
+              "overview": {"refresh": True}, "refresh": True}
+    result.update(extra)
+    return result
+
+
+def _sync_source_result(name, raw):
+    """Normalize old list collectors and newer diagnostic collector results."""
+    if not isinstance(raw, dict):
+        return list(raw or []), {"name": name, "status": "success", "count": len(raw or []),
+                                 "message": "", "errors": []}
+    entries = list(raw.get("entries") or [])
+    errors = [str(e).strip() for e in (raw.get("errors") or []) if str(e).strip()]
+    status = raw.get("status")
+    if status not in ("success", "partial", "error"):
+        status = "partial" if entries and errors else "error" if errors else "success"
+    message = str(raw.get("message") or ("; ".join(errors[:3]) if errors else ""))
+    return entries, {"name": name, "status": status, "count": len(entries),
+                     "message": message, "errors": errors}
 
 
 def _manual_sync(cfg, payload):
@@ -551,13 +644,38 @@ def _manual_sync(cfg, payload):
                 "message": "push 会把 vault git 推到 remote,需要二次确认"}
     util.load_env()
     since = payload.get("since") or util.since_date(cfg.get("default_since_days", 100))
-    srcs = collectors.names() if source == "all" else [source]
+    if source == "all":
+        srcs = [s for s in collectors.sync_names() if _source_enabled(cfg, s)]
+    elif source == "git":
+        # 管理页只展示 Git；单独同步 Git 时仍同时更新仓库内项目文档索引。
+        srcs = ["git"]
+        if "docs" in collectors.REGISTRY and collectors.is_syncable("docs"):
+            srcs.append("docs")
+    else:
+        srcs = [source]
+    if not srcs:
+        sync = {"requested": source, "since": since, "status": "error", "collected": 0,
+                "library_total": len(store.load()), "sources": []}
+        return _finish_action(cfg, False, "没有已开启的数据来源", status="error", sync=sync)
     by_id = store.load()
-    lines, total = [], 0
+    lines, total, source_results = [], 0, []
     for s in srcs:
         try:
-            got = collectors.REGISTRY[s](cfg, since)
+            collector = getattr(collectors, "DIAGNOSTIC_REGISTRY", {}).get(
+                s, collectors.REGISTRY[s])
+            collector_cfg = cfg
+            if s == "docs":
+                # 兼容曾经单独关闭 docs 的旧配置；管理端以 Git 开关为唯一真相源。
+                collector_cfg = dict(cfg)
+                collector_cfg["sources"] = dict(cfg.get("sources", {}))
+                collector_cfg["sources"]["docs"] = dict(
+                    cfg.get("sources", {}).get("docs", {}),
+                    enabled=_source_enabled(cfg, "docs"))
+            got, result = _sync_source_result(s, collector(collector_cfg, since))
         except Exception as e:
+            result = {"name": s, "status": "error", "count": 0,
+                      "message": str(e), "errors": [str(e)]}
+            source_results.append(result)
             lines.append(f"[{s}] 采集失败:{e}")
             continue
         if cfg.get("redact", True):
@@ -565,7 +683,13 @@ def _manual_sync(cfg, payload):
         if got:
             store.upsert(by_id, got)
         total += len(got)
-        lines.append(f"[{s}] {len(got)} 条")
+        source_results.append(result)
+        if result["status"] == "success":
+            lines.append(f"[{s}] {len(got)} 条")
+        elif result["status"] == "partial":
+            lines.append(f"[{s}] 部分完成:{len(got)} 条; {result['message']}")
+        else:
+            lines.append(f"[{s}] 采集失败:{result['message']}")
     nd = digest.apply_all(by_id)
     store.save(by_id)
     search.rebuild()
@@ -573,12 +697,26 @@ def _manual_sync(cfg, payload):
     lines.append(f"[digest] 覆盖 {nd} 条")
     lines.append(f"[render] {days} 个日记")
     lines.append(f"采集完成:本轮 {total} 条,库内共 {len(by_id)} 条(since {since})")
+    backup_result = None
     if payload.get("backup", True):
         from . import cli as cli_mod
-        _, out = _capture(cli_mod.vault_git, cfg, push)
+        backup_result, out = _capture(cli_mod.vault_git, cfg, push)
         if out:
             lines.append(out)
-    return _finish_action(cfg, True, "sync 完成", "\n".join(lines))
+    statuses = [r["status"] for r in source_results]
+    status = ("success" if statuses and all(s == "success" for s in statuses)
+              else "error" if statuses and all(s == "error" for s in statuses)
+              else "partial")
+    if backup_result and not backup_result.get("ok") and status != "error":
+        status = "partial"
+    message = {"success": "同步完成", "partial": "同步部分完成",
+               "error": "同步失败"}[status]
+    sync = {"requested": source, "since": since, "status": status, "collected": total,
+            "library_total": len(by_id), "sources": source_results}
+    if backup_result is not None:
+        sync["backup"] = backup_result
+    return _finish_action(cfg, status == "success", message, "\n".join(lines),
+                          status=status, sync=sync)
 
 
 def api_admin_action(cfg, payload):
@@ -599,8 +737,10 @@ def _api_admin_action(cfg, payload):
                 return {"ok": False, "needs_confirm": "push",
                         "message": "push 会把 vault git 推到 remote,需要二次确认"}
             from . import cli as cli_mod
-            _, out = _capture(cli_mod.vault_git, cfg, push)
-            return _finish_action(cfg, True, "vault 备份完成", out)
+            backup, out = _capture(cli_mod.vault_git, cfg, push)
+            status = "success" if backup.get("ok") else "error"
+            return _finish_action(cfg, backup.get("ok", False), backup.get("message", ""), out,
+                                  status=status, backup=backup)
         if action == "repo_add":
             path = config.add_repo(cfg, payload.get("path", ""))
             config.save(cfg)
@@ -637,12 +777,30 @@ def _api_admin_action(cfg, payload):
             enabled = bool(payload.get("enabled"))
             if name == "feishu":
                 cfg.setdefault("feishu", {})["enabled"] = enabled
+            elif name == "git":
+                sources = cfg.setdefault("sources", {})
+                sources.setdefault("git", {})["enabled"] = enabled
+                # 同步写回兼容字段，避免旧版 CLI/第三方调用绕过产品级 Git 开关。
+                sources.setdefault("docs", {})["enabled"] = enabled
             elif name in collectors.REGISTRY:
                 cfg.setdefault("sources", {}).setdefault(name, {})["enabled"] = enabled
             else:
                 return _finish_action(cfg, False, f"未知来源:{name}")
             config.save(cfg)
             return _finish_action(cfg, True, f"{name} -> {'enable' if enabled else 'disable'}")
+        if action == "source_path_set":
+            name = str(payload.get("name", ""))
+            keys = {"claude": "projects_dir", "codex": "home",
+                    "cursor": "app_support", "codebuddy": "extension_data",
+                    "notes": "dir"}
+            if name not in keys:
+                return _finish_action(cfg, False, f"该来源不支持独立路径:{name}")
+            path = os.path.abspath(util.expand(str(payload.get("path", "")).strip()))
+            if not os.path.isdir(path):
+                return _finish_action(cfg, False, f"目录不存在:{path}")
+            cfg.setdefault("sources", {}).setdefault(name, {})[keys[name]] = path
+            config.save(cfg)
+            return _finish_action(cfg, True, f"已更新 {name} 扫描目录")
         if action == "feishu_add":
             url = str(payload.get("url", "")).strip()
             app_token = str(payload.get("app_token", "")).strip()
@@ -680,12 +838,11 @@ def _api_admin_action(cfg, payload):
 # ---------------------------------------------------------------- HTTP 层
 def _make_handler(cfg, admin_token=None):
     admin_token = admin_token or secrets.token_urlsafe(32)
-    by_id_cache = {}
 
     def fresh():
-        by_id_cache.clear()
-        by_id_cache.update(store.load())
-        return by_id_cache
+        # ThreadingHTTPServer 的并发请求各自持有独立快照，避免一个请求在
+        # 另一个请求迭代期间 clear/update 同一字典。
+        return store.load()
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):                          # 安静;错误仍会打到 stderr
@@ -734,7 +891,8 @@ def _make_handler(cfg, admin_token=None):
                 elif u.path == "/api/search":
                     self._json(api_search(cfg, q.get("q", ""), q.get("project"),
                                           q.get("tool"), q.get("since"), q.get("until"),
-                                          int(q.get("limit", 60))))
+                                          limit=q.get("limit"), page=q.get("page", 1),
+                                          page_size=q.get("page_size")))
                 elif u.path == "/api/topics":
                     self._json(api_topics(cfg))
                 elif u.path == "/api/topic":
@@ -748,7 +906,10 @@ def _make_handler(cfg, admin_token=None):
                 elif u.path == "/api/entry":
                     self._json(api_entry(q.get("id", ""), fresh()))
                 elif u.path == "/api/admin/overview":
-                    self._json(api_admin_overview(cfg, fresh()))
+                    if not self._console_authorized():
+                        self._json({"error": "forbidden", "message": "Console 会话无效"}, 403)
+                    else:
+                        self._json(api_admin_overview(cfg, fresh()))
                 elif u.path.startswith("/api/console/v1/") and not self._console_authorized():
                     self._json({"error": "forbidden", "message": "Console 会话无效"}, 403)
                 elif u.path == "/api/console/v1/overview":

@@ -109,10 +109,16 @@ def _finish(cur, term):
     return hits
 
 
-def query(term, limit=40, project=None, tool=None, since=None, until=None):
-    """返回按相关度排序的条目 dict 列表(含匹配片段 `snip`)。≥3 字符走 FTS5+bm25,否则 LIKE。"""
+def query_page(term, limit=20, offset=0, project=None, tool=None, since=None, until=None):
+    """返回 ``(当前窗口, 总命中数)``。
+
+    ``limit`` / ``offset`` 只切分结果窗口；全文条件和结构化过滤同时用于总数与
+    当前页，避免前端拿一小段结果后再做过滤而产生错误的页数。空查询走 LIKE
+    路径，等价于浏览全部记录，并稳定地按时间倒序返回。
+    """
     ensure()
     limit = max(1, int(limit))     # 负数→SQLite 视为无限;0→空结果 —— 都夹住
+    offset = max(0, int(offset))
     con = sqlite3.connect(util.INDEX_PATH)
     con.row_factory = sqlite3.Row
     cols = "id,date,ts,project,tool,kind,summary,ref,aux"   # 带 aux,片段用
@@ -132,11 +138,16 @@ def query(term, limit=40, project=None, tool=None, since=None, until=None):
             # FTS5 MATCH:把查询当短语,双引号包裹并转义内部引号,避免语法错误/注入。
             phrase = '"' + term.replace('"', '""') + '"'
             sql = f"SELECT {cols} FROM entries WHERE entries MATCH ?"
+            count_sql = "SELECT COUNT(*) FROM entries WHERE entries MATCH ?"
             if where:
                 sql += " AND " + " AND ".join(where)
-            sql += " ORDER BY bm25(entries) LIMIT ?"
+                count_sql += " AND " + " AND ".join(where)
+            sql += " ORDER BY bm25(entries), ts DESC, id DESC LIMIT ? OFFSET ?"
             try:
-                return _finish(con.execute(sql, [phrase] + params + [limit]), term)
+                total = con.execute(count_sql, [phrase] + params).fetchone()[0]
+                hits = [] if offset >= total else _finish(
+                    con.execute(sql, [phrase] + params + [limit, offset]), term)
+                return hits, total
             except sqlite3.OperationalError:
                 pass  # 罕见 MATCH 语法问题 → 落到 LIKE
         # <3 字符 或 MATCH 失败:LIKE 子串(转义 % _ \ 元字符),按时间倒序。
@@ -144,9 +155,25 @@ def query(term, limit=40, project=None, tool=None, since=None, until=None):
         like = f"%{esc}%"
         clause = "(summary LIKE ? ESCAPE '\\' OR project LIKE ? ESCAPE '\\' OR aux LIKE ? ESCAPE '\\')"
         sql = f"SELECT {cols} FROM entries WHERE {clause}"
+        count_sql = f"SELECT COUNT(*) FROM entries WHERE {clause}"
         if where:
             sql += " AND " + " AND ".join(where)
-        sql += " ORDER BY ts DESC LIMIT ?"
-        return _finish(con.execute(sql, [like, like, like] + params + [limit]), term)
+            count_sql += " AND " + " AND ".join(where)
+        values = [like, like, like] + params
+        total = con.execute(count_sql, values).fetchone()[0]
+        sql += " ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?"
+        hits = [] if offset >= total else _finish(
+            con.execute(sql, values + [limit, offset]), term)
+        return hits, total
     finally:
         con.close()
+
+
+def query(term, limit=40, project=None, tool=None, since=None, until=None):
+    """返回按相关度排序的条目 dict 列表(含匹配片段 `snip`)。
+
+    保留原有列表返回契约；需要总数和分页窗口的调用方使用 :func:`query_page`。
+    """
+    hits, _total = query_page(term, limit=limit, offset=0, project=project,
+                              tool=tool, since=since, until=until)
+    return hits
