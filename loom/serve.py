@@ -11,10 +11,12 @@ import os
 import contextlib
 import io
 import secrets
+import shutil
 import subprocess
+import threading
 import urllib.parse
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import collectors, config, digest, render, search, store, topics, util
@@ -25,6 +27,7 @@ _CLOUD_IGNORE_RULES = ["_data/", ".env", "*.xlsx", "*.pptx", "*.numbers",
 _BINARY_CLOUD_EXTS = (".xlsx", ".pptx", ".numbers", ".pages", ".key", ".parquet",
                       ".pdf", ".docx")
 _MAX_ADMIN_BODY = 64 * 1024
+_WRITE_LOCK = threading.RLock()
 
 
 def _fix(v):
@@ -158,6 +161,138 @@ def api_entry(eid, by_id):
     out = dict(e)
     out["topics"] = topics.load_map().get(eid, [])
     return out
+
+
+def _record_state(e, tmap):
+    """给 Console 一个稳定、可解释的派生状态，不改写原始条目。"""
+    detail = e.get("detail") or {}
+    if detail.get("digest"):
+        return "summarized"
+    if tmap.get(e.get("id", "")):
+        return "classified"
+    return "local"
+
+
+def api_console_records(by_id, q="", source="", state="", period="today", limit=100):
+    """Console 记录列表；过滤只影响视图，不改变事实库。"""
+    tmap = topics.load_map()
+    now = datetime.now()
+    since = ""
+    if period == "today":
+        since = now.strftime("%Y-%m-%d")
+    elif period == "7d":
+        since = (now - timedelta(days=6)).strftime("%Y-%m-%d")
+    elif period == "30d":
+        since = (now - timedelta(days=29)).strftime("%Y-%m-%d")
+    needle = (q or "").strip().lower()
+    rows = []
+    for e in sorted(by_id.values(), key=lambda x: x.get("ts", ""), reverse=True):
+        item_state = _record_state(e, tmap)
+        if since and e.get("date", "") < since:
+            continue
+        if source and e.get("tool", "") != source:
+            continue
+        if state and item_state != state:
+            continue
+        if needle:
+            detail = e.get("detail") or {}
+            hay = " ".join([e.get("summary", ""), e.get("project", ""),
+                            e.get("tool", ""), e.get("kind", ""),
+                            detail.get("digest", "") or ""]).lower()
+            if needle not in hay:
+                continue
+        card = _card(e, tmap)
+        card["state"] = item_state
+        rows.append(card)
+        if len(rows) >= max(1, min(int(limit), 500)):
+            break
+    return {"records": rows, "count": len(rows)}
+
+
+def _path_size(path, ignore_dirs=None):
+    """统计本地占用；忽略 git 对象和原始数据目录，避免把非 loom 缓存算进去。"""
+    if not os.path.exists(path):
+        return 0
+    if os.path.isfile(path):
+        try:
+            return os.path.getsize(path)
+        except OSError:
+            return 0
+    ignored = set(ignore_dirs or ())
+    total = 0
+    for root, dirs, files in os.walk(path):
+        dirs[:] = [d for d in dirs if d not in ignored]
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(root, name))
+            except OSError:
+                pass
+    return total
+
+
+def _process_rss():
+    try:
+        r = subprocess.run(["ps", "-o", "rss=", "-p", str(os.getpid())],
+                           capture_output=True, text=True, timeout=3)
+        return int((r.stdout or "0").strip() or "0") * 1024
+    except Exception:
+        return 0
+
+
+def api_console_resources(cfg, by_id):
+    recent_since = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
+    recent_bytes = sum(len(json.dumps(e, ensure_ascii=False).encode("utf-8")) + 1
+                       for e in by_id.values() if e.get("date", "") >= recent_since)
+    vault = config.vault_dir(cfg)
+    disk = shutil.disk_usage(util.HOME if os.path.exists(util.HOME) else os.path.expanduser("~"))
+    items = [
+        {"id": "records", "label": "结构化记录", "bytes": _path_size(util.DATA_PATH),
+         "detail": "entries.jsonl · 本地事实层"},
+        {"id": "index", "label": "检索索引", "bytes": _path_size(util.INDEX_PATH),
+         "detail": "SQLite FTS · 可安全重建"},
+        {"id": "vault", "label": "日记与知识文档", "bytes": _path_size(vault, {".git", "_data"}),
+         "detail": "不含 Git 对象与原始数据"},
+        {"id": "rss", "label": "当前服务内存", "bytes": _process_rss(),
+         "detail": "loom serve 进程 RSS"},
+        {"id": "growth", "label": "近 7 天新增载荷", "bytes": recent_bytes,
+         "detail": "按条目 JSON 大小估算"},
+    ]
+    return {"items": items, "disk_free": disk.free, "disk_total": disk.total}
+
+
+def api_console_overview(cfg, by_id):
+    admin = api_admin_overview(cfg, by_id)
+    # Console 只需要连接状态，不把 app_token/table_id 等配置细节返回浏览器。
+    feishu_cfg = admin.get("feishu", {})
+    admin["feishu"] = {"enabled": bool(feishu_cfg.get("enabled")),
+                        "bitables": [{"name": b.get("name", "")}
+                                     for b in feishu_cfg.get("bitables", [])]}
+    today = datetime.now().strftime("%Y-%m-%d")
+    tmap = topics.load_map()
+    today_rows = [e for e in by_id.values() if e.get("date") == today]
+    recent = sorted(today_rows or by_id.values(), key=lambda x: x.get("ts", ""), reverse=True)[:6]
+    active = sum(1 for s in admin["sources"] if s["enabled"])
+    summarized = sum(1 for e in today_rows if (e.get("detail") or {}).get("digest"))
+    classified = sum(1 for e in today_rows if tmap.get(e.get("id", "")))
+    resources = api_console_resources(cfg, by_id)
+    local_bytes = sum(x["bytes"] for x in resources["items"] if x["id"] in
+                      ("records", "index", "vault"))
+    return {
+        "today": today,
+        "today_entries": len(today_rows),
+        "active_sources": active,
+        "issues": len(admin["broken"]),
+        "summarized": summarized,
+        "classified": classified,
+        "local_bytes": local_bytes,
+        "recent": [dict(_card(e, tmap), state=_record_state(e, tmap)) for e in recent],
+        "admin": admin,
+        "feishu_bridge": {
+            "connected": False,
+            "status": "planned",
+            "message": "飞书账号连接与证据上传将在下一阶段接入",
+        },
+    }
 
 
 # ---------------------------------------------------------------- 管理控制台 API(本地、显式动作、敏感动作二次确认)
@@ -445,6 +580,12 @@ def _manual_sync(cfg, payload):
 
 
 def api_admin_action(cfg, payload):
+    """所有管理写操作串行化，避免 ThreadingHTTPServer 并发写同一份状态。"""
+    with _WRITE_LOCK:
+        return _api_admin_action(cfg, payload)
+
+
+def _api_admin_action(cfg, payload):
     payload = payload or {}
     action = payload.get("action", "")
     try:
@@ -554,6 +695,31 @@ def _make_handler(cfg, admin_token=None):
             body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
             self.send_response(code)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _console_authorized(self):
+            host = self.headers.get("Host", "")
+            local_host = host.startswith("127.0.0.1:") or host.startswith("localhost:")
+            token_ok = secrets.compare_digest(self.headers.get("X-Loom-Token", ""),
+                                              admin_token)
+            return local_host and token_ok
+
+        def _html(self, body):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Content-Security-Policy",
+                             "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                             "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -562,13 +728,9 @@ def _make_handler(cfg, admin_token=None):
             u = urllib.parse.urlparse(self.path)
             q = {k: _fix(v[0]) for k, v in urllib.parse.parse_qs(u.query).items()}
             try:
-                if u.path == "/":
+                if u.path in ("/", "/browse"):
                     body = open(_ASSET, "rb").read()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
+                    self._html(body)
                 elif u.path == "/api/search":
                     self._json(api_search(cfg, q.get("q", ""), q.get("project"),
                                           q.get("tool"), q.get("since"), q.get("until"),
@@ -587,6 +749,18 @@ def _make_handler(cfg, admin_token=None):
                     self._json(api_entry(q.get("id", ""), fresh()))
                 elif u.path == "/api/admin/overview":
                     self._json(api_admin_overview(cfg, fresh()))
+                elif u.path.startswith("/api/console/v1/") and not self._console_authorized():
+                    self._json({"error": "forbidden", "message": "Console 会话无效"}, 403)
+                elif u.path == "/api/console/v1/overview":
+                    self._json(api_console_overview(cfg, fresh()))
+                elif u.path == "/api/console/v1/records":
+                    self._json(api_console_records(fresh(), q.get("q", ""),
+                                                   q.get("source", ""),
+                                                   q.get("state", ""),
+                                                   q.get("period", "today"),
+                                                   int(q.get("limit", 100))))
+                elif u.path == "/api/console/v1/resources":
+                    self._json(api_console_resources(cfg, fresh()))
                 else:
                     self._json({"error": "no route"}, 404)
             except BrokenPipeError:
