@@ -1494,6 +1494,31 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(set(st["tools"]), {"git", "claude", "notes"})   # 并列不断顺序
         self.assertEqual(len(st["recent"]), 3)
 
+    def test_console_records_filter_and_derived_state(self):
+        rows = self.serve.api_console_records(store.load(), q="净额", period="all")["records"]
+        self.assertEqual({r["id"] for r in rows}, {"git:p:1", "claude:s:2026-06-01"})
+        self.assertTrue(all(r["state"] == "classified" for r in rows))
+        git_only = self.serve.api_console_records(store.load(), source="git",
+                                                   period="all")["records"]
+        self.assertEqual([r["id"] for r in git_only], ["git:p:1"])
+
+    def test_console_overview_is_real_and_hides_feishu_tokens(self):
+        self.cfg["feishu"] = {"enabled": True, "bitables": [
+            {"name": "需求池", "app_token": "secret-app-token", "table_id": "secret-table"}
+        ]}
+        ov = self.serve.api_console_overview(self.cfg, store.load())
+        self.assertEqual(ov["today_entries"], 0)
+        self.assertIn("recent", ov)
+        self.assertFalse(ov["feishu_bridge"]["connected"])
+        self.assertEqual(ov["admin"]["feishu"]["bitables"], [{"name": "需求池"}])
+        self.assertNotIn("secret-app-token", json.dumps(ov, ensure_ascii=False))
+
+    def test_console_resources_reports_actual_components(self):
+        r = self.serve.api_console_resources(self.cfg, store.load())
+        ids = {x["id"] for x in r["items"]}
+        self.assertEqual(ids, {"records", "index", "vault", "rss", "growth"})
+        self.assertGreaterEqual(r["disk_total"], r["disk_free"])
+
     def test_api_admin_overview_answers_core_questions(self):
         ov = self.serve.api_admin_overview(self.cfg, store.load())
         self.assertEqual(ov["collected"]["entries"], 3)      # 采了什么
@@ -1571,6 +1596,29 @@ class ServeTest(unittest.TestCase):
             self.assertIn(b"loom", c.getresponse().read()[:2000])   # 首页出得来
             c.request("GET", "/api/nope")
             self.assertEqual(c.getresponse().status, 404)
+        finally:
+            srv.shutdown()
+
+    def test_console_http_requires_token_and_sets_security_headers(self):
+        import http.client
+        import threading
+        from http.server import ThreadingHTTPServer
+        token = "test-admin-token"
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), self.serve._make_handler(self.cfg, token))
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_port, timeout=5)
+            c.request("GET", "/api/console/v1/overview")
+            self.assertEqual(c.getresponse().status, 403)
+
+            c.request("GET", "/api/console/v1/overview",
+                      headers={"X-Loom-Token": token})
+            response = c.getresponse()
+            payload = json.loads(response.read())
+            self.assertEqual(response.status, 200)
+            self.assertIn("today_entries", payload)
+            self.assertEqual(response.getheader("Cache-Control"), "no-store")
+            self.assertEqual(response.getheader("X-Frame-Options"), "DENY")
         finally:
             srv.shutdown()
 

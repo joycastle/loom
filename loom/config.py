@@ -43,8 +43,12 @@ def load():
 
 def save(cfg):
     os.makedirs(util.HOME, exist_ok=True)
-    with open(util.CONFIG_PATH, "w", encoding="utf-8") as f:
+    tmp = f"{util.CONFIG_PATH}.tmp.{os.getpid()}"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, util.CONFIG_PATH)
 
 
 def _deep_update(base, overlay):

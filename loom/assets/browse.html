@@ -146,7 +146,12 @@ button:disabled{cursor:default;opacity:.58}
 .admin-title h1{font-size:20px;line-height:1.2;font-weight:720;letter-spacing:0;color:var(--tx)}
 .admin-title p{font-size:12.5px;color:var(--dim);margin-top:5px}
 .admin-head .act{flex:0 0 auto}
-.admin-top{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;margin-bottom:14px;
+.admin-tabs{display:flex;gap:4px;margin-bottom:14px;padding:4px;background:rgba(14,17,23,.56);border:1px solid var(--line);border-radius:10px;overflow-x:auto}
+.admin-tabs button{height:32px;background:transparent;border:1px solid transparent;border-radius:7px;color:var(--mut);padding:0 12px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.admin-tabs button:hover{color:var(--tx);background:rgba(255,255,255,.035)}
+.admin-tabs button.on{color:var(--tx);background:var(--panel2);border-color:var(--line2);box-shadow:var(--soft)}
+.admin-pane{display:none}.admin-pane.on{display:block}
+.admin-top{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;margin-bottom:14px;
   border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--line);box-shadow:var(--soft)}
 .answer{position:relative;overflow:hidden;background:linear-gradient(180deg,#171C24,#12161D);
   padding:14px 16px 13px;min-height:104px}
@@ -218,6 +223,17 @@ button:disabled{cursor:default;opacity:.58}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .chip{border:1px solid var(--line);border-radius:999px;color:var(--mut);font-size:12px;padding:3px 8px;background:rgba(255,255,255,.018)}
 .list{max-height:260px;overflow:auto}
+.bridge-strip{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:2px 0}
+.bridge-copy strong{display:block;font-size:14px;color:var(--tx);margin-bottom:4px}
+.bridge-copy span{font-size:12px;color:var(--dim)}
+.evidence-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.evidence-stat{background:var(--panel3);border:1px solid var(--line);border-radius:9px;padding:11px 12px}
+.evidence-stat b{display:block;font-size:20px;color:var(--tx);line-height:1.2}
+.evidence-stat span{font-size:11px;color:var(--dim)}
+.resource-row{display:grid;grid-template-columns:130px 1fr 82px;align-items:center;gap:10px;margin:8px 0;font-size:12px;color:var(--mut)}
+.resource-row .track{height:8px;border-radius:5px;background:var(--panel2);overflow:hidden}
+.resource-row i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,var(--cool),var(--warm))}
+.recent-admin .row{align-items:flex-start}.recent-admin .row button{flex:0 0 auto}
 /* 详情抽屉 */
 #drawer{position:fixed;top:0;right:-560px;width:min(560px,92vw);height:100vh;background:linear-gradient(180deg,#1C222C,#151A22);
   border-left:1px solid var(--line2);transition:right .18s;overflow-y:auto;overscroll-behavior:contain;
@@ -231,10 +247,13 @@ button:disabled{cursor:default;opacity:.58}
   border-radius:8px;color:var(--mut);width:32px;height:32px;cursor:pointer}
 .empty{color:var(--dim);padding:30px 0;text-align:center}
 @media(max-width:720px){
-  nav button,.act{min-height:44px}
+  nav button,.act,.admin-tabs button{min-height:44px}
   .bar input,.bar select,.form input:not([type=checkbox]),.form select,.field input:not([type=checkbox]),.field select,.panel-tools input{height:44px;min-height:44px}
   .sync-line .act{margin-left:0}
   .panel-tools{grid-template-columns:1fr}
+  .evidence-grid{grid-template-columns:repeat(2,1fr)}
+  .bridge-strip{align-items:flex-start;flex-direction:column}
+  .resource-row{grid-template-columns:100px 1fr 70px}
 }
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.001ms!important}
@@ -303,69 +322,57 @@ button:disabled{cursor:default;opacity:.58}
     </div>
     <button class="act" onclick="loadAdmin()" data-t="刷新状态|Refresh Status"></button>
   </div>
-  <div class="admin-top" id="admin-answers"></div>
-  <div class="admin-grid">
-    <section class="panel manual-panel">
-      <h3 data-t="手动 sync|Manual sync"></h3>
-      <div class="sub" data-t="本地采集会重建索引和日记;push 需要二次确认。|Local sync rebuilds index and journals; push requires confirmation."></div>
-      <div class="sync-form">
-        <div class="sync-line">
+  <div class="admin-tabs" role="tablist" aria-label="管理分区">
+    <button class="on" data-admin-pane="overview" data-t="概览|Overview"></button>
+    <button data-admin-pane="sources" data-t="来源|Sources"></button>
+    <button data-admin-pane="privacy" data-t="数据与隐私|Data & Privacy"></button>
+    <button data-admin-pane="settings" data-t="配置|Settings"></button>
+  </div>
+
+  <div class="admin-pane on" id="admin-pane-overview">
+    <div class="admin-top" id="admin-answers"></div>
+    <div class="admin-grid">
+      <section class="panel manual-panel"><div class="bridge-strip" id="admin-bridge"></div></section>
+      <section class="panel manual-panel">
+        <h3 data-t="手动 sync|Manual sync"></h3>
+        <div class="sub" data-t="本地采集会重建索引和日记;push 需要二次确认。|Local sync rebuilds index and journals; push requires confirmation."></div>
+        <div class="sync-form"><div class="sync-line">
           <label class="field" for="sync-source"><span data-t="来源|Source"></span><select id="sync-source" name="sync_source"><option value="all">all</option></select></label>
           <label class="field" for="sync-since"><span data-t="起始日期|Since"></span><input id="sync-since" name="sync_since" type="date" title="since" autocomplete="off"></label>
           <button class="act primary" onclick="runSync()" data-t="开始 Sync|Run Sync"></button>
-        </div>
-        <div class="toggle-line">
+        </div><div class="toggle-line">
           <label class="checkline"><input id="sync-backup" type="checkbox" checked> <span data-t="同步后本地备份|Local Backup After Sync"></span></label>
           <label class="checkline"><input id="sync-push" type="checkbox"> <span data-t="同步后 Push|Push After Sync"></span></label>
-        </div>
-      </div>
-      <div class="inline-actions">
-        <button class="act" onclick="vaultBackup(false)" data-t="仅提交 Vault|Commit Vault"></button>
-        <button class="act warn" onclick="vaultBackup(true)" data-t="提交并 Push|Commit & Push"></button>
-      </div>
-      <pre class="log" id="admin-log" aria-live="polite" aria-busy="false">ready</pre>
-    </section>
-    <section class="panel">
-      <h3 data-t="来源诊断|Source diagnostics"></h3>
-      <div id="admin-sources"></div>
-    </section>
-    <section class="panel">
-      <h3 data-t="Repo 管理|Repo management"></h3>
-      <div class="panel-tools"><label class="sr-only" for="repo-path" data-t="Repo 路径|Repo path"></label><input class="path" id="repo-path" name="repo_path" autocomplete="off" spellcheck="false" placeholder="/Users/me/project…">
-        <button class="act primary" onclick="repoAdd()" data-t="加入|Add"></button></div>
-      <div id="admin-repos" class="list"></div>
-    </section>
-    <section class="panel">
-      <h3 data-t="身份管理|Identity"></h3>
-      <div class="sub" data-t="git 采集会用这些邮箱/姓名过滤“本人”的提交。|Git collection uses these emails/names to identify your commits."></div>
-      <div class="form"><label class="sr-only" for="identity-value" data-t="姓名或邮箱|Name or email"></label><input id="identity-value" name="identity_value" autocomplete="off" spellcheck="false" placeholder="name@example.com…">
-        <button class="act primary" onclick="identityAdd()" data-t="加入|Add"></button></div>
-      <div id="admin-identities"></div>
-    </section>
-    <section class="panel">
-      <h3 data-t="Feishu 配置|Feishu config"></h3>
-      <div class="sub" data-t="凭证只读取 ~/.loom/.env;控制台不写入密钥。|Secrets are only read from ~/.loom/.env; this console does not write credentials."></div>
-      <div class="form">
-        <label class="field" for="fs-name"><span data-t="名称|Name"></span><input id="fs-name" name="feishu_name" autocomplete="off" spellcheck="false" placeholder="需求池…"></label>
-        <label class="field" for="fs-url"><span data-t="地址或 token|URL Or Token"></span><input class="path" id="fs-url" name="feishu_url" autocomplete="off" spellcheck="false" placeholder="Feishu base URL or app_token…"></label>
-        <label class="field" for="fs-table"><span data-t="Table ID|Table ID"></span><input id="fs-table" name="feishu_table_id" autocomplete="off" spellcheck="false" placeholder="table_id…"></label>
-        <button class="act primary" onclick="feishuAdd()" data-t="加入表|Add Table"></button>
-      </div>
-      <div id="admin-feishu"></div>
-    </section>
-    <section class="panel">
-      <h3 data-t="什么会上云|Cloud boundary"></h3>
-      <div id="admin-cloud"></div>
-    </section>
-    <section class="panel">
-      <h3 data-t="采了什么|Collected"></h3>
-      <div id="admin-collected"></div>
-    </section>
-    <section class="panel">
-      <h3 data-t="哪里坏了|Broken"></h3>
-      <div id="admin-broken"></div>
-    </section>
+        </div></div>
+        <div class="inline-actions"><button class="act" onclick="vaultBackup(false)" data-t="仅提交 Vault|Commit Vault"></button><button class="act warn" onclick="vaultBackup(true)" data-t="提交并 Push|Commit & Push"></button></div>
+        <pre class="log" id="admin-log" aria-live="polite" aria-busy="false">ready</pre>
+      </section>
+      <section class="panel"><h3 data-t="今日工作证据|Today's evidence"></h3><div id="admin-evidence"></div></section>
+      <section class="panel recent-admin"><h3 data-t="最近记录|Recent records"></h3><div id="admin-recent"></div></section>
+      <section class="panel manual-panel"><h3 data-t="哪里需要处理|Needs attention"></h3><div id="admin-broken"></div></section>
+    </div>
   </div>
+
+  <div class="admin-pane" id="admin-pane-sources"><div class="admin-grid">
+    <section class="panel"><h3 data-t="来源诊断|Source diagnostics"></h3><div id="admin-sources"></div></section>
+    <section class="panel"><h3 data-t="Repo 管理|Repo management"></h3><div class="panel-tools"><label class="sr-only" for="repo-path" data-t="Repo 路径|Repo path"></label><input class="path" id="repo-path" name="repo_path" autocomplete="off" spellcheck="false" placeholder="/Users/me/project…"><button class="act primary" onclick="repoAdd()" data-t="加入|Add"></button></div><div id="admin-repos" class="list"></div></section>
+    <section class="panel manual-panel"><h3 data-t="飞书多维表格采集|Feishu Bitable collection"></h3><div class="sub" data-t="这是现有的飞书读取来源;账号连接与证据上传属于下一阶段。|This is the existing Feishu read source; account connection and evidence upload come next."></div><div class="form">
+      <label class="field" for="fs-name"><span data-t="名称|Name"></span><input id="fs-name" name="feishu_name" autocomplete="off" spellcheck="false" placeholder="需求池…"></label>
+      <label class="field" for="fs-url"><span data-t="地址或 token|URL Or Token"></span><input class="path" id="fs-url" name="feishu_url" autocomplete="off" spellcheck="false" placeholder="Feishu base URL or app_token…"></label>
+      <label class="field" for="fs-table"><span data-t="Table ID|Table ID"></span><input id="fs-table" name="feishu_table_id" autocomplete="off" spellcheck="false" placeholder="table_id…"></label>
+      <button class="act primary" onclick="feishuAdd()" data-t="加入表|Add Table"></button></div><div id="admin-feishu"></div></section>
+  </div></div>
+
+  <div class="admin-pane" id="admin-pane-privacy"><div class="admin-grid">
+    <section class="panel manual-panel"><h3 data-t="同步与隐私边界|Sync & privacy boundary"></h3><div class="sub" data-t="飞书上传尚未启用;这里先明确什么可以上传、什么默认留在本地。|Feishu upload is not enabled yet; this defines what may upload and what stays local."></div><div id="admin-privacy"></div></section>
+    <section class="panel"><h3 data-t="本地资源占用|Local resources"></h3><div id="admin-resources"></div></section>
+    <section class="panel"><h3 data-t="采了什么|Collected"></h3><div id="admin-collected"></div></section>
+    <section class="panel manual-panel"><h3 data-t="Vault 上云边界|Vault cloud boundary"></h3><div id="admin-cloud"></div></section>
+  </div></div>
+
+  <div class="admin-pane" id="admin-pane-settings"><div class="admin-grid">
+    <section class="panel manual-panel"><h3 data-t="身份管理|Identity"></h3><div class="sub" data-t="git 采集会用这些邮箱/姓名过滤“本人”的提交。|Git collection uses these emails/names to identify your commits."></div><div class="form"><label class="sr-only" for="identity-value" data-t="姓名或邮箱|Name or email"></label><input id="identity-value" name="identity_value" autocomplete="off" spellcheck="false" placeholder="name@example.com…"><button class="act primary" onclick="identityAdd()" data-t="加入|Add"></button></div><div id="admin-identities"></div></section>
+  </div></div>
 </div>
 </main>
 </div>
@@ -375,7 +382,7 @@ button:disabled{cursor:default;opacity:.58}
 <script>
 const LANG=localStorage.getItem('loom_lang')||'zh';
 const T=(zh,en)=>LANG==='en'?en:zh;
-const $=s=>document.querySelector(s), api=(p,o={})=>fetch(p+'?'+new URLSearchParams(o)).then(r=>r.json());
+const $=s=>document.querySelector(s), api=(p,o={})=>fetch(p+'?'+new URLSearchParams(o),{headers:{'X-Loom-Token':sessionStorage.getItem('loom_admin_token')||''}}).then(r=>r.json());
 const bootParams=new URLSearchParams(location.search),bootToken=bootParams.get('token');
 if(bootToken){sessionStorage.setItem('loom_admin_token',bootToken);history.replaceState(null,'',location.pathname+location.hash)}
 const post=(p,o)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json',
@@ -592,9 +599,10 @@ async function loadDay(date){
 }
 
 // ---- 管理:采集状态 / 故障 / 上云边界 ----
-let ADMIN=null;
+let ADMIN=null,CONSOLE=null,RESOURCES=null;
 const jsq=s=>esc(String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,' '));
 const pct=(n,max)=>max?Math.max(4,100*n/max).toFixed(1):0;
+function fmtBytes(n){n=Number(n)||0;if(n<1024)return n+' B';const u=['KB','MB','GB','TB'];let i=-1;do{n/=1024;i++}while(n>=1024&&i<u.length-1);return n.toFixed(n>=100?0:n>=10?1:2)+' '+u[i]}
 function pill(st,txt){return `<span class="pill ${st}">${esc(txt||st)}</span>`}
 function kv(k,v){return `<div class="kv"><span>${esc(k)}</span><b>${esc(v??'')}</b></div>`}
 function bars(map){
@@ -613,14 +621,17 @@ function renderAdmin(){
   const o=ADMIN;if(!o)return;fillSources();
   const bad=o.broken.filter(x=>x.severity==='error').length,warn=o.broken.filter(x=>x.severity!=='error').length;
   const cloudBad=o.vault.tracked_risky.length,cloudWarn=o.vault.gitignore.missing.length||!o.vault.git;
+  const c=CONSOLE||{today_entries:0,active_sources:0,local_bytes:0,recent:[],summarized:0,classified:0,feishu_bridge:{connected:false,message:''}};
   $('#admin-answers').innerHTML=[
-    `<div class="answer ok"><h2>${T('采了什么','WHAT WAS COLLECTED')}</h2><div class="big">${o.collected.entries.toLocaleString()} ${T('条','entries')}</div>
-      <div class="desc">${esc(o.collected.date_start||'-')} → ${esc(o.collected.date_end||'-')} · ${Object.keys(o.collected.tools).length}${T(' 个来源',' sources')}</div></div>`,
-    `<div class="answer ${bad?'bad':warn?'warn':'ok'}"><h2>${T('哪里坏了','WHAT IS BROKEN')}</h2><div class="big">${bad}${T(' 个错误',' errors')} · ${warn}${T(' 个警告',' warnings')}</div>
+    `<div class="answer ok"><h2>${T('今日记录','TODAY')}</h2><div class="big">${c.today_entries.toLocaleString()} ${T('条','entries')}</div><div class="desc">${T('已摘要','summarized')} ${c.summarized} · ${T('已归类','classified')} ${c.classified}</div></div>`,
+    `<div class="answer ok"><h2>${T('启用来源','ACTIVE SOURCES')}</h2><div class="big">${c.active_sources} / ${o.sources.length}</div><div class="desc">${Object.keys(o.collected.tools).length}${T(' 个来源已有记录',' sources have records')}</div></div>`,
+    `<div class="answer ${bad?'bad':warn?'warn':'ok'}"><h2>${T('需要处理','NEEDS ATTENTION')}</h2><div class="big">${bad}${T(' 个错误',' errors')} · ${warn}${T(' 个警告',' warnings')}</div>
       <div class="desc">${o.broken[0]?esc(o.broken[0].title+' · '+o.broken[0].detail):T('当前没有明显阻塞','No obvious blocker')}</div></div>`,
-    `<div class="answer ${cloudBad?'bad':cloudWarn?'warn':'ok'}"><h2>${T('什么会上云','WHAT GOES TO CLOUD')}</h2><div class="big">${o.vault.tracked_count.toLocaleString()} ${T('个 git 跟踪文件','tracked files')}</div>
-      <div class="desc">${cloudBad?T('有本地专属文件被跟踪','Local-only files are tracked'):T('原始数据/密钥按规则留本地','Raw data/secrets stay local by policy')}</div></div>`
+    `<div class="answer ${cloudBad?'bad':cloudWarn?'warn':'ok'}"><h2>${T('本地数据','LOCAL DATA')}</h2><div class="big">${fmtBytes(c.local_bytes)}</div><div class="desc">${T('事实记录、检索索引和知识文档','records, search index, and knowledge docs')}</div></div>`
   ].join('');
+  $('#admin-bridge').innerHTML=`<div class="bridge-copy"><strong>${T('飞书账号连接与证据上传','Feishu account & evidence upload')} ${pill(c.feishu_bridge.connected?'ok':'off',c.feishu_bridge.connected?T('已连接','connected'):T('下一阶段','next phase'))}</strong><span>${esc(c.feishu_bridge.message||T('当前只读取已配置的飞书多维表格。','Currently only configured Feishu Bitables are read.'))}</span></div><button class="act" disabled>${T('连接飞书','Connect Feishu')}</button>`;
+  $('#admin-evidence').innerHTML=`<div class="evidence-grid"><div class="evidence-stat"><b>${c.today_entries}</b><span>${T('结构化工作记录','work records')}</span></div><div class="evidence-stat"><b>${c.summarized}</b><span>${T('会话摘要','session digests')}</span></div><div class="evidence-stat"><b>${c.classified}</b><span>${T('已归类','classified')}</span></div><div class="evidence-stat"><b>0</b><span>${T('已上传（未启用）','uploaded (off)')}</span></div></div>`;
+  $('#admin-recent').innerHTML=c.recent.length?c.recent.slice(0,5).map(r=>`<div class="row"><div><strong>${esc(r.summary)}</strong><div>${esc(r.date)} · ${esc(r.project||'-')} · ${esc(r.tool||'-')}</div></div><button class="act" onclick="detail('${jsq(r.id)}')">${T('详情','Detail')}</button></div>`).join(''):`<div class="empty">${T('今天还没有记录','No records today')}</div>`;
   $('#admin-sources').innerHTML=o.sources.map(s=>`<div class="row">
     <div><strong>${esc(s.name)}</strong> ${pill(s.status,s.status)}<div><code>${esc(s.message)}</code></div></div>
     ${s.name==='git'?'':`<button class="act" onclick="sourceSet('${jsq(s.name)}',${!s.enabled})">${s.enabled?T('关闭','Disable'):T('启用','Enable')}</button>`}
@@ -654,11 +665,16 @@ function renderAdmin(){
   $('#admin-collected').innerHTML=kv('entries',o.collected.entries)+kv('range',(o.collected.date_start||'-')+' → '+(o.collected.date_end||'-'))
     +kv('data',o.collected.data_path+' · '+(o.collected.data_mtime||'-'))+kv('index',o.collected.index_ready?T('可用','ready'):T('缺失/落后','missing/stale'))
     +`<div class="gh">tools</div>${bars(o.collected.tools)}<div class="gh">kinds</div>${bars(o.collected.kinds)}`;
+  $('#admin-privacy').innerHTML=`<div class="mini">${pill('ok',T('可上传','uploadable'))}${T('结构化工作卡片、必要结论片段、提交说明和来源回链','Structured work cards, necessary conclusions, commit summaries, and source links')}</div><div class="mini" style="margin-top:10px">${pill('warn',T('只留本地','local only'))}${T('完整代码、完整 AI 会话、密钥、Webhook 和原始文件','Full code, full AI transcripts, secrets, webhooks, and original files')}</div>`;
+  const ri=(RESOURCES&&RESOURCES.items)||[],rm=Math.max(1,...ri.map(x=>x.bytes));
+  $('#admin-resources').innerHTML=ri.length?ri.map(x=>`<div class="resource-row"><span>${esc(x.label)}</span><span class="track"><i style="width:${pct(x.bytes,rm)}%"></i></span><span class="mono">${fmtBytes(x.bytes)}</span></div>`).join(''):`<div class="empty">${T('正在读取','Loading')}</div>`;
   $('#admin-broken').innerHTML=o.broken.length?o.broken.map(x=>`<div class="row"><div>${pill(x.severity==='error'?'error':'warn',x.severity)}
     <strong>${esc(x.title)}</strong><div><code>${esc(x.area)} · ${esc(x.detail)}</code></div></div></div>`).join('')
     :`<div class="empty">${T('当前没有明显故障','No obvious issue')}</div>`;
 }
-async function loadAdmin(){ADMIN=await api('/api/admin/overview');renderAdmin()}
+function showAdminPane(name){document.querySelectorAll('.admin-pane').forEach(x=>x.classList.toggle('on',x.id==='admin-pane-'+name));document.querySelectorAll('[data-admin-pane]').forEach(x=>x.classList.toggle('on',x.dataset.adminPane===name))}
+document.querySelectorAll('[data-admin-pane]').forEach(x=>x.onclick=()=>showAdminPane(x.dataset.adminPane));
+async function loadAdmin(){[ADMIN,CONSOLE,RESOURCES]=await Promise.all([api('/api/admin/overview'),api('/api/console/v1/overview'),api('/api/console/v1/resources')]);renderAdmin()}
 function setLog(s){$('#admin-log').textContent=s||'ok'}
 function setBusy(on){
   const root=$('#v-admin'),log=$('#admin-log');
@@ -675,7 +691,7 @@ async function adminAction(payload,confirmWord){
   try{
     let r=await post('/api/admin/action',payload);
     if(!r.ok&&r.needs_confirm&&confirm(r.message)){payload.confirm=r.needs_confirm;r=await post('/api/admin/action',payload)}
-    if(r.overview){ADMIN=r.overview;renderAdmin()}
+    if(r.overview)await loadAdmin()
     setLog((r.ok?'✓ ':'✗ ')+(r.message||'')+(r.output?'\n\n'+r.output:''));
   }catch(e){
     setLog('✗ '+(e&&e.message?e.message:String(e)));
