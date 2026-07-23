@@ -20,9 +20,38 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import collectors, config, digest, render, search, store, topics, util
+from . import (collectors, config, digest, render, report, search, skillsync,
+               store, topics, util)
 
 _ASSET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "browse.html")
+# React admin frontend (prototype/chat-ui build). When a valid dist dir exists,
+# `loom serve` serves it (index.html + /assets/*) as the admin console; the
+# vanilla browse.html is the zero-build fallback when no build is present.
+_UI_STATIC_TYPES = {
+    ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
+    ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp",
+    ".ico": "image/x-icon", ".json": "application/json", ".map": "application/json",
+    ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf",
+}
+
+
+def _ui_dir():
+    """Locate the React admin build to serve, or "" to fall back to browse.html.
+
+    Build chain: ``cd prototype/chat-ui && npm run build`` writes its output to
+    ``loom/assets/ui`` (vite ``outDir``), which is what ``loom serve`` serves by
+    default — no env var required. ``LOOM_DESKTOP_UI_DIR`` still overrides for
+    source-served development.
+    """
+    # 1) explicit override (source-served during development, or a custom build)
+    directory = os.environ.get("LOOM_DESKTOP_UI_DIR", "")
+    if directory and os.path.isfile(os.path.join(directory, "index.html")):
+        return os.path.realpath(directory)
+    # 2) bundled build inside the package (loom/assets/ui) — the default admin UI.
+    bundled = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui")
+    if os.path.isfile(os.path.join(bundled, "index.html")):
+        return os.path.realpath(bundled)
+    return ""
 _CLOUD_IGNORE_RULES = ["_data/", ".env", "*.xlsx", "*.pptx", "*.numbers",
                        "*.pages", "*.key", "*.parquet", "*.pdf", "*.docx"]
 _BINARY_CLOUD_EXTS = (".xlsx", ".pptx", ".numbers", ".pages", ".key", ".parquet",
@@ -101,12 +130,22 @@ def api_search(cfg, q, project=None, tool=None, since=None, until=None, limit=No
             "page_size": size, "pages": pages}
 
 
-def api_topics(cfg):
-    """主题树(DAG:多父节点会在每个父下出现,标 multi)。"""
+def api_topics(cfg, by_id=None):
+    """主题树(DAG:多父节点会在每个父下出现,标 multi)。
+
+    计数只统计仍存在于事实库(store)的条目,与 ``api_topic`` /
+    ``topics.members`` 完全对齐:topic_map 里指向已删除条目的陈旧映射不计入,
+    否则节点角标(上卷数)会大于点开后能展示的成员数(members 只返回还在
+    store 里的条目)。``by_id`` 缺省时自行加载当前快照。
+    """
+    if by_id is None:
+        by_id = store.load()
     pgs = topics.pages(cfg)
     m = topics.load_map()
     direct = defaultdict(int)
-    for _eid, ts in m.items():
+    for eid, ts in m.items():
+        if eid not in by_id:
+            continue
         for t in ts:
             direct[topics.resolve(t, pgs)] += 1
     children = defaultdict(set)
@@ -116,7 +155,8 @@ def api_topics(cfg):
             children[topics.resolve(par, pgs)].add(tid)
             has_parent.add(tid)
 
-    resolved = [set(topics.resolve(t, pgs) for t in ts) for ts in m.values()]
+    resolved = [set(topics.resolve(t, pgs) for t in ts)
+                for eid, ts in m.items() if eid in by_id]
 
     def roll(tid):                                          # 上卷计数(子树内条目,DAG 去重)
         desc = topics.descendants(tid, pgs)
@@ -141,10 +181,11 @@ def api_topics(cfg):
               "multi": len(pgs[t]["parents"]) > 1} for t in pgs]
     edges = [[topics.resolve(par, pgs), t]                  # 图视图:扁平节点+边(DAG 全边)
              for t, p in pgs.items() for par in p["parents"]]
+    tagged_in_store = sum(1 for eid in m if eid in by_id)
     return {"tree": [node(r, set()) for r in roots],
             "nodes": nodes, "edges": edges,
             "loose": sorted(unfiled, key=lambda t: -direct[t]),
-            "total_tagged": len(m)}
+            "total_tagged": tagged_in_store}
 
 
 def api_topic(cfg, name, by_id):
@@ -196,7 +237,46 @@ def api_stats(cfg, by_id):
             "recent": [_card(e, tmap) for e in recent]}
 
 
+def api_home(cfg, by_id):
+    """Lightweight workbench payload for the desktop/web home screen.
+
+    Keep this deliberately cheaper than ``api_console_overview``: the home
+    screen must not wait for repository probes, disk-size walks or backup
+    diagnostics before it can show today's work.  Deeper checks stay in
+    Settings and load only when the user opens that page.
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    today_rows = [e for e in by_id.values() if e.get("date") == today]
+    recent = sorted(today_rows or by_id.values(),
+                    key=lambda x: x.get("ts", ""), reverse=True)[:6]
+    tmap = topics.load_map()
+    source_counts = defaultdict(int)
+    for entry in today_rows:
+        source_counts[entry.get("tool", "?")] += 1
+
+    source_names = [name for name in collectors.names() if name != "docs"]
+    available_sources = [name for name in source_names if collectors.is_syncable(name)]
+    active_sources = [name for name in available_sources if _source_enabled(cfg, name)]
+    latest_ts = max((e.get("ts", "") for e in by_id.values()), default="")
+    return {
+        "today": today,
+        "today_entries": len(today_rows),
+        "summarized": sum(1 for e in today_rows if (e.get("detail") or {}).get("digest")),
+        "classified": sum(1 for e in today_rows if tmap.get(e.get("id", ""))),
+        "source_counts": dict(sorted(source_counts.items(), key=lambda kv: -kv[1])),
+        "active_sources": len(active_sources),
+        "available_sources": len(available_sources),
+        "total_entries": len(by_id),
+        "last_record_at": latest_ts,
+        "recent": [_card(e, tmap) for e in recent],
+    }
+
+
 def api_entry(eid, by_id):
+    # 记录 id 原样即主键(git 提交为 ``git:<项目>:<短哈希>``,含冒号;文档/笔记还含
+    # 斜杠、CJK)。这些字符经查询串编解码后能原样回来,直接精确命中即可;仅对偶发的
+    # 首尾空白做归一,避免 Ledger 传入带换行/空格的 id 时误判「not found」。
+    eid = (eid or "").strip()
     e = by_id.get(eid)
     if not e:
         return {"error": "not found"}
@@ -470,10 +550,9 @@ def _source_diagnostics(cfg, repos=None):
         else:
             src = cfg.get("sources", {}).get(name, {})
             if name in ("claude", "codex", "cursor", "pi", "opencode"):
-                keys = {"claude": "projects_dir", "codex": "home",
-                        "cursor": "app_support", "pi": "sessions_dir",
-                        "opencode": "data_dir"}
-                key = keys[name]
+                key = {"claude": "projects_dir", "codex": "home",
+                       "cursor": "app_support", "pi": "sessions_dir",
+                       "opencode": "data_dir"}[name]
                 path = util.expand(src.get(key, ""))
                 ok = bool(path and os.path.exists(path))
                 if not enabled:
@@ -603,6 +682,11 @@ def api_admin_overview(cfg, by_id, tmap=None):
             "broken": _broken_items(sources, repos, vault, collected)}
 
 
+def api_skills(cfg):
+    """loom-skill 安装状态(每个 AI 助手一行)。只读,不写任何文件。"""
+    return {"ok": True, "agents": skillsync.status(cfg)}
+
+
 def _capture(fn, *args, **kwargs):
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -650,7 +734,22 @@ def _manual_sync(cfg, payload):
                 "message": "push 会把 vault git 推到 remote,需要二次确认"}
     util.load_env()
     since = payload.get("since") or util.since_date(cfg.get("default_since_days", 100))
-    if source == "all":
+    requested_sources = payload.get("sources")
+    if requested_sources is not None:
+        if not isinstance(requested_sources, list):
+            return _finish_action(cfg, False, "sources 必须是来源名称数组")
+        srcs = []
+        for value in requested_sources[:20]:
+            name = str(value or "")
+            if name not in collectors.REGISTRY or not collectors.is_syncable(name):
+                return _finish_action(cfg, False, f"未知或不可采集来源:{name}")
+            if name not in srcs:
+                srcs.append(name)
+        # Git and repository documents are one product source.  A scoped first
+        # sync therefore refreshes both halves without widening to other sources.
+        if "git" in srcs and "docs" in collectors.REGISTRY and "docs" not in srcs:
+            srcs.append("docs")
+    elif source == "all":
         srcs = [s for s in collectors.sync_names() if _source_enabled(cfg, s)]
     elif source == "git":
         # 管理页只展示 Git；单独同步 Git 时仍同时更新仓库内项目文档索引。
@@ -836,6 +935,39 @@ def _api_admin_action(cfg, payload):
             owner["feishu_name"] = str(payload.get("feishu_name", owner.get("feishu_name", ""))).strip()
             config.save(cfg)
             return _finish_action(cfg, True, "已更新身份负责人")
+        if action == "pref_set":
+            # 界面偏好(主题/语言)只影响管理页渲染,不改变采集内容。
+            ui = cfg.setdefault("ui", {})
+            theme = str(payload.get("theme", ui.get("theme", "system"))).strip()
+            lang = str(payload.get("lang", ui.get("lang", "system"))).strip()
+            if theme not in ("system", "light", "dark"):
+                return _finish_action(cfg, False, f"未知主题:{theme}")
+            if lang not in ("system", "zh", "en"):
+                return _finish_action(cfg, False, f"未知语言:{lang}")
+            ui["theme"], ui["lang"] = theme, lang
+            config.save(cfg)
+            return {"ok": True, "message": "已保存界面偏好", "ui": ui}
+        if action in ("skill_install", "skill_uninstall"):
+            # 把 loom-skill 装进/移出 AI 助手(可逆、会先备份)。复用 CLI 的 skillsync。
+            do_install = action == "skill_install"
+            selector = str(payload.get("agent", "")).strip() or "all"
+            try:
+                keys = skillsync.resolve_agents(selector, cfg, for_install=do_install)
+            except Exception:
+                return _finish_action(cfg, False, f"未知 agent:{selector}")
+            if do_install:
+                results = [skillsync.install(k, cfg) for k in keys]
+            else:
+                force = bool(payload.get("force"))
+                results = [skillsync.uninstall(k, cfg, force=force) for k in keys]
+            ok = all(r.get("ok", True) for r in results)
+            return {"ok": ok, "results": results, "agents": skillsync.status(cfg),
+                    "refresh": True, "overview": {"refresh": True}}
+        if action == "report_material":
+            # 导出某天的原材料(供外部 AI / 飞书 agent 写日报)。本地只读聚合,不做生成。
+            date = str(payload.get("date", "")).strip() or datetime.now().strftime("%Y-%m-%d")
+            material = report.gen_material(cfg, date)
+            return {"ok": True, "date": date, "material": material}
         return _finish_action(cfg, False, f"未知动作:{action}")
     except Exception as e:
         return _finish_action(cfg, False, str(e))
@@ -866,12 +998,17 @@ def _make_handler(cfg, admin_token=None):
             self.end_headers()
             self.wfile.write(body)
 
-        def _console_authorized(self):
+        def _loopback_host(self):
+            """Host 头是否指向本机回环。挡 DNS-rebinding:恶意站点把自己的域名
+            重绑到 127.0.0.1 后,浏览器发来的 Host 仍是攻击者域名(非回环),据此拒绝。"""
             host = self.headers.get("Host", "")
-            local_host = host.startswith("127.0.0.1:") or host.startswith("localhost:")
+            return (host.startswith("127.0.0.1:") or host.startswith("localhost:")
+                    or host in ("127.0.0.1", "localhost"))
+
+        def _console_authorized(self):
             token_ok = secrets.compare_digest(self.headers.get("X-Loom-Token", ""),
                                               admin_token)
-            return local_host and token_ok
+            return self._loopback_host() and token_ok
 
         def _html(self, body):
             self.send_response(200)
@@ -882,7 +1019,29 @@ def _make_handler(cfg, admin_token=None):
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Content-Security-Policy",
                              "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                             "img-src 'self' data:; "
                              "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _static(self, root, path):
+            rel = path.lstrip("/")
+            full = os.path.realpath(os.path.join(root, rel))
+            if not (full == root or full.startswith(root + os.sep)) or not os.path.isfile(full):
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            ctype = _UI_STATIC_TYPES.get(os.path.splitext(full)[1].lower(),
+                                         "application/octet-stream")
+            with open(full, "rb") as handle:
+                body = handle.read()
+            self.send_response(200)
+            self.send_header("Content-Type",
+                             ctype + ("; charset=utf-8" if ctype.startswith("text/") else ""))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -890,9 +1049,20 @@ def _make_handler(cfg, admin_token=None):
         def do_GET(self):
             u = urllib.parse.urlparse(self.path)
             q = {k: _fix(v[0]) for k, v in urllib.parse.parse_qs(u.query).items()}
+            ui = _ui_dir()
             try:
-                if u.path in ("/", "/browse"):
-                    body = open(_ASSET, "rb").read()
+                # 所有数据端点仅限本机回环访问,挡 DNS-rebinding 跨站读取台账。
+                # 静态资源(/、/assets)不含数据,不受影响。
+                if u.path.startswith("/api/") and not self._loopback_host():
+                    self._json({"error": "forbidden", "message": "仅限本机访问"}, 403)
+                    return
+                if ui and (u.path.startswith("/assets/")
+                           or u.path in ("/favicon.svg", "/favicon.ico", "/vite.svg")):
+                    self._static(ui, u.path)
+                elif u.path in ("/", "/browse"):
+                    source = os.path.join(ui, "index.html") if ui else _ASSET
+                    with open(source, "rb") as handle:
+                        body = handle.read()
                     self._html(body)
                 elif u.path == "/api/search":
                     self._json(api_search(cfg, q.get("q", ""), q.get("project"),
@@ -900,7 +1070,7 @@ def _make_handler(cfg, admin_token=None):
                                           limit=q.get("limit"), page=q.get("page", 1),
                                           page_size=q.get("page_size")))
                 elif u.path == "/api/topics":
-                    self._json(api_topics(cfg))
+                    self._json(api_topics(cfg, fresh()))
                 elif u.path == "/api/topic":
                     self._json(api_topic(cfg, q.get("name", ""), fresh()))
                 elif u.path == "/api/days":
@@ -909,6 +1079,8 @@ def _make_handler(cfg, admin_token=None):
                     self._json(api_day(q.get("date", ""), fresh()))
                 elif u.path == "/api/stats":
                     self._json(api_stats(cfg, fresh()))
+                elif u.path == "/api/home":
+                    self._json(api_home(cfg, fresh()))
                 elif u.path == "/api/entry":
                     self._json(api_entry(q.get("id", ""), fresh()))
                 elif u.path == "/api/admin/overview":
@@ -916,6 +1088,11 @@ def _make_handler(cfg, admin_token=None):
                         self._json({"error": "forbidden", "message": "Console 会话无效"}, 403)
                     else:
                         self._json(api_admin_overview(cfg, fresh()))
+                elif u.path == "/api/admin/skills":
+                    if not self._console_authorized():
+                        self._json({"error": "forbidden", "message": "Console 会话无效"}, 403)
+                    else:
+                        self._json(api_skills(cfg))
                 elif u.path.startswith("/api/console/v1/") and not self._console_authorized():
                     self._json({"error": "forbidden", "message": "Console 会话无效"}, 403)
                 elif u.path == "/api/console/v1/overview":

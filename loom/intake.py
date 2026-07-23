@@ -6,6 +6,7 @@
 .md(并留原件保真);其余二进制原样拷。
 """
 import json
+import hashlib
 import os
 import re
 import shutil
@@ -19,30 +20,120 @@ from . import config, util
 TEXT_EXT = (".md", ".txt", ".rst", ".org", ".markdown")   # 补 frontmatter + 打码 → .md
 TEXTDATA_EXT = (".json", ".yaml", ".yml", ".csv", ".tsv", ".toml")  # 原样存但打码(仍是文本)
 CODE_EXT = (".sql", ".py", ".sh", ".r", ".js", ".ts", ".scala")  # 代码/脚本:原样存 + 打码 + 可检索
-EXTRACTABLE_EXT = (".docx", ".pdf", ".ipynb")  # 提取文本→可检索 .md(打码)+ 留原件保真
-BINARY_EXT = (".pptx", ".xlsx", ".numbers", ".pages", ".key", ".parquet")  # 原样拷,无法提取/打码
+EXTRACTABLE_EXT = (".docx", ".pptx", ".pdf", ".ipynb")  # 提取文本→可检索 .md(打码)+ 留原件保真
+BINARY_EXT = (".xlsx", ".numbers", ".pages", ".key", ".parquet")  # 原样拷,无法提取/打码
 DOC_EXT = TEXT_EXT + TEXTDATA_EXT + CODE_EXT + EXTRACTABLE_EXT + BINARY_EXT
 SKIP_DIRS = {"node_modules", ".git", "venv", ".venv", "__pycache__", "site-packages",
              "dist", "build", ".next", "target", "vendor", ".cache"}
+MAX_TEXT_CHARS = 2_000_000   # 单文档纳入字符上限:超大文件截断标注,防内存/检索被拖垮
+# 原始文件抽取上限:抽取(docx/pptx/pdf/ipynb)在把整份内容读进内存之前先按原文件
+# 大小卡一道,防拖入超大/恶意文档把 sidecar 撑爆(OOM)。50MB 足够覆盖正常文档。
+MAX_INGEST_BYTES = 50 * 1024 * 1024
+# docx/pptx 是 zip:单个 XML 部件解压后的上限,防"解压炸弹"(小文件解压出巨大 XML)。
+MAX_ZIP_PART_BYTES = 30 * 1024 * 1024
 _H1 = re.compile(r"^#\s+(.+)")
 _DOCX_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_PPTX_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+
+
+def _too_big(path):
+    """原文件是否超过抽取上限(超限则跳过抽取,避免整份读进内存)。"""
+    try:
+        return os.path.getsize(path) > MAX_INGEST_BYTES
+    except OSError:
+        return False
+
+
+def _safe_zip_read(z, name):
+    """读取 zip 成员,但先按未压缩大小(ZipInfo.file_size,无需真解压即可得知)
+    卡上限,防解压炸弹。超限抛异常,由调用方按"抽取失败"降级。"""
+    if z.getinfo(name).file_size > MAX_ZIP_PART_BYTES:
+        raise ValueError(f"zip part too large: {name}")
+    return z.read(name)
+
+
+def _cap_text(text):
+    """超长正文截断并标注(避免把多 GB 日志/导出整体读进内存、撑爆检索索引)。"""
+    if len(text) <= MAX_TEXT_CHARS:
+        return text
+    return text[:MAX_TEXT_CHARS].rstrip() + f"\n\n… (超出 {MAX_TEXT_CHARS} 字符已截断)\n"
+
+
+def _docx_paras(root):
+    return ["".join(t.text for t in p.iter(_DOCX_NS + "t") if t.text)
+            for p in root.iter(_DOCX_NS + "p")]
 
 
 def _docx_text(path):
-    """纯标准库提取 docx 正文(zip + xml,按段落)。失败返回 ""。"""
+    """纯标准库提取 docx:正文段落 + 表格单元 + 页眉/页脚(独立部件,否则丢失)。失败返回 ""。"""
     try:
         with zipfile.ZipFile(path) as z:
-            root = ET.fromstring(z.read("word/document.xml"))
-        paras = ["".join(t.text for t in p.iter(_DOCX_NS + "t") if t.text)
-                 for p in root.iter(_DOCX_NS + "p")]
-        return "\n".join(x for x in paras).strip()
+            names = z.namelist()
+            paras = _docx_paras(ET.fromstring(_safe_zip_read(z, "word/document.xml")))
+            for n in sorted(names):        # 页眉/页脚在 word/header*.xml、footer*.xml,不在正文里
+                if re.match(r"word/(header|footer)\d*\.xml$", n):
+                    try:
+                        paras += _docx_paras(ET.fromstring(_safe_zip_read(z, n)))
+                    except Exception:
+                        pass
+        return "\n".join(x for x in paras if x).strip()
     except Exception:
         return ""
 
 
-def _pdf_text(path):
-    """PDF 文本:有 pdftotext(poppler)则用,否则返回 ""(优雅降级,不引入依赖)。"""
+def _pptx_text(path):
+    """纯标准库提取 pptx 正文(zip + xml,按幻灯片顺序拼接)。失败返回 ""。"""
+    try:
+        with zipfile.ZipFile(path) as z:
+            names = sorted(
+                (n for n in z.namelist()
+                 if n.startswith("ppt/slides/slide") and n.endswith(".xml")),
+                key=lambda n: int(re.sub(r"\D", "", n.rsplit("/", 1)[-1]) or "0"))
+            slides = []
+            for name in names:
+                root = ET.fromstring(_safe_zip_read(z, name))
+                texts = [t.text for t in root.iter(_PPTX_NS + "t") if t.text]
+                if texts:
+                    slides.append(" ".join(texts).strip())
+        return "\n\n".join(slides).strip()
+    except Exception:
+        return ""
+
+
+def _pdftotext_exe():
+    """定位 pdftotext:先查 PATH,再兜底常见安装位置。GUI/打包应用继承的 PATH
+    往往只有 /usr/bin:/bin,不含 Homebrew,导致 shutil.which 找不到 → PDF 无法提取。"""
     exe = shutil.which("pdftotext")
+    if exe:
+        return exe
+    for cand in ("/opt/homebrew/bin/pdftotext", "/usr/local/bin/pdftotext",
+                 "/usr/bin/pdftotext", "/opt/local/bin/pdftotext"):
+        if os.path.exists(cand):
+            return cand
+    return ""
+
+
+def _pdf_text(path):
+    """PDF 文本抽取,按可靠性排序:
+    1) pypdf —— 纯 Python,随 App(pyinstaller)打包分发,**不依赖用户本机装任何东西**;
+    2) pdftotext(poppler)—— 若本机恰好有,作为兜底(排版更好);
+    3) 都没有 → ""(优雅降级)。
+    这样打包后的桌面端在任何机器上都能解析文本型 PDF,不再靠本地环境。"""
+    try:
+        import pypdf  # 打包进 sidecar;base loom(纯 stdlib)没装则走下面的兜底
+        reader = pypdf.PdfReader(path)
+        parts = []
+        for page in reader.pages:
+            try:
+                parts.append(page.extract_text() or "")
+            except Exception:
+                continue
+        text = "\n".join(parts).strip()
+        if text:
+            return text
+    except Exception:
+        pass
+    exe = _pdftotext_exe()
     if not exe:
         return ""
     try:
@@ -57,6 +148,8 @@ def _nb_outputs(outputs, max_lines=30):
     """从 notebook 单元输出提取文本结果:流/执行结果的 text/plain(截断);图丢弃标注。"""
     chunks = []
     for o in outputs or []:
+        if not isinstance(o, dict):
+            continue
         t = o.get("output_type")
         txt = ""
         if t == "stream":
@@ -88,9 +181,15 @@ def _ipynb_text(path):
         nb = json.loads(_read(path))
     except Exception:
         return ""
-    lang = (nb.get("metadata", {}).get("language_info", {}) or {}).get("name", "python")
+    if not isinstance(nb, dict):        # 合法 JSON 但非 notebook 结构(list/null/…)→ 不崩
+        return ""
+    md = nb.get("metadata")
+    li = md.get("language_info") if isinstance(md, dict) else None
+    lang = li.get("name", "python") if isinstance(li, dict) else "python"
     out = []
-    for cell in nb.get("cells", []):
+    for cell in nb.get("cells", []) or []:
+        if not isinstance(cell, dict):
+            continue
         src = cell.get("source", "")
         if isinstance(src, list):
             src = "".join(src)
@@ -108,8 +207,12 @@ def _ipynb_text(path):
 
 
 def _extract_text(path, ext):
+    if _too_big(path):   # 超大原文件不抽取,防 OOM;原件仍会被保真拷贝
+        return ""
     if ext == ".docx":
         return _docx_text(path)
+    if ext == ".pptx":
+        return _pptx_text(path)
     if ext == ".pdf":
         return _pdf_text(path)
     if ext == ".ipynb":
@@ -118,8 +221,10 @@ def _extract_text(path, ext):
 
 
 def _read(path):
+    # 有界读:任何单文件最多读 MAX_INGEST_BYTES,杜绝无界 read() 被超大/恶意文件
+    # 拖垮内存(正文另有 _cap_text 截到 MAX_TEXT_CHARS)。
     with open(path, encoding="utf-8", errors="replace") as f:
-        return f.read()
+        return f.read(MAX_INGEST_BYTES)
 
 
 def _slug(name):
@@ -200,6 +305,29 @@ def note_update(cfg, keyword, text):
     return target, f"更新 {rel}"
 
 
+def note_update_exact(cfg, relative_path, text, expected_sha256=""):
+    """Append to one already-reviewed note, rejecting retargeting races."""
+    target = util.safe_join(config.notes_dir(cfg), str(relative_path or ""))
+    if target is None or not os.path.isfile(target) or not target.endswith(".md"):
+        return None, "已确认的 note 目标不再可用"
+    try:
+        before = open(target, "rb").read()
+    except OSError as exc:
+        return None, f"读取 note 失败:{exc}"
+    if expected_sha256 and hashlib.sha256(before).hexdigest() != expected_sha256:
+        return None, "note 在确认前已发生变化，请重新生成提案"
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    append_text = f"\n\n---\n*更新 {now}*\n\n{str(text or '').strip()}\n"
+    if cfg.get("redact", True):
+        append_text = util.redact(append_text)
+    try:
+        with open(target, "a", encoding="utf-8") as stream:
+            stream.write(append_text)
+    except OSError as exc:
+        return None, f"更新 note 失败:{exc}"
+    return target, f"更新 {os.path.relpath(target, config.vault_dir(cfg))}"
+
+
 def note(cfg, text, to=None, tags=None, title=None):
     """随手信息:把一段文本写成 notes/<类目>(默认 inbox)下一条 note(打码 + frontmatter)。
 
@@ -240,7 +368,7 @@ def _one(cfg, src, to, tags, title, move, redact):
 
     if ext in TEXT_EXT:
         with open(src, encoding="utf-8", errors="replace") as f:
-            body = f.read()
+            body = _cap_text(f.read(MAX_TEXT_CHARS + 1))
         if redact:
             body = util.redact(body)
         stem = os.path.splitext(os.path.basename(src))[0]
@@ -255,14 +383,14 @@ def _one(cfg, src, to, tags, title, move, redact):
     elif ext in TEXTDATA_EXT or ext in CODE_EXT:     # 数据/代码:保留原扩展名,仍打码
         dest = _uniq(os.path.join(dest_dir, _slug(os.path.basename(src))))
         with open(src, encoding="utf-8", errors="replace") as f:
-            data = f.read()
+            data = _cap_text(f.read(MAX_TEXT_CHARS + 1))
         with open(dest, "w", encoding="utf-8") as f:
             f.write(util.redact(data) if redact else data)
     elif ext in EXTRACTABLE_EXT:                      # docx/pdf:提取文本→可检索 .md + 留原件
         stem = os.path.splitext(os.path.basename(src))[0]
         raw = _uniq(os.path.join(dest_dir, _slug(os.path.basename(src))))
         shutil.copy2(src, raw)                        # 原件保真
-        text = _extract_text(src, ext)
+        text = _cap_text(_extract_text(src, ext))
         if text:
             if redact:
                 text = util.redact(text)
@@ -273,8 +401,13 @@ def _one(cfg, src, to, tags, title, move, redact):
                 f.write(text + ("" if text.endswith("\n") else "\n"))
             note = f"(提取文本 + 原件 {os.path.basename(raw)})"
         else:
-            dest = raw                                # 提取失败(如无 pdftotext)→ 只留原件
-            note = "(未能提取文本,仅原件;pdf 需 pdftotext)"
+            dest = raw                                # 提取失败 → 只留原件
+            # pypdf 已随 App 打包,提取不到多半是扫描/图片型 PDF(无文本层),需 OCR,
+            # 而非缺 pdftotext;文案据此区分,避免误导用户去装 poppler。
+            if ext == ".pdf":
+                note = "(未能提取文本,仅原件;可能是扫描/图片型 PDF,需 OCR)"
+            else:
+                note = "(未能提取文本,仅原件)"
     elif ext in BINARY_EXT:                          # 其余二进制:无法提取/打码 → 进本地 _data/,不上云
         ddir = os.path.join(dest_dir, "_data")
         os.makedirs(ddir, exist_ok=True)
@@ -420,8 +553,11 @@ def deprecate(cfg, relpath, superseded_by=None, mark=False):
     if superseded_by:
         updates["superseded_by"] = f"[[{superseded_by}]]"
     if src.endswith(".md"):                       # 只有 .md 能写 frontmatter 墓碑
+        # 必须先读后写:open(...,"w") 会立刻把文件截断为空,若在其中再 _read(src)
+        # 读到的就是空内容,会把正文和原 frontmatter 一起抹掉(数据丢失)。
+        tombstone = _set_fm_fields(_read(src), updates)
         with open(src, "w", encoding="utf-8") as f:
-            f.write(_set_fm_fields(_read(src), updates))
+            f.write(tombstone)
     if mark:
         return src, f"标记 deprecated(留原处,检索标 ⚠):{relpath}"
     dest = util.safe_join(nd, "_attic", relpath)  # 保留子路径,溯源清晰
