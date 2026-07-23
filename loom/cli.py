@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-from . import config, dataset, digest, intake, render, report, search, serve, store, topics, util
+from . import agents, config, dataset, digest, intake, render, report, search, serve, skillsync, store, topics, util
 from . import collectors
 
 
@@ -519,6 +519,36 @@ def cmd_serve(cfg, a):
     serve.serve(cfg, port=a.port)
 
 
+_SKILL_STATUS_LABEL = {
+    "installed": "已安装", "update_available": "有更新", "drifted": "⚠ 已被改动",
+    "missing": "⚠ 文件缺失", "foreign": "⚠ 非 loom 内容", "not_installed": "未安装",
+}
+
+
+def cmd_skill(cfg, a):
+    """把 loom-skill 一键装进 / 卸载出各 AI 助手(Claude/Codex/Cursor/CodeBuddy)。"""
+    if a.action == "status":
+        for row in skillsync.status(cfg):
+            present = "在" if row["present"] else "无"
+            label = _SKILL_STATUS_LABEL.get(row["status"], row["status"])
+            print(f"{row['agent']:10s} [{present}] {label:10s} {row['target']}")
+        return
+    keys = skillsync.resolve_agents(a.agent, cfg, for_install=(a.action == "install"))
+    if not keys:
+        print("没有检测到可操作的 AI 助手(--agent all 只处理已安装的)")
+        return
+    for key in keys:
+        if a.action == "install":
+            r = skillsync.install(key, cfg, dry_run=a.dry_run)
+        else:
+            r = skillsync.uninstall(key, cfg, dry_run=a.dry_run, force=a.force)
+        mark = ("  · " if r.get("action", "").startswith(
+            ("would_", "unchanged", "not_", "skipped_")) else "  ✓ ")
+        print(mark + r.get("message", ""))
+        if r.get("backup"):
+            print(f"      (已备份原文件 → {r['backup']})")
+
+
 def cmd_source(cfg, a):
     if a.name == "docs":
         raise SystemExit("项目文档已并入 Git；请改用 loom source enable|disable git")
@@ -626,6 +656,12 @@ def build_parser():
     sp = sub.add_parser("source")
     sp.add_argument("action", choices=("enable", "disable"))
     sp.add_argument("name")
+    sp = sub.add_parser("skill")
+    sp.add_argument("action", choices=("status", "install", "uninstall"))
+    sp.add_argument("--agent", choices=agents.all_keys() + ["all"], default="all")
+    sp.add_argument("--dry-run", action="store_true")
+    sp.add_argument("--force", action="store_true",
+                    help="卸载时连同非 loom 安装的同路径文件一并删除")
     sp = sub.add_parser("doc")
     sp.add_argument("action", choices=("add", "ls", "triage"))
     sp.add_argument("path", nargs="*")
@@ -688,7 +724,7 @@ def main(argv=None):
         "repo": cmd_repo, "feishu": cmd_feishu, "identity": cmd_identity,
         "source": cmd_source, "doc": cmd_doc, "data": cmd_data, "report": cmd_report,
         "deprecate": cmd_deprecate, "topic": cmd_topic, "note": cmd_note,
-        "session": cmd_session, "serve": cmd_serve,
+        "session": cmd_session, "serve": cmd_serve, "skill": cmd_skill,
     }
     handlers[args.cmd](cfg, args)
 
