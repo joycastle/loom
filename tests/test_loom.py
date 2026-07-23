@@ -1653,6 +1653,29 @@ class TopicTest(unittest.TestCase):
         self.assertIn("关联:", out)                  # 候选 s1 带关系邻居
         self.assertIn("已归类 [素材归因]", out)        # 邻居 aaa 的主题作为传播先验暴露给 AI
 
+    def test_gather_refine_revisits_classified_for_finer_topics(self):
+        # 细化模式:回看【已归类】条目,喂现主题、让 AI 补更细/更多主题(默认模式看不到已归类的)
+        self._page("素材归因")
+        by = {"claude:s1:2026-06-30": _entry(
+            "claude:s1:2026-06-30", "2026-06-30", "p", "claude", "session",
+            "serial 兜底归因", body="serial 兜底口径")}
+        self.topics.apply(self.cfg, [("claude:s1:2026-06-30", ["素材归因"])])
+        # 默认模式:已归类 → 不进候选(待归类条目为 0;它只会作为 few-shot 出现)
+        self.assertIn("待归类条目(0)", self.topics.gather(self.cfg, by))
+        # 细化模式:出现,且带「现主题」+ 追加语义指令
+        ref = self.topics.gather(self.cfg, by, refine=True)
+        self.assertIn("claude:s1:2026-06-30", ref)
+        self.assertIn("[素材归因]  ← 在此基础上补充", ref)   # 展示现主题,让 AI 在其上补充
+        self.assertIn("补上遗漏的侧面主题", ref)             # 指令是"补充/更细",不是重判
+
+    def test_gather_shows_member_counts(self):
+        self._page("素材归因")
+        by = {"git:1": _entry("git:1", "2026-06-30", "p", "git", "commit", "a"),
+              "git:2": _entry("git:2", "2026-06-30", "p", "git", "commit", "b")}
+        self.topics.apply(self.cfg, [("git:1", ["素材归因"]), ("git:2", ["素材归因"])])
+        # 现有主题列表带成员数(哪个太粗一眼可见)
+        self.assertIn("素材归因  (2)", self.topics.gather(self.cfg, by))
+
     def test_apply_creates_page_and_maps_members_rollup(self):
         self._page("素材")
         mapping = [("git:1", ["素材匹配重构"]), ("claude:2", ["serial兜底"]),

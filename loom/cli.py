@@ -482,7 +482,7 @@ def cmd_topic(cfg, a):
         return
     if a.action == "gather":
         print(topics.gather(cfg, store.load(), query=a.query, project=a.project,
-                            since=a.since, limit=a.limit or 60))
+                            since=a.since, limit=a.limit or 60, refine=a.refine))
         return
     if a.action == "apply":
         if not a.file:
@@ -717,10 +717,12 @@ def build_parser():
     sp.add_argument("--push", action="store_true")
     sp = sub.add_parser("topic")
     sp.add_argument("action", choices=("ls", "gather", "apply", "show"))
-    sp.add_argument("query", nargs="?")           # show:主题名;gather:关键词
+    sp.add_argument("query", nargs="?")           # show:主题名;gather:关键词(--refine 时=限定主题)
     sp.add_argument("--project")
     sp.add_argument("--since")
     sp.add_argument("--limit", type=int)
+    sp.add_argument("--refine", action="store_true",   # 细化:回看【已归类】条目,补更细/更多主题
+                    help="gather 细化模式:重看已归类条目,补更细的叶子/遗漏的侧面主题")
     sp.add_argument("--file")                      # apply:AI 给的映射 TSV
     sp.add_argument("--push", action="store_true")
     sp = sub.add_parser("deprecate")
