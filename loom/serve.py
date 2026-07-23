@@ -282,7 +282,14 @@ def api_entry(eid, by_id):
         return {"error": "not found"}
     out = dict(e)
     out["topics"] = topics.load_map().get(eid, [])
+    out["related"] = api_related(eid, by_id, limit=12)
     return out
+
+
+def api_related(eid, by_id, limit=30):
+    """条目的自动派生关联(会话↔提交、共改、文档↔提交、对话续接)。"""
+    from . import relations
+    return relations.neighbors(by_id, (eid or "").strip(), limit=limit)
 
 
 def _record_state(e, tmap):
@@ -1083,6 +1090,8 @@ def _make_handler(cfg, admin_token=None):
                     self._json(api_home(cfg, fresh()))
                 elif u.path == "/api/entry":
                     self._json(api_entry(q.get("id", ""), fresh()))
+                elif u.path == "/api/related":
+                    self._json({"related": api_related(q.get("id", ""), fresh())})
                 elif u.path == "/api/admin/overview":
                     if not self._console_authorized():
                         self._json({"error": "forbidden", "message": "Console 会话无效"}, 403)

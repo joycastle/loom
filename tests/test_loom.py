@@ -2432,6 +2432,68 @@ class ServeTest(unittest.TestCase):
             srv.shutdown()
 
 
+class RelationsTest(unittest.TestCase):
+    def setUp(self):
+        from loom import relations
+        self.rel = relations
+        self.by = {
+            "claude:s1:2026-06-30": _entry(
+                "claude:s1:2026-06-30", "2026-06-30", "p", "claude", "session", "改归因",
+                ts="2026-06-30T09:00:00", start="2026-06-30T09:00:00",
+                end="2026-06-30T10:00:00"),
+            "claude:s1:2026-07-01": _entry(
+                "claude:s1:2026-07-01", "2026-07-01", "p", "claude", "session", "续聊",
+                ts="2026-07-01T09:00:00", start="2026-07-01T09:00:00",
+                end="2026-07-01T09:30:00"),
+            "git:p:aaa": _entry("git:p:aaa", "2026-06-30", "p", "git", "commit", "fix",
+                                ref="aaa", ts="2026-06-30T09:30:00",
+                                file_list=[{"path": "src/attr.py"}, {"path": "README.md"}]),
+            "git:p:bbb": _entry("git:p:bbb", "2026-06-30", "p", "git", "commit", "more",
+                                ref="bbb", ts="2026-06-30T14:00:00",
+                                file_list=[{"path": "src/attr.py"}]),
+            "doc:p:src/attr.py": _entry("doc:p:src/attr.py", "2026-06-30", "p", "docs",
+                                        "doc", "attr doc", path="src/attr.py"),
+            "git:other:ccc": _entry("git:other:ccc", "2026-06-30", "other", "git",
+                                    "commit", "unrelated", ref="ccc",
+                                    ts="2026-06-30T09:30:00", file_list=[{"path": "z.py"}]),
+        }
+
+    def _ids(self, eid):
+        return {h["id"] for h in self.rel.neighbors(self.by, eid)}
+
+    def test_session_produces_in_window_commit(self):
+        # 会话时段内、同项目的提交被关联;跨项目的不关联
+        n = self._ids("claude:s1:2026-06-30")
+        self.assertIn("git:p:aaa", n)          # 09:30 落在 09:00–10:00
+        self.assertNotIn("git:other:ccc", n)   # 别的项目不算
+
+    def test_commit_reverse_links_session(self):
+        self.assertIn("claude:s1:2026-06-30", self._ids("git:p:aaa"))
+
+    def test_commit_cochange_shared_file(self):
+        n = self.rel.neighbors(self.by, "git:p:aaa")
+        bbb = [h for h in n if h["id"] == "git:p:bbb"][0]
+        self.assertTrue(any("共改" in r for r in bbb["reasons"]))
+
+    def test_commit_links_doc_by_path(self):
+        self.assertIn("doc:p:src/attr.py", self._ids("git:p:aaa"))
+
+    def test_session_thread_same_sid(self):
+        self.assertIn("claude:s1:2026-07-01", self._ids("claude:s1:2026-06-30"))
+
+    def test_out_of_window_commit_not_session_output(self):
+        # bbb 在 14:00,不在会话时段 → 不因"会话产出"关联(但可因共改/被文档间接出现)
+        n = [h for h in self.rel.neighbors(self.by, "claude:s1:2026-06-30")]
+        self.assertNotIn("git:p:bbb", {h["id"] for h in n})
+
+    def test_unknown_id_returns_empty(self):
+        self.assertEqual(self.rel.neighbors(self.by, "nope:x"), [])
+
+    def test_ranked_by_score_desc(self):
+        scores = [h["score"] for h in self.rel.neighbors(self.by, "git:p:aaa")]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+
+
 class McpTest(unittest.TestCase):
     def setUp(self):
         from loom import mcp
@@ -2456,8 +2518,8 @@ class McpTest(unittest.TestCase):
 
     def test_tools_list(self):
         names = {t["name"] for t in self._call("tools/list")["result"]["tools"]}
-        self.assertEqual(names, {"loom_search", "loom_topic_ls", "loom_topic_show",
-                                 "loom_today", "loom_note"})
+        self.assertEqual(names, {"loom_search", "loom_related", "loom_topic_ls",
+                                 "loom_topic_show", "loom_today", "loom_note"})
 
     def test_search_tool_returns_text_content(self):
         r = self._call("tools/call", {"name": "loom_search",

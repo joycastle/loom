@@ -54,6 +54,22 @@ def _tool_topic_show(cfg, args):
     return topics.show(cfg, topic, store.load())
 
 
+def _tool_related(cfg, args):
+    from . import relations, store
+    eid = (args.get("id") or "").strip()
+    by_id = store.load()
+    if eid not in by_id:
+        return f"(无此条目 id:{eid};先用 loom_search 找到 id)"
+    hits = relations.neighbors(by_id, eid, limit=int(args.get("limit") or 20))
+    if not hits:
+        return "(暂无自动派生的关联)"
+    out = []
+    for h in hits:
+        out.append(f"{h['date']} [{h['project']}/{h['tool']}] {h['summary'][:56]}  "
+                   f"({h['ref']})\n    ↳ {' · '.join(h['reasons'])}  id={h['id']}")
+    return "\n".join(out)
+
+
 def _tool_today(cfg, args):
     import os
     from datetime import datetime
@@ -97,6 +113,20 @@ TOOLS = [
             "required": ["term"],
         },
         "fn": _tool_search,
+    },
+    {
+        "name": "loom_related",
+        "description": "查一个条目自动派生的关联条目:会话产出的提交、共改同一文件的提交、"
+                       "改动某文档的提交、同一对话的跨天续接。用于顺着一条记录追它的上下游。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "条目 id(loom_search 结果里的 id)"},
+                "limit": {"type": "integer", "description": "上限,默认 20"},
+            },
+            "required": ["id"],
+        },
+        "fn": _tool_related,
     },
     {
         "name": "loom_topic_ls",
