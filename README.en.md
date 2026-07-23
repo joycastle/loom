@@ -87,6 +87,30 @@ Product tour: [loom_tour.html](https://htmlpreview.github.io/?https://github.com
 |:---:|:---:|:---:|
 | <img src="docs/shots/ledger.en.png" alt="ledger" /> | <img src="docs/shots/calendar.en.png" alt="calendar" /> | <img src="docs/shots/topics.en.png" alt="topics" /> |
 
+## Install (three ways)
+
+**1. Claude Code plugin (easiest)** — the skill becomes available immediately; first use guides you through installing the underlying CLI:
+
+```
+/plugin marketplace add joycastle/loom
+/plugin install loom@joycastle
+```
+
+**2. One line in any terminal** (codex / cursor or a plain shell; zero pip, zero packaging):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/joycastle/loom/main/install.sh | sh
+```
+
+**3. Manual** (clone, then install locally):
+
+```bash
+git clone https://github.com/joycastle/loom.git ~/Documents/loom
+cd ~/Documents/loom && ./install.sh      # symlink CLI to PATH + guided setup + install skill
+```
+
+All three symlink `loom` onto your PATH and install the loom skill into whichever AI assistants are present; after that, daily use is a single `loom sync` (add `--push` to back up to the cloud).
+
 ## Commands
 
 ```bash

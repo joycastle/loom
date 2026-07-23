@@ -1,0 +1,8 @@
+{
+  "name": "joycastle",
+  "owner": {"name": "joycastle"},
+  "plugins": [
+    {"name": "loom", "source": {"source": "github", "repo": "joycastle/loom"},
+     "description": "个人工作台账 / 记忆数据层:把 git/AI 会话/文档/数据织成可检索、带回链的本地台账", "version": "1.0.0"}
+  ]
+}
