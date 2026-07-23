@@ -2026,7 +2026,33 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(r["hits"][0]["topics"], ["净额"])
         e = self.serve.api_entry("git:p:1", store.load())
         self.assertEqual(e["detail"]["body"], "按订单精算")   # 详情含 detail
+        self.assertIn("related", e)                          # 网页抽屉依赖顶层关联边
+        self.assertIsInstance(e["related"], list)
         self.assertEqual(self.serve.api_entry("没有", {}), {"error": "not found"})
+
+    def test_api_relation_graph_reports_full_and_visible_counts(self):
+        graph = self.serve.api_relation_graph(store.load())
+        self.assertEqual(graph["total_entries"], 3)
+        self.assertEqual(graph["shown_nodes"], len(graph["nodes"]))
+        self.assertEqual(graph["shown_edges"], len(graph["edges"]))
+
+    def test_api_topic_relation_graph_keeps_hierarchy_and_aggregates_records(self):
+        by_id = store.load()
+        by_id["claude:s:2026-06-01"]["detail"].update({
+            "start": "2026-06-01T08:30:00", "end": "2026-06-01T09:30:00",
+        })
+        self.topics.save_map({
+            "git:p:1": ["净额"], "claude:s:2026-06-01": ["bf支付"],
+        })
+        graph = self.serve.api_topic_relation_graph(self.cfg, by_id)
+        self.assertEqual({node["name"] for node in graph["nodes"]}, {"bf支付", "净额"})
+        self.assertEqual(graph["hierarchy_edges"], [["bf支付", "净额"]])
+        self.assertEqual(graph["total_relation_edges"], 1)
+        self.assertEqual(graph["mapped_relation_edges"], 1)
+        self.assertEqual(graph["relation_edges"][0]["count"], 1)
+        nodes = {node["name"]: node for node in graph["nodes"]}
+        self.assertEqual(nodes["bf支付"]["kinds"], {"session": 1})
+        self.assertEqual(nodes["净额"]["kinds"], {"commit": 1})
 
     def test_api_search_paginates_all_records_with_stable_filters(self):
         rows = []
@@ -2562,6 +2588,22 @@ class RelationsTest(unittest.TestCase):
     def test_ranked_by_score_desc(self):
         scores = [h["score"] for h in self.rel.neighbors(self.by, "git:p:aaa")]
         self.assertEqual(scores, sorted(scores, reverse=True))
+
+    def test_global_graph_derives_complete_unique_edges(self):
+        graph = self.rel.global_graph(self.by)
+        self.assertEqual(graph["total_entries"], len(self.by))
+        self.assertEqual(graph["total_nodes"], 5)  # unrelated commit is omitted
+        self.assertEqual(graph["total_edges"], 5)
+        pairs = {(e["source"], e["target"]) for e in graph["edges"]}
+        self.assertEqual(len(pairs), graph["shown_edges"])
+
+    def test_global_graph_caps_visible_nodes_without_dangling_edges(self):
+        graph = self.rel.global_graph(self.by, max_nodes=3, max_edges=2)
+        node_ids = {node["id"] for node in graph["nodes"]}
+        self.assertLessEqual(len(node_ids), 3)
+        self.assertLessEqual(len(graph["edges"]), 2)
+        self.assertTrue(all(e["source"] in node_ids and e["target"] in node_ids
+                            for e in graph["edges"]))
 
 
 class McpTest(unittest.TestCase):

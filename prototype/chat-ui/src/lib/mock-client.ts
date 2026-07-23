@@ -7,6 +7,7 @@ import type {
   LoomDaysResponse,
   LoomEntryDetail,
   LoomHome,
+  LoomTopicRelationGraph,
   LoomReportMaterialResponse,
   LoomSearchParams,
   LoomSearchResponse,
@@ -172,9 +173,9 @@ export const mockClient = {
     await sleep(120);
     return {
       tree: [
-        { name: "数仓建设", children: [{ name: "维度建模" }, { name: "素材归因" }] },
-        { name: "反作弊" },
-        { name: "工具建设" },
+        { name: "数仓建设", count: 3, children: [{ name: "维度建模", count: 1 }, { name: "素材归因", count: 2 }] },
+        { name: "反作弊", count: 1 },
+        { name: "工具建设", count: 1 },
       ],
       nodes: 5,
       edges: 2,
@@ -189,12 +190,49 @@ export const mockClient = {
     return { name, parents: [], total: cards.length, groups: groupByKind(cards) };
   },
 
+  async topicRelations(): Promise<LoomTopicRelationGraph> {
+    await sleep(120);
+    return {
+      nodes: [
+        { name: "数仓建设", count: 3, direct: 2, kinds: { session: 1, note: 1 } },
+        { name: "维度建模", count: 1, direct: 1, kinds: { session: 1 } },
+        { name: "素材归因", count: 2, direct: 2, kinds: { commit: 1, note: 1 } },
+        { name: "反作弊", count: 1, direct: 1, kinds: { session: 1 } },
+        { name: "工具建设", count: 1, direct: 1, kinds: { doc: 1 } },
+      ],
+      hierarchy_edges: [["数仓建设", "维度建模"], ["数仓建设", "素材归因"]],
+      relation_edges: [
+        { source: "数仓建设", target: "素材归因", count: 3, score: 6.6,
+          reasons: ["会话产出/来自会话", "改动了 docs/attribution.md"] },
+        { source: "维度建模", target: "素材归因", count: 2, score: 4.6,
+          reasons: ["会话产出/来自会话"] },
+        { source: "维度建模", target: "数仓建设", count: 1, score: 1.6,
+          reasons: ["共改 2 文件(如 models/channel.sql)"] },
+        { source: "素材归因", target: "工具建设", count: 1, score: 1.3,
+          reasons: ["共改 1 文件(如 report/template.md)"] },
+      ],
+      total_tagged: MOCK_CARDS.length,
+      total_relation_edges: 4,
+      mapped_relation_edges: 4,
+      within_topic_edges: 1,
+    };
+  },
+
   async entry(id: string): Promise<LoomEntryDetail> {
     await sleep(120);
     const card = cardById(id);
     if (!card) return { id, error: "not found" } as LoomEntryDetail;
     return {
       ...card,
+      related: MOCK_CARDS.filter((candidate) => candidate.id !== id)
+        .slice(0, 3)
+        .map((candidate, index) => ({
+          ...candidate,
+          score: 3 - index * 0.5,
+          reasons: index === 0
+            ? ["会话产出/来自会话", "共改 2 文件(如 src/model.py)"]
+            : ["同一项目的工作脉络"],
+        })),
       detail: {
         digest: card.summary,
         body:

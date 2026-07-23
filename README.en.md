@@ -77,9 +77,11 @@ Exposes five tools — `loom_search` / `loom_topic_ls` / `loom_topic_show` / `lo
 
 <img src="docs/shots/dashboard.en.png" width="100%" alt="home dashboard" />
 
-| Ledger (full-text search + filters + paging) | Calendar (heatmap + day view) | Topics (DAG — click a topic for "one thing") |
+| Ledger (full-text search + filters + paging) | Calendar (heatmap + day view) | Topic hierarchy (double-click to expand) |
 |:---:|:---:|:---:|
 | <img src="docs/shots/ledger.en.png" alt="ledger" /> | <img src="docs/shots/calendar.en.png" alt="calendar" /> | <img src="docs/shots/topics.en.png" alt="topics" /> |
+
+The Topics page keeps the two views distinct: **Topic summary** is a hierarchy tree that starts at the roots and expands on double-click; **Relation overview** is an aggregate matrix of real structural links across topic families.
 
 ## 🧵 Why it's built this way
 
