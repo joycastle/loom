@@ -231,40 +231,65 @@ def _relation_hint(by_id, tmap, pgs, eid, k=3):
     return hints
 
 
-def gather(cfg, by_id, query=None, project=None, since=None, limit=60):
+def _member_counts(tmap, pgs):
+    cnt = defaultdict(int)
+    for ts in tmap.values():
+        for t in ts:
+            cnt[resolve(t, pgs)] += 1
+    return cnt
+
+
+def gather(cfg, by_id, query=None, project=None, since=None, limit=60, refine=False):
     """产出待归类清单 + 现有主题(供 AI 闭集分类)。默认只挑【尚未归类】的条目。
 
     喂给 AI 的上下文比"名字+片段"更足:①每条候选附**关系邻居**(会话产出的提交/共改/
-    续接),邻居**已有的主题**是标签传播的强先验;②现有主题带**页内定义**,不再望文生义;
-    ③附最近的**历史正确分类**当 few-shot,锚定粒度与风格。
+    续接),邻居**已有的主题**是标签传播的强先验;②现有主题带**页内定义 + 成员数**(数大=太粗,
+    该细分),不再望文生义;③附最近的**历史正确分类**当 few-shot,锚定粒度与风格。
+
+    ``refine=True``:细化模式——回看**已归类**的条目(``query`` 可限定到某主题子树),
+    让 AI 补更细的叶子 / 遗漏的侧面主题(``apply`` 是追加,不会覆盖已有)。这解决"一条只挂
+    一个粗主题就再也回不来"的问题:粒度和多标签靠这一轮补齐。
     """
     pgs = pages(cfg)
     tmap = load_map()
     mapped = set(tmap)
+    cnt = _member_counts(tmap, pgs)
     q = (query or "").lower()
+    refine_sub = descendants(query, pgs) if (refine and query) else None
     cand = []
     for eid, e in by_id.items():
-        if eid in mapped or e.get("kind") == "doc":
+        if e.get("kind") == "doc":
             continue
-        if (e.get("detail") or {}).get("path","").startswith("topics/"):
+        if (e.get("detail") or {}).get("path", "").startswith("topics/"):
             continue   # 主题页自身不参与分类(防自指)
+        if refine:
+            if eid not in mapped:
+                continue                     # 细化只看已归类的
+            if refine_sub is not None and not any(
+                    resolve(t, pgs) in refine_sub for t in tmap.get(eid, [])):
+                continue                     # 限定到某主题子树的成员
+        else:
+            if eid in mapped:
+                continue                     # 默认只挑未归类的
+            if q and q not in _text(e).lower():
+                continue
         if project and e.get("project") != project:
             continue
         if since and e.get("date", "") < since:
-            continue
-        if q and q not in _text(e).lower():
             continue
         cand.append(e)
     cand.sort(key=lambda e: e.get("ts", ""), reverse=True)
     cand = cand[:limit]
 
-    out = ["# loom topic — 待归类到主题(AI 闭集分类)", ""]
-    out.append("## 现有主题(尽量复用;`⊂` 后是父主题,`:` 后是该主题的定义)")
+    mode = "细化(补更细/更多主题)" if refine else "待归类"
+    out = [f"# loom topic — {mode}(AI 闭集分类)", ""]
+    out.append("## 现有主题(尽量复用;`⊂`=父主题,`:`=定义,`(N)`=成员数,数大=太粗可细分)")
     if pgs:
         for tid, p in sorted(pgs.items()):
             par = ("  ⊂ " + ", ".join(p["parents"])) if p["parents"] else ""
             desc = (f":{p['desc']}" if p.get("desc") else "")
-            out.append(f"- {tid}{par}{desc}")
+            c = (f"  ({cnt[tid]})" if cnt.get(tid) else "")
+            out.append(f"- {tid}{par}{c}{desc}")
     else:
         out.append("(还没有主题,可新建)")
     shots = _fewshot(by_id, tmap)
@@ -273,12 +298,15 @@ def gather(cfg, by_id, query=None, project=None, since=None, limit=60):
     # 给 AI 足够内部信息判断——尤其会话:带当天【全部】提问,不只首句(否则"继续梳理"这种
     # 首句会让人误判"太泛"。提交带完整改动理由,文档/数据带正文/schema)。
     _CAP = {"session": 800, "commit": 500, "report": 500}
-    out += ["", f"## 待归类条目({len(cand)})",
+    out += ["", f"## {mode}条目({len(cand)})",
             "(每条下的「关联」是自动派生的结构邻居;邻居已归类的主题往往就是本条该归的主题)"]
     for e in cand:
         d = e.get("detail") or {}
         out.append(f"- `{e['id']}`  [{e['tool']}/{e['kind']}] {e['date']} "
                    f"{e.get('summary','')[:60]}")
+        if refine:
+            now = tmap.get(e["id"]) or []
+            out.append(f"    现主题:[{', '.join(resolve(t, pgs) for t in now)}]  ← 在此基础上补充")
         raw = d.get("body") or d.get("opening") or d.get("content") or ""
         snip = " ".join(raw.split())[:_CAP.get(e.get("kind"), 220)]
         if snip:
@@ -287,11 +315,18 @@ def gather(cfg, by_id, query=None, project=None, since=None, limit=60):
         if hints:
             out.append("    关联:")
             out += hints
-    out += ["", "---",
-            "AI:给每条选【最具体的叶子主题】(可多个,逗号分隔),尽量复用上面已有主题;",
-            "**优先和已归类的关系邻居保持一致**(一件事别撕碎);对照主题定义判断边界;",
-            "实在不匹配才提**新叶子主题**(简短 kebab/中文名);拿不准写 `none-of-these`。",
-            "输出 TSV 每行 `entry_id<TAB>主题1,主题2`,存文件后:loom topic apply --file <该文件>"]
+    out += ["", "---"]
+    if refine:
+        out += [
+            "AI:这些条目已归类(见「现主题」)。一件事往往横跨多个侧面——**补上遗漏的侧面主题**,"
+            "并在已有主题**太粗**时提出**更细的叶子子主题**(如「素材归因」→「素材归因-serial兜底」)。",
+            "只输出要**新增**的主题(apply 是追加,不会动已有);没什么可补的写 `none-of-these`。"]
+    else:
+        out += [
+            "AI:给每条选适用的叶子主题——**一条通常横跨 1–3 个侧面,把都适用的都给上**(逗号分隔),别只给一个;",
+            "**优先和已归类的关系邻居保持一致**(一件事别撕碎);对照主题定义/成员数判断边界,"
+            "已有主题太粗就提**更细的叶子**;实在不匹配才提新主题;拿不准写 `none-of-these`。"]
+    out.append("输出 TSV 每行 `entry_id<TAB>主题1,主题2`,存文件后:loom topic apply --file <该文件>")
     return "\n".join(out)
 
 
