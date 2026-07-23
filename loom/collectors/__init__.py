@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """采集器注册表。加新工具 = 写一个 collect(cfg, since)->[entry] 并在此注册。"""
-from . import git, claude, codex, cursor, codebuddy, feishu, docs, notes
+from . import git, claude, codex, cursor, codebuddy, pi, opencode, feishu, docs, notes
 
 REGISTRY = {
     "git": git.collect,
@@ -8,6 +8,8 @@ REGISTRY = {
     "codex": codex.collect,
     "cursor": cursor.collect,
     "codebuddy": codebuddy.collect,
+    "pi": pi.collect,
+    "opencode": opencode.collect,
     "feishu": feishu.collect,
     "docs": docs.collect,
     "notes": notes.collect,
@@ -24,6 +26,7 @@ DIAGNOSTIC_REGISTRY = {
 SOURCE_CATEGORIES = {
     "git": "development", "claude": "development", "codex": "development",
     "cursor": "development", "codebuddy": "development",
+    "pi": "development", "opencode": "development",
     "feishu": "collaboration",
     "docs": "knowledge", "notes": "knowledge",
 }

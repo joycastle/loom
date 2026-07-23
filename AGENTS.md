@@ -5,7 +5,7 @@
 
 ## 这是什么
 **loom** —— 单人、零依赖(纯标准库 Python)的跨来源工作台账:采集 git 提交 / AI 对话
-(Claude·Cursor·Codex·CodeBuddy)/ 文档 / 代码 / 数据 / 日报,归一成一份扁平记录,派生出
+(Claude·Cursor·Codex·CodeBuddy·pi·OpenCode)/ 文档 / 代码 / 数据 / 日报,归一成一份扁平记录,派生出
 检索索引、按天日记、主题关联、私有云备份。
 - **代码**在本仓;**用户数据**在 `~/.loom/`(config/.env/data/vault),两者物理分离。
 - 命令:`loom sync | search | doc add | data add | note | report | session | topic | deprecate | init`。
