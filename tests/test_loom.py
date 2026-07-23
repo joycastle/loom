@@ -1634,6 +1634,25 @@ class TopicTest(unittest.TestCase):
         self.assertIn("素材归因主题域", out)     # 首句之外的真信号也进了候选清单
         self.assertIn("creative_set", out)
 
+    def test_gather_enriched_with_relations_defs_and_fewshot(self):
+        # 升级后的 gather:候选带关系邻居(+邻居已有主题=传播先验)、主题定义、few-shot
+        self._page("素材归因")
+        by = {
+            "claude:s1:2026-06-30": _entry(
+                "claude:s1:2026-06-30", "2026-06-30", "p", "claude", "session", "改归因",
+                ts="2026-06-30T09:00:00", start="2026-06-30T09:00:00",
+                end="2026-06-30T10:00:00", body="梳理素材归因口径"),
+            "git:p:aaa": _entry("git:p:aaa", "2026-06-30", "p", "git", "commit", "fix attr",
+                                ref="aaa", ts="2026-06-30T09:30:00",
+                                file_list=[{"path": "src/attr.py"}]),
+        }
+        # 提交 aaa 已归类 → 既进 few-shot,又是会话 s1 的传播先验
+        self.topics.apply(self.cfg, [("git:p:aaa", ["素材归因"])])
+        out = self.topics.gather(self.cfg, by)
+        self.assertIn("最近的分类示例", out)          # few-shot 段在
+        self.assertIn("关联:", out)                  # 候选 s1 带关系邻居
+        self.assertIn("已归类 [素材归因]", out)        # 邻居 aaa 的主题作为传播先验暴露给 AI
+
     def test_apply_creates_page_and_maps_members_rollup(self):
         self._page("素材")
         mapping = [("git:1", ["素材匹配重构"]), ("claude:2", ["serial兜底"]),
