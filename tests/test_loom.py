@@ -1634,6 +1634,76 @@ class TopicTest(unittest.TestCase):
         self.assertIn("素材归因主题域", out)     # 首句之外的真信号也进了候选清单
         self.assertIn("creative_set", out)
 
+    def test_gather_enriched_with_relations_defs_and_fewshot(self):
+        # 升级后的 gather:候选带关系邻居(+邻居已有主题=传播先验)、主题定义、few-shot
+        self._page("素材归因")
+        by = {
+            "claude:s1:2026-06-30": _entry(
+                "claude:s1:2026-06-30", "2026-06-30", "p", "claude", "session", "改归因",
+                ts="2026-06-30T09:00:00", start="2026-06-30T09:00:00",
+                end="2026-06-30T10:00:00", body="梳理素材归因口径"),
+            "git:p:aaa": _entry("git:p:aaa", "2026-06-30", "p", "git", "commit", "fix attr",
+                                ref="aaa", ts="2026-06-30T09:30:00",
+                                file_list=[{"path": "src/attr.py"}]),
+        }
+        # 提交 aaa 已归类 → 既进 few-shot,又是会话 s1 的传播先验
+        self.topics.apply(self.cfg, [("git:p:aaa", ["素材归因"])])
+        out = self.topics.gather(self.cfg, by)
+        self.assertIn("最近的分类示例", out)          # few-shot 段在
+        self.assertIn("关联:", out)                  # 候选 s1 带关系邻居
+        self.assertIn("已归类 [素材归因]", out)        # 邻居 aaa 的主题作为传播先验暴露给 AI
+
+    def test_gather_refine_revisits_classified_for_finer_topics(self):
+        # 细化模式:回看【已归类】条目,喂现主题、让 AI 补更细/更多主题(默认模式看不到已归类的)
+        self._page("素材归因")
+        by = {"claude:s1:2026-06-30": _entry(
+            "claude:s1:2026-06-30", "2026-06-30", "p", "claude", "session",
+            "serial 兜底归因", body="serial 兜底口径")}
+        self.topics.apply(self.cfg, [("claude:s1:2026-06-30", ["素材归因"])])
+        # 默认模式:已归类 → 不进候选(待归类条目为 0;它只会作为 few-shot 出现)
+        self.assertIn("待归类条目(0)", self.topics.gather(self.cfg, by))
+        # 细化模式:出现,且带「现主题」+ 追加语义指令
+        ref = self.topics.gather(self.cfg, by, refine=True)
+        self.assertIn("claude:s1:2026-06-30", ref)
+        self.assertIn("[素材归因]  ← 在此基础上补充", ref)   # 展示现主题,让 AI 在其上补充
+        self.assertIn("补上遗漏的侧面主题", ref)             # 指令是"补充/更细",不是重判
+
+    def test_set_parents_writes_edges_and_enables_rollup(self):
+        for t in ("素材", "素材归因", "serial兜底"):
+            self._page(t)
+        n, created = self.topics.set_parents(
+            self.cfg, [("素材归因", ["素材"]), ("serial兜底", ["素材归因"])])
+        self.assertEqual(n, 2)
+        pgs = self.topics.pages(self.cfg)
+        self.assertEqual(pgs["素材归因"]["parents"], ["素材"])        # 父边写盘
+        self.assertEqual(self.topics.descendants("素材", pgs),
+                         {"素材", "素材归因", "serial兜底"})           # 上卷整棵树
+
+    def test_set_parents_creates_missing_and_rejects_cycle(self):
+        self._page("素材归因")
+        # 父主题不存在 → 自动建页
+        self.topics.set_parents(self.cfg, [("素材归因", ["素材"])])
+        self.assertIn("素材", self.topics.pages(self.cfg))
+        # 成环 → 抛错,不写盘
+        with self.assertRaises(ValueError):
+            self.topics.set_parents(self.cfg, [("素材", ["素材归因"])])
+
+    def test_hierarchy_prompt_lists_topics_and_parents(self):
+        self._page("素材")
+        self._page("素材归因", parent="[[素材]]")
+        out = self.topics.hierarchy_prompt(self.cfg)
+        self.assertIn("建立层级", out)
+        self.assertIn("→ 素材", out)               # 显示当前父级
+        self.assertIn("set-parents --file", out)    # 指向落地命令
+
+    def test_gather_shows_member_counts(self):
+        self._page("素材归因")
+        by = {"git:1": _entry("git:1", "2026-06-30", "p", "git", "commit", "a"),
+              "git:2": _entry("git:2", "2026-06-30", "p", "git", "commit", "b")}
+        self.topics.apply(self.cfg, [("git:1", ["素材归因"]), ("git:2", ["素材归因"])])
+        # 现有主题列表带成员数(哪个太粗一眼可见)
+        self.assertIn("素材归因  (2)", self.topics.gather(self.cfg, by))
+
     def test_apply_creates_page_and_maps_members_rollup(self):
         self._page("素材")
         mapping = [("git:1", ["素材匹配重构"]), ("claude:2", ["serial兜底"]),
@@ -1956,7 +2026,33 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(r["hits"][0]["topics"], ["净额"])
         e = self.serve.api_entry("git:p:1", store.load())
         self.assertEqual(e["detail"]["body"], "按订单精算")   # 详情含 detail
+        self.assertIn("related", e)                          # 网页抽屉依赖顶层关联边
+        self.assertIsInstance(e["related"], list)
         self.assertEqual(self.serve.api_entry("没有", {}), {"error": "not found"})
+
+    def test_api_relation_graph_reports_full_and_visible_counts(self):
+        graph = self.serve.api_relation_graph(store.load())
+        self.assertEqual(graph["total_entries"], 3)
+        self.assertEqual(graph["shown_nodes"], len(graph["nodes"]))
+        self.assertEqual(graph["shown_edges"], len(graph["edges"]))
+
+    def test_api_topic_relation_graph_keeps_hierarchy_and_aggregates_records(self):
+        by_id = store.load()
+        by_id["claude:s:2026-06-01"]["detail"].update({
+            "start": "2026-06-01T08:30:00", "end": "2026-06-01T09:30:00",
+        })
+        self.topics.save_map({
+            "git:p:1": ["净额"], "claude:s:2026-06-01": ["bf支付"],
+        })
+        graph = self.serve.api_topic_relation_graph(self.cfg, by_id)
+        self.assertEqual({node["name"] for node in graph["nodes"]}, {"bf支付", "净额"})
+        self.assertEqual(graph["hierarchy_edges"], [["bf支付", "净额"]])
+        self.assertEqual(graph["total_relation_edges"], 1)
+        self.assertEqual(graph["mapped_relation_edges"], 1)
+        self.assertEqual(graph["relation_edges"][0]["count"], 1)
+        nodes = {node["name"]: node for node in graph["nodes"]}
+        self.assertEqual(nodes["bf支付"]["kinds"], {"session": 1})
+        self.assertEqual(nodes["净额"]["kinds"], {"commit": 1})
 
     def test_api_search_paginates_all_records_with_stable_filters(self):
         rows = []
@@ -2432,6 +2528,84 @@ class ServeTest(unittest.TestCase):
             srv.shutdown()
 
 
+class RelationsTest(unittest.TestCase):
+    def setUp(self):
+        from loom import relations
+        self.rel = relations
+        self.by = {
+            "claude:s1:2026-06-30": _entry(
+                "claude:s1:2026-06-30", "2026-06-30", "p", "claude", "session", "改归因",
+                ts="2026-06-30T09:00:00", start="2026-06-30T09:00:00",
+                end="2026-06-30T10:00:00"),
+            "claude:s1:2026-07-01": _entry(
+                "claude:s1:2026-07-01", "2026-07-01", "p", "claude", "session", "续聊",
+                ts="2026-07-01T09:00:00", start="2026-07-01T09:00:00",
+                end="2026-07-01T09:30:00"),
+            "git:p:aaa": _entry("git:p:aaa", "2026-06-30", "p", "git", "commit", "fix",
+                                ref="aaa", ts="2026-06-30T09:30:00",
+                                file_list=[{"path": "src/attr.py"}, {"path": "README.md"}]),
+            "git:p:bbb": _entry("git:p:bbb", "2026-06-30", "p", "git", "commit", "more",
+                                ref="bbb", ts="2026-06-30T14:00:00",
+                                file_list=[{"path": "src/attr.py"}]),
+            "doc:p:src/attr.py": _entry("doc:p:src/attr.py", "2026-06-30", "p", "docs",
+                                        "doc", "attr doc", path="src/attr.py"),
+            "git:other:ccc": _entry("git:other:ccc", "2026-06-30", "other", "git",
+                                    "commit", "unrelated", ref="ccc",
+                                    ts="2026-06-30T09:30:00", file_list=[{"path": "z.py"}]),
+        }
+
+    def _ids(self, eid):
+        return {h["id"] for h in self.rel.neighbors(self.by, eid)}
+
+    def test_session_produces_in_window_commit(self):
+        # 会话时段内、同项目的提交被关联;跨项目的不关联
+        n = self._ids("claude:s1:2026-06-30")
+        self.assertIn("git:p:aaa", n)          # 09:30 落在 09:00–10:00
+        self.assertNotIn("git:other:ccc", n)   # 别的项目不算
+
+    def test_commit_reverse_links_session(self):
+        self.assertIn("claude:s1:2026-06-30", self._ids("git:p:aaa"))
+
+    def test_commit_cochange_shared_file(self):
+        n = self.rel.neighbors(self.by, "git:p:aaa")
+        bbb = [h for h in n if h["id"] == "git:p:bbb"][0]
+        self.assertTrue(any("共改" in r for r in bbb["reasons"]))
+
+    def test_commit_links_doc_by_path(self):
+        self.assertIn("doc:p:src/attr.py", self._ids("git:p:aaa"))
+
+    def test_session_thread_same_sid(self):
+        self.assertIn("claude:s1:2026-07-01", self._ids("claude:s1:2026-06-30"))
+
+    def test_out_of_window_commit_not_session_output(self):
+        # bbb 在 14:00,不在会话时段 → 不因"会话产出"关联(但可因共改/被文档间接出现)
+        n = [h for h in self.rel.neighbors(self.by, "claude:s1:2026-06-30")]
+        self.assertNotIn("git:p:bbb", {h["id"] for h in n})
+
+    def test_unknown_id_returns_empty(self):
+        self.assertEqual(self.rel.neighbors(self.by, "nope:x"), [])
+
+    def test_ranked_by_score_desc(self):
+        scores = [h["score"] for h in self.rel.neighbors(self.by, "git:p:aaa")]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+
+    def test_global_graph_derives_complete_unique_edges(self):
+        graph = self.rel.global_graph(self.by)
+        self.assertEqual(graph["total_entries"], len(self.by))
+        self.assertEqual(graph["total_nodes"], 5)  # unrelated commit is omitted
+        self.assertEqual(graph["total_edges"], 5)
+        pairs = {(e["source"], e["target"]) for e in graph["edges"]}
+        self.assertEqual(len(pairs), graph["shown_edges"])
+
+    def test_global_graph_caps_visible_nodes_without_dangling_edges(self):
+        graph = self.rel.global_graph(self.by, max_nodes=3, max_edges=2)
+        node_ids = {node["id"] for node in graph["nodes"]}
+        self.assertLessEqual(len(node_ids), 3)
+        self.assertLessEqual(len(graph["edges"]), 2)
+        self.assertTrue(all(e["source"] in node_ids and e["target"] in node_ids
+                            for e in graph["edges"]))
+
+
 class McpTest(unittest.TestCase):
     def setUp(self):
         from loom import mcp
@@ -2456,8 +2630,8 @@ class McpTest(unittest.TestCase):
 
     def test_tools_list(self):
         names = {t["name"] for t in self._call("tools/list")["result"]["tools"]}
-        self.assertEqual(names, {"loom_search", "loom_topic_ls", "loom_topic_show",
-                                 "loom_today", "loom_note"})
+        self.assertEqual(names, {"loom_search", "loom_related", "loom_topic_ls",
+                                 "loom_topic_show", "loom_today", "loom_note"})
 
     def test_search_tool_returns_text_content(self):
         r = self._call("tools/call", {"name": "loom_search",

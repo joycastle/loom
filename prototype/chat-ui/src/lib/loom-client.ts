@@ -15,6 +15,7 @@ import type {
   LoomDaysResponse,
   LoomEntryDetail,
   LoomHome,
+  LoomTopicRelationGraph,
   LoomReportMaterialResponse,
   LoomSearchParams,
   LoomSearchResponse,
@@ -101,6 +102,10 @@ export function createLoomClient(options: LoomClientOptions) {
 
     async entry(id: string): Promise<LoomEntryDetail> {
       return api<LoomEntryDetail>(baseUrl, token, `/api/entry${buildQuery({ id })}`);
+    },
+
+    async topicRelations(): Promise<LoomTopicRelationGraph> {
+      return api<LoomTopicRelationGraph>(baseUrl, token, "/api/topic-relations");
     },
 
     async home(): Promise<LoomHome> {

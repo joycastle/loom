@@ -17,7 +17,7 @@ import re
 from collections import defaultdict
 
 from . import config, util
-from .intake import _parse_frontmatter, _read
+from .intake import _parse_frontmatter, _read, _set_fm_fields
 
 
 def _map_path():
@@ -44,19 +44,32 @@ def _parse_list(v):
 
 
 # ---- 主题页(层级 / 别名的唯一真相)----
+def _desc(body):
+    """从主题页正文抽一句「定义」:首个非空行,去掉 > 引用符和「主题:」前缀,截断。"""
+    for line in (body or "").splitlines():
+        s = line.strip().lstrip(">").strip()
+        if s.startswith("主题:") or s.startswith("主题："):
+            s = s.split(":", 1)[-1].split(":", 1)[-1].strip()
+        if s:
+            return s[:140]
+    return ""
+
+
 def pages(cfg):
-    """读 notes/topics/*.md → {id: {title, parents:[..], aliases:[..]}}。"""
+    """读 notes/topics/*.md → {id: {title, parents:[..], aliases:[..], desc}}。"""
     d, out = topics_dir(cfg), {}
     if not os.path.isdir(d):
         return out
     for fn in sorted(os.listdir(d)):
         if not fn.endswith(".md"):
             continue
-        fm, _ = _parse_frontmatter(_read(os.path.join(d, fn)))
+        text = _read(os.path.join(d, fn))
+        fm, idx = _parse_frontmatter(text)   # 第二个是正文起始下标,非正文串
         tid = canon(os.path.splitext(fn)[0])
         out[tid] = {"title": (fm.get("title") or tid).strip(),
                     "parents": _parse_list(fm.get("parent", "")),
-                    "aliases": _parse_list(fm.get("aliases", ""))}
+                    "aliases": _parse_list(fm.get("aliases", "")),
+                    "desc": _desc(text[idx:])}
     return out
 
 
@@ -174,6 +187,91 @@ def parse_mapping_tsv(path):
     return rows
 
 
+# ---- 层级(父子边):AI 提议 → 人过目 → set_parents 落地 ----
+def set_parents(cfg, mapping):
+    """原子校验并应用主题父子关系 `[(主题, [父主题, ..]), ..]`。
+
+    规范化 id、缺失主题建页、整体 DAG **先校验无环再写盘**——比让模型直接改主题
+    markdown 的 frontmatter 稳。返回 (设置了父级的主题数, 新建主题列表)。
+    """
+    normalized = {}
+    for topic, parents in mapping or []:
+        tid = canon(topic)
+        if not tid:
+            raise ValueError("主题名不能为空")
+        values = sorted({canon(p) for p in (parents or []) if canon(p)})
+        if tid in values:
+            raise ValueError(f"主题不能以自身为父级:{tid}")
+        normalized[tid] = values
+    if not normalized:
+        return 0, []
+
+    current = pages(cfg)
+    graph = {tid: list(info.get("parents") or []) for tid, info in current.items()}
+    graph.update(normalized)
+    for parents in list(graph.values()):
+        for parent in parents:
+            graph.setdefault(parent, [])
+
+    visiting, visited = set(), set()
+
+    def visit(node):
+        if node in visiting:
+            raise ValueError(f"主题父级形成循环:{node}")
+        if node in visited:
+            return
+        visiting.add(node)
+        for parent in graph.get(node, []):
+            visit(parent)
+        visiting.remove(node)
+        visited.add(node)
+
+    for node in graph:
+        visit(node)
+
+    created = []
+    for tid in sorted(graph):
+        if tid not in current:
+            _create_topic_page(cfg, tid, normalized.get(tid, []))
+            created.append(tid)
+    for tid, parents in normalized.items():
+        path = util.safe_join(topics_dir(cfg), tid + ".md")
+        if path is None or not os.path.isfile(path):
+            raise ValueError(f"主题页不可用:{tid}")
+        text = _read(path)
+        value = "[" + ", ".join(f"[[{p}]]" for p in parents) + "]"
+        updated = _set_fm_fields(text, {"parent": value})
+        tmp = f"{path}.tmp.{os.getpid()}"
+        with open(tmp, "w", encoding="utf-8") as stream:
+            stream.write(updated)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    return len(normalized), created
+
+
+def hierarchy_prompt(cfg):
+    """产出「建立层级」的 AI 提示:列现有主题(当前父级 + 成员数 + 定义),让 AI 提父子边。"""
+    pgs = pages(cfg)
+    tmap = load_map()
+    cnt = _member_counts(tmap, pgs)
+    out = ["# loom topic — 建立层级(AI 提议父子关系,组织成 DAG)", "",
+           "## 现有主题(`→`=当前父级,`(N)`=成员数,`:`=定义)"]
+    if not pgs:
+        return "(还没有主题;先 loom topic gather 归类,再来建层级)"
+    for tid, p in sorted(pgs.items()):
+        par = ("  → " + ", ".join(p["parents"])) if p["parents"] else "  →(顶层)"
+        c = (f"  ({cnt[tid]})" if cnt.get(tid) else "")
+        desc = (f":{p['desc']}" if p.get("desc") else "")
+        out.append(f"- {tid}{par}{c}{desc}")
+    out += ["", "---",
+            "AI:把**细/专门**的主题挂到更**宽**的父主题下,组织成 DAG(可多父);",
+            "成员数大的粗主题常是好父级。只输出**需要设置/调整父级**的主题,顶层主题不必列;",
+            "别造环。输出 TSV 每行 `主题<TAB>父主题1,父主题2`(设为顶层写空的父级列),",
+            "存文件后:loom topic set-parents --file <该文件>"]
+    return "\n".join(out)
+
+
 # ---- 给 AI 的候选清单(闭集分类)----
 def _text(e):
     d = e.get("detail") or {}
@@ -181,51 +279,139 @@ def _text(e):
                      (d.get("content") or "")[:400], d.get("path", "")])
 
 
-def gather(cfg, by_id, query=None, project=None, since=None, limit=60):
-    """产出待归类清单 + 现有主题(供 AI 闭集分类)。默认只挑【尚未归类】的条目。"""
+def _fewshot(by_id, tmap, n=6):
+    """从审计日志取最近的【正确分类】当 few-shot,锚定 AI 的判断风格与粒度。"""
+    p = _audit_path()
+    if not os.path.exists(p):
+        return []
+    rows, seen = [], set()
+    for line in reversed(_read(p).splitlines()):
+        try:
+            a = json.loads(line)
+        except Exception:
+            continue
+        eid, ts = a.get("id"), a.get("topics") or []
+        if not eid or eid in seen or eid not in by_id or not ts:
+            continue
+        seen.add(eid)
+        e = by_id[eid]
+        rows.append(f"- `{eid}` [{e.get('tool')}/{e.get('kind')}] "
+                    f"{e.get('summary','')[:50]} → {', '.join(ts)}")
+        if len(rows) >= n:
+            break
+    return rows
+
+
+def _relation_hint(by_id, tmap, pgs, eid, k=3):
+    """给候选附上关系邻居;优先展示【已归类】的邻居(=标签传播的强先验)。"""
+    from . import relations
+    nb = relations.neighbors(by_id, eid, limit=8)
+    nb.sort(key=lambda h: (0 if tmap.get(h["id"]) else 1, -h["score"]))
+    hints = []
+    for h in nb[:k]:
+        tags = tmap.get(h["id"]) or []
+        tag_s = (" → 已归类 [" + ", ".join(resolve(t, pgs) for t in tags) + "]") if tags else ""
+        hints.append(f"      · [{'/'.join(h['reasons'])}] "
+                     f"{h['tool']}:{h.get('summary','')[:36]}{tag_s}")
+    return hints
+
+
+def _member_counts(tmap, pgs):
+    cnt = defaultdict(int)
+    for ts in tmap.values():
+        for t in ts:
+            cnt[resolve(t, pgs)] += 1
+    return cnt
+
+
+def gather(cfg, by_id, query=None, project=None, since=None, limit=60, refine=False):
+    """产出待归类清单 + 现有主题(供 AI 闭集分类)。默认只挑【尚未归类】的条目。
+
+    喂给 AI 的上下文比"名字+片段"更足:①每条候选附**关系邻居**(会话产出的提交/共改/
+    续接),邻居**已有的主题**是标签传播的强先验;②现有主题带**页内定义 + 成员数**(数大=太粗,
+    该细分),不再望文生义;③附最近的**历史正确分类**当 few-shot,锚定粒度与风格。
+
+    ``refine=True``:细化模式——回看**已归类**的条目(``query`` 可限定到某主题子树),
+    让 AI 补更细的叶子 / 遗漏的侧面主题(``apply`` 是追加,不会覆盖已有)。这解决"一条只挂
+    一个粗主题就再也回不来"的问题:粒度和多标签靠这一轮补齐。
+    """
     pgs = pages(cfg)
-    mapped = set(load_map())
+    tmap = load_map()
+    mapped = set(tmap)
+    cnt = _member_counts(tmap, pgs)
     q = (query or "").lower()
+    refine_sub = descendants(query, pgs) if (refine and query) else None
     cand = []
     for eid, e in by_id.items():
-        if eid in mapped or e.get("kind") == "doc":
+        if e.get("kind") == "doc":
             continue
-        if (e.get("detail") or {}).get("path","").startswith("topics/"):
+        if (e.get("detail") or {}).get("path", "").startswith("topics/"):
             continue   # 主题页自身不参与分类(防自指)
+        if refine:
+            if eid not in mapped:
+                continue                     # 细化只看已归类的
+            if refine_sub is not None and not any(
+                    resolve(t, pgs) in refine_sub for t in tmap.get(eid, [])):
+                continue                     # 限定到某主题子树的成员
+        else:
+            if eid in mapped:
+                continue                     # 默认只挑未归类的
+            if q and q not in _text(e).lower():
+                continue
         if project and e.get("project") != project:
             continue
         if since and e.get("date", "") < since:
-            continue
-        if q and q not in _text(e).lower():
             continue
         cand.append(e)
     cand.sort(key=lambda e: e.get("ts", ""), reverse=True)
     cand = cand[:limit]
 
-    out = ["# loom topic — 待归类到主题(AI 闭集分类)", ""]
-    out.append("## 现有主题(尽量复用;层级见各主题页 parent)")
+    mode = "细化(补更细/更多主题)" if refine else "待归类"
+    out = [f"# loom topic — {mode}(AI 闭集分类)", ""]
+    out.append("## 现有主题(尽量复用;`⊂`=父主题,`:`=定义,`(N)`=成员数,数大=太粗可细分)")
     if pgs:
         for tid, p in sorted(pgs.items()):
             par = ("  ⊂ " + ", ".join(p["parents"])) if p["parents"] else ""
-            out.append(f"- {tid}{par}")
+            desc = (f":{p['desc']}" if p.get("desc") else "")
+            c = (f"  ({cnt[tid]})" if cnt.get(tid) else "")
+            out.append(f"- {tid}{par}{c}{desc}")
     else:
         out.append("(还没有主题,可新建)")
+    shots = _fewshot(by_id, tmap)
+    if shots:
+        out += ["", "## 最近的分类示例(照此粒度/风格判断)"] + shots
     # 给 AI 足够内部信息判断——尤其会话:带当天【全部】提问,不只首句(否则"继续梳理"这种
     # 首句会让人误判"太泛"。提交带完整改动理由,文档/数据带正文/schema)。
     _CAP = {"session": 800, "commit": 500, "report": 500}
-    out += ["", f"## 待归类条目({len(cand)})"]
+    out += ["", f"## {mode}条目({len(cand)})",
+            "(每条下的「关联」是自动派生的结构邻居;邻居已归类的主题往往就是本条该归的主题)"]
     for e in cand:
         d = e.get("detail") or {}
         out.append(f"- `{e['id']}`  [{e['tool']}/{e['kind']}] {e['date']} "
                    f"{e.get('summary','')[:60]}")
+        if refine:
+            now = tmap.get(e["id"]) or []
+            out.append(f"    现主题:[{', '.join(resolve(t, pgs) for t in now)}]  ← 在此基础上补充")
         raw = d.get("body") or d.get("opening") or d.get("content") or ""
         snip = " ".join(raw.split())[:_CAP.get(e.get("kind"), 220)]
         if snip:
             out.append(f"    ↳ {snip}")
-    out += ["", "---",
-            "AI:给每条选【最具体的叶子主题】(可多个,逗号分隔),尽量复用上面已有主题;",
-            "实在不匹配才提**新叶子主题**(简短 kebab/中文名);拿不准写 `none-of-these`。",
-            "输出 TSV 每行 `entry_id<TAB>主题1,主题2`,存文件后:loom topic apply --file <该文件>"]
+        hints = _relation_hint(by_id, tmap, pgs, e["id"])
+        if hints:
+            out.append("    关联:")
+            out += hints
+    out += ["", "---"]
+    if refine:
+        out += [
+            "AI:这些条目已归类(见「现主题」)。一件事往往横跨多个侧面——**补上遗漏的侧面主题**,"
+            "并在已有主题**太粗**时提出**更细的叶子子主题**(如「素材归因」→「素材归因-serial兜底」)。",
+            "只输出要**新增**的主题(apply 是追加,不会动已有);没什么可补的写 `none-of-these`。"]
+    else:
+        out += [
+            "AI:给每条选适用的叶子主题——**一条通常横跨 1–3 个侧面,把都适用的都给上**(逗号分隔),别只给一个;",
+            "**优先和已归类的关系邻居保持一致**(一件事别撕碎);对照主题定义/成员数判断边界,"
+            "已有主题太粗就提**更细的叶子**;实在不匹配才提新主题;拿不准写 `none-of-these`。"]
+    out.append("输出 TSV 每行 `entry_id<TAB>主题1,主题2`,存文件后:loom topic apply --file <该文件>")
     return "\n".join(out)
 
 
