@@ -88,7 +88,7 @@ loom's value isn't "another note tool" — it's a few deliberate design choices 
 - **Flat storage, views on demand** — one truth file keyed by stable `id` (`entries.jsonl`); "by day / by topic / by project" are just different cuts. Capture once, visible on every axis.
 - **Summary + back-link only** — each entry keeps the valuable short text plus a `ref` pointer; full transcripts / diffs / raw files stay where they live. Thousands of entries stay light and traceable.
 - **Redaction before storage** — tokens / secrets / webhooks are masked *before* anything is written (values only). Credentials live in `~/.loom/.env` (chmod 600), never in any repo.
-- **Topic layer is a DAG** — entries carry only leaf tags; hierarchy lives on topic pages (multi-parent). Queries roll up whole subtrees — one topic view stitches the chats + commits + docs + data of "one thing" into a single decision trail.
+- **Two complementary kinds of linking** — the **topic DAG** is the manual, semantic layer ("one thing": leaf tags on entries, hierarchy on topic pages, roll up whole subtrees); the **relations layer** (`loom related`) is automatic, structural, derived from fields entries already carry: commits inside a session's time window = its output, commits that co-change a file, the commit that touched a doc, a session continued across days — zero upkeep, refreshed on every collect.
 - **Daily reports & session digests are AI-synthesized outputs** — not collection sources. `loom report gen` feeds a day's traces to an AI; `loom session gen` reads a session's Q&A to write an accurate title + searchable digest (sidecar, survives re-collection).
 
 ## ⌨️ Common commands
@@ -99,6 +99,7 @@ loom sync [--push]             # collect all sources → render → commit (--pu
 loom serve [--port 8787]       # local admin page (127.0.0.1): home/ledger/calendar/topics/report + settings
 loom mcp-serve                 # MCP server (stdio): expose loom as a native tool to Claude/Codex/…
 loom search <term> [--tool T] [--since D]   # full-text search (CJK substring; empty term + filters = browse)
+loom related <entry-id>        # auto-derived links: session→commits / co-changed files / doc↔commit / session thread
 loom topic ls | show <topic>   # topic tree / roll up everything about one thing
 loom note "<text>" [--to cat]  # ingest a loose note (--update <keyword> appends to an existing entry)
 loom report gen <date> | set   # daily report: AI-synthesized → back into the ledger
