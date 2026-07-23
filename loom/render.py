@@ -10,7 +10,7 @@
 import os
 from collections import defaultdict
 
-from . import config, util
+from . import config, topics, util
 
 # 旧版:手写正文曾内联在 {date}.md 的此哨兵之下。保留用于一次性迁移。
 LEGACY_MARK = "<!-- ✍️ 手写区(loom sync 不会覆盖下方内容)-->"
@@ -85,9 +85,31 @@ def _write_archives(cfg, by_id):
     return n
 
 
+def _topic_linker(cfg):
+    """返回 e -> ' 🏷 [[主题]] …' 的函数:按 topic_map 给条目挂主题反向链接。
+
+    主题页在 notes/topics/<id>.md,故 [[id]] 在 Obsidian/Logseq 里直接连到主题页,
+    日记↔主题成图,零维护、纯 markdown 可迁移。规范化去重,无主题则返回空串。
+    """
+    tmap = topics.load_map()
+    pgs = topics.pages(cfg)
+
+    def links(e):
+        ts = tmap.get(e.get("id")) or []
+        seen, out = set(), []
+        for t in ts:
+            cid = topics.resolve(t, pgs)
+            if cid and cid not in seen:
+                seen.add(cid)
+                out.append(f"[[{cid}]]")
+        return ("  🏷 " + " ".join(out)) if out else ""
+    return links
+
+
 def build(cfg, by_id):
     jdir = config.journal_dir(cfg)
     os.makedirs(jdir, exist_ok=True)
+    tlinks = _topic_linker(cfg)         # 主题反向链接注入器
     _write_archives(cfg, by_id)         # 全文档案(可安全删源)
     by_date = defaultdict(list)
     for e in by_id.values():
@@ -131,7 +153,8 @@ def build(cfg, by_id):
                 for e in sorted(commits, key=lambda x: x["ts"]):
                     d = e.get("detail", {})
                     lines.append(f"- `{e['ref']}` {e['summary']}  "
-                                 f"(+{d.get('ins',0)}/-{d.get('del',0)}, {d.get('files',0)} 文件)")
+                                 f"(+{d.get('ins',0)}/-{d.get('del',0)}, {d.get('files',0)} 文件)"
+                                 f"{tlinks(e)}")
                     # 正文(「为什么这么改」):缩进为引用块挂在提交下
                     body = (d.get("body") or "").strip()
                     if body:
@@ -147,7 +170,7 @@ def build(cfg, by_id):
             if reqs:
                 lines.append(f"### 需求 ({len(reqs)})")
                 for e in sorted(reqs, key=lambda x: x["ts"]):
-                    lines.append(f"- {e['summary']}  \n  ↳ {e['ref']}")
+                    lines.append(f"- {e['summary']}{tlinks(e)}  \n  ↳ {e['ref']}")
                 lines.append("")
             if assets:
                 lines.append(f"### 📎 数据/代码/资料 ({len(assets)})")
@@ -158,21 +181,21 @@ def build(cfg, by_id):
                            else "代码" if ext in (".sql", ".py", ".sh", ".r",
                                                  ".js", ".ts", ".scala")
                            else "资料")
-                    lines.append(f"- [{tag}] {e['summary']}  \n  ↳ `{p}`")
+                    lines.append(f"- [{tag}] {e['summary']}{tlinks(e)}  \n  ↳ `{p}`")
                 if len(assets) > 12:
                     lines.append(f"- …及其余 {len(assets) - 12} 项(见 notes/ 或 loom search)")
                 lines.append("")
             if docs_:
                 lines.append(f"### 📄 文档 ({len(docs_)})")
                 for e in sorted(docs_, key=lambda x: x["ts"])[:10]:
-                    lines.append(f"- {e['summary']}  \n  ↳ `{(e.get('detail') or {}).get('path','')}`")
+                    lines.append(f"- {e['summary']}{tlinks(e)}  \n  ↳ `{(e.get('detail') or {}).get('path','')}`")
                 if len(docs_) > 10:
                     lines.append(f"- …及其余 {len(docs_) - 10} 篇(loom search --tool docs)")
                 lines.append("")
             if notes:
                 lines.append(f"### 飞书记事 ({len(notes)})")
                 for e in sorted(notes, key=lambda x: x["ts"]):
-                    lines.append(f"- {e['summary']}  \n  ↳ {e['ref']}")
+                    lines.append(f"- {e['summary']}{tlinks(e)}  \n  ↳ {e['ref']}")
                 lines.append("")
             if sessions:
                 lines.append(f"### AI 会话 ({len(sessions)})")
@@ -182,7 +205,13 @@ def build(cfg, by_id):
                     if d.get("start") and d.get("end"):
                         span = f"{d['start'][11:16]}–{d['end'][11:16]} · "
                     tag = " ✦" if d.get("ai_digest") else ""   # ✦ = AI 摘要过的标题
-                    lines.append(f"- **{e['tool']}** {span}{e['summary']}{tag}  \n  ↳ `{e['ref']}`")
+                    meta = ""
+                    if d.get("branch"):
+                        meta += f" · ⎇ `{d['branch']}`"        # 对话所在 git 分支
+                    pr = d.get("pr") or {}
+                    if pr.get("number"):
+                        meta += f" · PR #{pr['number']}"
+                    lines.append(f"- **{e['tool']}** {span}{e['summary']}{tag}{meta}{tlinks(e)}  \n  ↳ `{e['ref']}`")
                     # 优先展示 AI 会话摘要(读了问+答);没有则回退到开场提问全文。
                     dg = (d.get("digest") or "").strip()
                     if dg:

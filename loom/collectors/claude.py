@@ -8,7 +8,7 @@ import glob
 import json
 import os
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from .. import util
 
@@ -67,7 +67,10 @@ def collect(cfg, since):
         title = ""
         sid = os.path.splitext(os.path.basename(fp))[0]
         # 每条消息:(本地时间, 类型, 用户文本);按天分桶
-        by_day = defaultdict(lambda: {"ts": [], "users": [], "n_user": 0, "n_asst": 0})
+        # branches/pr 抓 Claude Code 记的 git 上下文(gitBranch / prNumber / prUrl),
+        # 用于把「这次对话」按 (项目+分支+天) 缝到同期 git 提交上,喂主题 DAG 的决策链。
+        by_day = defaultdict(lambda: {"ts": [], "users": [], "n_user": 0,
+                                      "n_asst": 0, "branches": Counter(), "pr": None})
         try:
             with open(fp, encoding="utf-8") as f:
                 for line in f:
@@ -86,6 +89,13 @@ def collect(cfg, since):
                         continue
                     bucket = by_day[lts[:10]]
                     bucket["ts"].append(lts)
+                    br = d.get("gitBranch")
+                    if br:
+                        bucket["branches"][br] += 1
+                    if not bucket["pr"] and d.get("prNumber"):
+                        bucket["pr"] = {"number": d.get("prNumber"),
+                                        "url": d.get("prUrl") or "",
+                                        "repo": d.get("prRepository") or ""}
                     if typ == "user":
                         bucket["n_user"] += 1
                         bucket["users"].extend(_iter_text((d.get("message") or {}).get("content")))
@@ -111,12 +121,18 @@ def collect(cfg, since):
                 intent = title.strip()
             # 当天全部用户提问拼进 body → 进检索(整段对话的话题都能搜到,不止开场)
             body = " / ".join(" ".join(t.split()) for t in reals)[:BODY_CAP]
+            branch = b["branches"].most_common(1)[0][0] if b["branches"] else ""
+            detail = {"start": b["ts"][0], "end": b["ts"][-1],
+                      "user": b["n_user"], "asst": b["n_asst"],
+                      "opening": opening[:OPENING_CAP], "body": body}
+            if branch:
+                detail["branch"] = branch          # 当天对话主要所在的 git 分支
+            if b["pr"]:
+                detail["pr"] = b["pr"]              # 关联 PR(number/url/repo)
             entries.append({
                 "id": f"claude:{sid}:{day}", "date": day, "ts": b["ts"][0],
                 "project": project, "tool": "claude", "kind": "session",
                 "summary": intent or "(续聊)", "ref": fp,
-                "detail": {"start": b["ts"][0], "end": b["ts"][-1],
-                           "user": b["n_user"], "asst": b["n_asst"],
-                           "opening": opening[:OPENING_CAP], "body": body},
+                "detail": detail,
             })
     return entries
