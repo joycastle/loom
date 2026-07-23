@@ -87,29 +87,37 @@ Product tour: [loom_tour.html](https://htmlpreview.github.io/?https://github.com
 |:---:|:---:|:---:|
 | <img src="docs/shots/ledger.en.png" alt="ledger" /> | <img src="docs/shots/calendar.en.png" alt="calendar" /> | <img src="docs/shots/topics.en.png" alt="topics" /> |
 
-## Install (three ways)
+## Install
 
-**1. Claude Code plugin (easiest)** — the skill becomes available immediately; first use guides you through installing the underlying CLI:
+Installing loom lands two things on your machine: the **`loom` command** (a pure-stdlib Python CLI — the thing that does the work) and the **loom skill** (dropped into your AI assistant so it knows how to drive `loom`). Pick the one that matches your tool:
+
+**1. Using Claude Code — install it as a native plugin (easiest)**
+
+Type this **inside a Claude Code session** (these are slash commands, not shell commands):
 
 ```
 /plugin marketplace add joycastle/loom
 /plugin install loom@joycastle
 ```
 
-**2. One line in any terminal** (codex / cursor or a plain shell; zero pip, zero packaging):
+The skill is available immediately; the **first** time you put it to work it auto-installs the underlying `loom` command onto your PATH — nothing to install up front.
+
+**2. Using Codex / Cursor / any terminal — one line**
+
+Run this in a terminal (including the one built into Codex or Cursor). It installs the `loom` command and drops the skill into every AI assistant present (Claude / Codex / Cursor / CodeBuddy). Zero pip, zero packaging:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/joycastle/loom/main/install.sh | sh
 ```
 
-**3. Manual** (clone, then install locally):
+**3. Manual** (to see every step, or when the above aren't handy)
 
 ```bash
 git clone https://github.com/joycastle/loom.git ~/Documents/loom
-cd ~/Documents/loom && ./install.sh      # symlink CLI to PATH + guided setup + install skill
+cd ~/Documents/loom && ./install.sh      # loom command onto PATH + guided setup + skill into AI assistants
 ```
 
-All three symlink `loom` onto your PATH and install the loom skill into whichever AI assistants are present; after that, daily use is a single `loom sync` (add `--push` to back up to the cloud).
+After that: daily use is a single `loom sync` (add `--push` to back up to the cloud); run `loom serve` to open the admin page in your browser.
 
 ## Commands
 
