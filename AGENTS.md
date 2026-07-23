@@ -9,6 +9,8 @@
 检索索引、按天日记、主题关联、私有云备份。
 - **代码**在本仓;**用户数据**在 `~/.loom/`(config/.env/data/vault),两者物理分离。
 - 命令:`loom sync | search | doc add | data add | note | report | session | topic | deprecate | init`。
+- **serve/mcp-serve**:`loom serve` 本地管理页(浏览器);`loom mcp-serve` 把 loom 暴露成 MCP 原生工具
+  (`claude mcp add loom -- loom mcp-serve`),供 Claude/Codex 等直接调用 `loom_search`/`loom_note` 等。
 
 ## ⭐ 首次上手 / 整理历史 → 读 ONBOARDING.md
 如果用户是**刚拿到本项目**、要你带他完成配置并把历史资料整理好,
