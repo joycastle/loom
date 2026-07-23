@@ -78,16 +78,14 @@ Product tour: [loom_tour.html](https://htmlpreview.github.io/?https://github.com
 
 ## 📸 Screenshots (`loom serve`)
 
-> Local zero-dependency browse UI, 127.0.0.1 only. Screenshots below use **fictional demo data**.
+> Local zero-dependency admin page, 127.0.0.1 only, all admin — no chat. Real `loom serve` shots below, **fictional demo data**.
 
-**Overview: spotlight search + fabric graph (your days, woven)**
-<img src="docs/shots/dashboard.en.svg" width="100%" alt="dashboard" />
+**Home dashboard: what you did today, source mix, recent records**
+<img src="docs/shots/dashboard.en.png" width="100%" alt="home dashboard" />
 
-**Topics: DAG graph — click a topic to see everything about "one thing"**
-<img src="docs/shots/topics.en.svg" width="100%" alt="topics" />
-
-**By day: paginated calendar heatmap**
-<img src="docs/shots/calendar.en.svg" width="100%" alt="calendar" />
+| Ledger (full-text search + filters + paging) | Calendar (heatmap + day view) | Topics (DAG — click a topic for "one thing") |
+|:---:|:---:|:---:|
+| <img src="docs/shots/ledger.en.png" alt="ledger" /> | <img src="docs/shots/calendar.en.png" alt="calendar" /> | <img src="docs/shots/topics.en.png" alt="topics" /> |
 
 ## Commands
 
@@ -96,7 +94,7 @@ loom init                      # interactive setup
 loom sync [--push] [--since]   # collect all enabled sources → render → commit (--push to cloud)
 loom collect --source <name>   # git|claude|codex|cursor|codebuddy|pi|opencode|feishu|all
 loom search <term> [--project P] [--tool T] [--since D] [--until D]
-loom serve [--port 8787]       # local browse UI (127.0.0.1): search / topic tree / by-day
+loom serve [--port 8787]       # local admin page (127.0.0.1): home / ledger / calendar / topics / report + settings, no chat
 loom doc add | data add | note # ingest docs / data files (→ data cards) / loose notes
 loom note --update <keyword> "<update text>"  # append update to existing note (search by filename/title, re-index instantly)
                                # pattern: in-progress → --update; new topic → new note. One record per thing at report time.
