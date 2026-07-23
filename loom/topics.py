@@ -17,7 +17,7 @@ import re
 from collections import defaultdict
 
 from . import config, util
-from .intake import _parse_frontmatter, _read
+from .intake import _parse_frontmatter, _read, _set_fm_fields
 
 
 def _map_path():
@@ -185,6 +185,91 @@ def parse_mapping_tsv(path):
         ts = [t.strip() for t in parts[1].split(",") if t.strip()]
         rows.append((parts[0].strip(), ts))
     return rows
+
+
+# ---- 层级(父子边):AI 提议 → 人过目 → set_parents 落地 ----
+def set_parents(cfg, mapping):
+    """原子校验并应用主题父子关系 `[(主题, [父主题, ..]), ..]`。
+
+    规范化 id、缺失主题建页、整体 DAG **先校验无环再写盘**——比让模型直接改主题
+    markdown 的 frontmatter 稳。返回 (设置了父级的主题数, 新建主题列表)。
+    """
+    normalized = {}
+    for topic, parents in mapping or []:
+        tid = canon(topic)
+        if not tid:
+            raise ValueError("主题名不能为空")
+        values = sorted({canon(p) for p in (parents or []) if canon(p)})
+        if tid in values:
+            raise ValueError(f"主题不能以自身为父级:{tid}")
+        normalized[tid] = values
+    if not normalized:
+        return 0, []
+
+    current = pages(cfg)
+    graph = {tid: list(info.get("parents") or []) for tid, info in current.items()}
+    graph.update(normalized)
+    for parents in list(graph.values()):
+        for parent in parents:
+            graph.setdefault(parent, [])
+
+    visiting, visited = set(), set()
+
+    def visit(node):
+        if node in visiting:
+            raise ValueError(f"主题父级形成循环:{node}")
+        if node in visited:
+            return
+        visiting.add(node)
+        for parent in graph.get(node, []):
+            visit(parent)
+        visiting.remove(node)
+        visited.add(node)
+
+    for node in graph:
+        visit(node)
+
+    created = []
+    for tid in sorted(graph):
+        if tid not in current:
+            _create_topic_page(cfg, tid, normalized.get(tid, []))
+            created.append(tid)
+    for tid, parents in normalized.items():
+        path = util.safe_join(topics_dir(cfg), tid + ".md")
+        if path is None or not os.path.isfile(path):
+            raise ValueError(f"主题页不可用:{tid}")
+        text = _read(path)
+        value = "[" + ", ".join(f"[[{p}]]" for p in parents) + "]"
+        updated = _set_fm_fields(text, {"parent": value})
+        tmp = f"{path}.tmp.{os.getpid()}"
+        with open(tmp, "w", encoding="utf-8") as stream:
+            stream.write(updated)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    return len(normalized), created
+
+
+def hierarchy_prompt(cfg):
+    """产出「建立层级」的 AI 提示:列现有主题(当前父级 + 成员数 + 定义),让 AI 提父子边。"""
+    pgs = pages(cfg)
+    tmap = load_map()
+    cnt = _member_counts(tmap, pgs)
+    out = ["# loom topic — 建立层级(AI 提议父子关系,组织成 DAG)", "",
+           "## 现有主题(`→`=当前父级,`(N)`=成员数,`:`=定义)"]
+    if not pgs:
+        return "(还没有主题;先 loom topic gather 归类,再来建层级)"
+    for tid, p in sorted(pgs.items()):
+        par = ("  → " + ", ".join(p["parents"])) if p["parents"] else "  →(顶层)"
+        c = (f"  ({cnt[tid]})" if cnt.get(tid) else "")
+        desc = (f":{p['desc']}" if p.get("desc") else "")
+        out.append(f"- {tid}{par}{c}{desc}")
+    out += ["", "---",
+            "AI:把**细/专门**的主题挂到更**宽**的父主题下,组织成 DAG(可多父);",
+            "成员数大的粗主题常是好父级。只输出**需要设置/调整父级**的主题,顶层主题不必列;",
+            "别造环。输出 TSV 每行 `主题<TAB>父主题1,父主题2`(设为顶层写空的父级列),",
+            "存文件后:loom topic set-parents --file <该文件>"]
+    return "\n".join(out)
 
 
 # ---- 给 AI 的候选清单(闭集分类)----

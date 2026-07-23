@@ -481,8 +481,25 @@ def cmd_topic(cfg, a):
         print(topics.tree(cfg))
         return
     if a.action == "gather":
-        print(topics.gather(cfg, store.load(), query=a.query, project=a.project,
-                            since=a.since, limit=a.limit or 60, refine=a.refine))
+        if a.hierarchy:
+            print(topics.hierarchy_prompt(cfg))
+        else:
+            print(topics.gather(cfg, store.load(), query=a.query, project=a.project,
+                                since=a.since, limit=a.limit or 60, refine=a.refine))
+        return
+    if a.action == "set-parents":
+        if not a.file:
+            print("用法:loom topic set-parents --file <层级.tsv>(先 loom topic gather --hierarchy)")
+            return
+        try:
+            n, created = topics.set_parents(cfg, topics.parse_mapping_tsv(a.file))
+        except ValueError as e:
+            print(f"层级校验失败(未写入):{e}")
+            return
+        print(f"已设置 {n} 个主题的父级" +
+              (f";新建主题 {len(created)}:{', '.join(created)}" if created else ""))
+        if a.push:
+            _vault_git_checked(cfg, True)
         return
     if a.action == "apply":
         if not a.file:
@@ -716,13 +733,15 @@ def build_parser():
     sp.add_argument("--update", metavar="关键词")  # 更新已有 note:按关键词搜文件名/标题
     sp.add_argument("--push", action="store_true")
     sp = sub.add_parser("topic")
-    sp.add_argument("action", choices=("ls", "gather", "apply", "show"))
+    sp.add_argument("action", choices=("ls", "gather", "apply", "show", "set-parents"))
     sp.add_argument("query", nargs="?")           # show:主题名;gather:关键词(--refine 时=限定主题)
     sp.add_argument("--project")
     sp.add_argument("--since")
     sp.add_argument("--limit", type=int)
     sp.add_argument("--refine", action="store_true",   # 细化:回看【已归类】条目,补更细/更多主题
                     help="gather 细化模式:重看已归类条目,补更细的叶子/遗漏的侧面主题")
+    sp.add_argument("--hierarchy", action="store_true",   # gather 层级模式:让 AI 提父子边
+                    help="gather 层级模式:列现有主题让 AI 提议父子关系(配 set-parents 落地)")
     sp.add_argument("--file")                      # apply:AI 给的映射 TSV
     sp.add_argument("--push", action="store_true")
     sp = sub.add_parser("deprecate")
