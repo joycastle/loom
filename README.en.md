@@ -75,11 +75,15 @@ Exposes five tools — `loom_search` / `loom_topic_ls` / `loom_topic_show` / `lo
 
 > Local zero-dependency browse UI, 127.0.0.1 only, all admin — no chat. Real `loom serve` shots below, **fictional demo data**.
 
-<img src="docs/shots/dashboard.en.png" width="100%" alt="home dashboard" />
+<img src="docs/shots/dashboard-overview.en.png" width="100%" alt="home work overview" />
 
-| Ledger (full-text search + filters + paging) | Calendar (heatmap + day view) | Topic hierarchy (double-click to expand) |
-|:---:|:---:|:---:|
-| <img src="docs/shots/ledger.en.png" alt="ledger" /> | <img src="docs/shots/calendar.en.png" alt="calendar" /> | <img src="docs/shots/topics.en.png" alt="topics" /> |
+| Ledger (full-text search + filters + paging) | Calendar (heatmap + day view) |
+|:---:|:---:|
+| <img src="docs/shots/ledger.en.png" alt="ledger" /> | <img src="docs/shots/calendar.en.png" alt="calendar" /> |
+
+| Topic hierarchy (double-click to expand) | Cross-topic relation overview |
+|:---:|:---:|
+| <img src="docs/shots/topics-hierarchy.en.png" alt="topic hierarchy" /> | <img src="docs/shots/topics-relations.en.png" alt="cross-topic relation overview" /> |
 
 The Topics page keeps the two views distinct: **Topic summary** is a hierarchy tree that starts at the roots and expands on double-click; **Relation overview** is an aggregate matrix of real structural links across topic families.
 

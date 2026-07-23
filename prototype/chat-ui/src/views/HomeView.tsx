@@ -218,93 +218,102 @@ export function HomeView() {
       ) : null}
 
       <div className="home-dashboard">
-        {/* ---- today's work ---- */}
-        <section className="home-panel home-today">
-          <div className="home-panel-head">
-            <div className="home-panel-title">
-              <h2>{t("今日工作", "Today's work")}</h2>
-              <p>{t("只展示已经进入本地台账的真实记录", "Only work already captured in your local ledger")}</p>
-            </div>
-            <button className="home-panel-link" onClick={() => setView("calendar", true)}>
-              {t("查看今天", "Open today")}
-            </button>
-          </div>
-          <div className="home-metrics" id="home-today-metrics">
-            {error ? (
-              <div className="home-error" style={{ gridColumn: "1/-1" }}>
-                <span>{t("首页数据加载失败,但台账和设置仍可单独打开。", "Home data failed to load, but the ledger and settings still open.")}</span>
-                <button className="act" onClick={() => void loadDash()}>
-                  {t("重试", "Retry")}
+        <section className="home-panel home-overview-panel">
+          <div className="home-overview-main">
+            {/* ---- today's work ---- */}
+            <div className="home-today">
+              <div className="home-panel-head">
+                <div className="home-panel-title">
+                  <h2>{t("今日工作", "Today's work")}</h2>
+                  <p>{t("只展示已经进入本地台账的真实记录", "Only work already captured in your local ledger")}</p>
+                </div>
+                <button className="home-panel-link" onClick={() => setView("calendar", true)}>
+                  {t("查看今天", "Open today")}
                 </button>
               </div>
-            ) : loading || !home ? (
-              <>
-                <div className="home-metric home-skeleton">0</div>
-                <div className="home-metric home-skeleton">0</div>
-                <div className="home-metric home-skeleton">0</div>
-              </>
-            ) : (
-              <>
-                <HomeMetric value={n} label={t("已采集", "Collected")} />
-                <HomeMetric value={home.summarized} label={t("已摘要", "Summarized")} />
-                <HomeMetric value={home.classified} label={t("已归类", "Classified")} />
-              </>
-            )}
-          </div>
-          <div className="home-source-row" id="home-source-row">
-            {error ? null : loading || !home ? (
-              <span className="home-muted">{t("正在统计来源…", "Loading sources…")}</span>
-            ) : sourceEntries.length ? (
-              sourceEntries.map(([name, count]) => (
-                <span className="home-source-chip" key={name}>
-                  <span>{name}</span>
-                  <b>{Number(count) || 0}</b>
-                </span>
-              ))
-            ) : (
-              <span className="home-muted">{t("同步记录后会按来源展示今天的工作。", "After syncing, today's work is shown by source.")}</span>
-            )}
-          </div>
-        </section>
+              <div className="home-metrics" id="home-today-metrics">
+                {error ? (
+                  <div className="home-error" style={{ gridColumn: "1/-1" }}>
+                    <span>{t("首页数据加载失败,但台账和设置仍可单独打开。", "Home data failed to load, but the ledger and settings still open.")}</span>
+                    <button className="act" onClick={() => void loadDash()}>
+                      {t("重试", "Retry")}
+                    </button>
+                  </div>
+                ) : loading || !home ? (
+                  <>
+                    <div className="home-metric home-skeleton">0</div>
+                    <div className="home-metric home-skeleton">0</div>
+                    <div className="home-metric home-skeleton">0</div>
+                  </>
+                ) : (
+                  <>
+                    <HomeMetric value={n} label={t("已采集", "Collected")} />
+                    <HomeMetric value={home.summarized} label={t("已摘要", "Summarized")} />
+                    <HomeMetric value={home.classified} label={t("已归类", "Classified")} />
+                  </>
+                )}
+              </div>
+              <div className="home-source-row" id="home-source-row">
+                {error ? null : loading || !home ? (
+                  <span className="home-muted">{t("正在统计来源…", "Loading sources…")}</span>
+                ) : sourceEntries.length ? (
+                  sourceEntries.map(([name, count]) => (
+                    <span className="home-source-chip" key={name}>
+                      <span>{name}</span>
+                      <b>{Number(count) || 0}</b>
+                    </span>
+                  ))
+                ) : (
+                  <span className="home-muted">{t("同步记录后会按来源展示今天的工作。", "After syncing, today's work is shown by source.")}</span>
+                )}
+              </div>
+            </div>
 
-        {/* ---- daily report workspace link ---- */}
-        <section className="home-panel home-report">
-          <div className="home-panel-title">
-            <h2>{t("日报", "Daily report")}</h2>
-            <p>{t("查看历史日报,或导出当天原材料交给外部 AI 撰写", "Review past reports, or export today's material for an external AI")}</p>
+            {/* ---- daily report workspace link ---- */}
+            <div className="home-report">
+              <div className="home-panel-title">
+                <h2>{t("日报", "Daily report")}</h2>
+                <p>{t("回看历史,整理当天素材,再交给外部 AI 撰写", "Review history, prepare today's material, then draft with an external AI")}</p>
+              </div>
+              <div className="home-report-flow" aria-label={t("日报工作流", "Report workflow")}>
+                <span>{t("历史回看", "History")}</span>
+                <span>{t("导出素材", "Export")}</span>
+                <span>{t("AI 撰写", "AI draft")}</span>
+              </div>
+              <button className="home-utility-link" id="home-report-open" onClick={() => setView("report", true)}>
+                <span>{t("打开日报工作区", "Open report workspace")}</span>
+                <ArrowRight aria-hidden="true" />
+              </button>
+            </div>
           </div>
-          <button className="home-utility-link" id="home-report-open" onClick={() => setView("report", true)}>
-            <span>{t("打开日报工作区", "Open report workspace")}</span>
-            <ArrowRight aria-hidden="true" />
-          </button>
-        </section>
 
-        {/* ---- compact workspace status strip ---- */}
-        <section className="home-workspace-bar" aria-label={t("工作区状态", "Workspace status")}>
-          <div className="home-workspace-heading">
-            <h2>{t("工作区状态", "Workspace status")}</h2>
-            <p>{t("本地摘要", "Local summary")}</p>
-          </div>
-          <div className="home-status-list" id="home-workspace-status">
-            <HomeStatusRow
-              label={t("本地台账", "Local ledger")}
-              value={home ? t(`${home.total_entries || 0} 条记录`, `${home.total_entries || 0} records`) : "…"}
-            />
-            <HomeStatusRow
-              label={t("数据来源", "Data sources")}
-              value={home ? `${home.active_sources || 0} / ${home.available_sources || 0}` : "…"}
-              state={home ? (home.active_sources ? "" : "warn") : "off"}
-            />
-          </div>
-          <div className="home-quick-actions">
-            <button className="home-utility-action" onClick={() => setView("ledger", true)}>
-              <Search aria-hidden="true" />
-              {t("搜索台账", "Search ledger")}
-            </button>
-            <button className="home-utility-action" onClick={() => setView("admin", true)}>
-              <Settings2 aria-hidden="true" />
-              {t("管理来源", "Manage sources")}
-            </button>
+          {/* ---- compact workspace status strip ---- */}
+          <div className="home-workspace-bar" aria-label={t("工作区状态", "Workspace status")}>
+            <div className="home-workspace-heading">
+              <h2>{t("工作区状态", "Workspace status")}</h2>
+              <p>{t("本地摘要", "Local summary")}</p>
+            </div>
+            <div className="home-status-list" id="home-workspace-status">
+              <HomeStatusRow
+                label={t("本地台账", "Local ledger")}
+                value={home ? t(`${home.total_entries || 0} 条记录`, `${home.total_entries || 0} records`) : "…"}
+              />
+              <HomeStatusRow
+                label={t("数据来源", "Data sources")}
+                value={home ? `${home.active_sources || 0} / ${home.available_sources || 0}` : "…"}
+                state={home ? (home.active_sources ? "" : "warn") : "off"}
+              />
+            </div>
+            <div className="home-quick-actions">
+              <button className="home-utility-action" onClick={() => setView("ledger", true)}>
+                <Search aria-hidden="true" />
+                {t("搜索台账", "Search ledger")}
+              </button>
+              <button className="home-utility-action" onClick={() => setView("admin", true)}>
+                <Settings2 aria-hidden="true" />
+                {t("管理来源", "Manage sources")}
+              </button>
+            </div>
           </div>
         </section>
 

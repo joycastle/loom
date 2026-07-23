@@ -75,11 +75,15 @@ claude mcp add loom -- loom mcp-serve      # Claude Code;或写进项目 .mcp.js
 
 > 本地零依赖浏览页,仅 127.0.0.1,纯管理无聊天。下图 `loom serve` 实拍,**虚构演示数据**。
 
-<img src="docs/shots/dashboard.png" width="100%" alt="首页工作台" />
+<img src="docs/shots/dashboard-overview.png" width="100%" alt="首页工作概览" />
 
-| 台账(全文检索 + 筛选 + 分页) | 日历(月历热力 + 当天全景) | 主题层级树(双击展开) |
-|:---:|:---:|:---:|
-| <img src="docs/shots/ledger.png" alt="台账" /> | <img src="docs/shots/calendar.png" alt="日历" /> | <img src="docs/shots/topics.png" alt="主题" /> |
+| 台账(全文检索 + 筛选 + 分页) | 日历(月历热力 + 当天全景) |
+|:---:|:---:|
+| <img src="docs/shots/ledger.png" alt="台账" /> | <img src="docs/shots/calendar.png" alt="日历" /> |
+
+| 主题层级树(双击展开) | 跨主题关联总览 |
+|:---:|:---:|
+| <img src="docs/shots/topics-hierarchy.png" alt="主题层级树" /> | <img src="docs/shots/topics-relations.png" alt="跨主题关联总览" /> |
 
 主题页把两种视角分开呈现:「主题汇总」用树形布局展示父子层级,默认仅显示顶层、双击逐层展开;「关联总览」用聚合矩阵展示不同主题族之间的真实结构关联。
 
