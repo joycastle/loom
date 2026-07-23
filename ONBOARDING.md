@@ -43,7 +43,7 @@ loom today         # 看今天
 loom search 关键词  # 验证可检索(中文子串 OK)
 ```
 讲给用户(简短):
-- **来源**:git 提交、Claude/Cursor/Codex 会话、各仓 .md 文档、后续手动收编的文档/代码/数据。
+- **来源**:git 提交、Claude/Cursor/Codex/CodeBuddy 会话，以及可选的 pi/OpenCode 会话、各仓 .md 文档、后续手动收编的文档/代码/数据。pi/OpenCode 新增来源默认关闭，需要时运行 `loom source enable pi` / `loom source enable opencode`。
 - **真相层** = `~/.loom/data/entries.jsonl`(扁平、人类可读、可 grep;派生的索引/日记都可删可重建)。
 - **检索** = SQLite FTS5;**日记** = 按天渲染的 markdown(`vault/journal/`)。
 - 采集**只读**、入库前**自动打码**密钥。

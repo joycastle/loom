@@ -469,14 +469,20 @@ def _source_diagnostics(cfg, repos=None):
                       {"label": "表配置", "ok": bool(bits) and not broken_bits, "value": len(bits)}]
         else:
             src = cfg.get("sources", {}).get(name, {})
-            if not enabled:
-                status, msg = "off", "已关闭"
-            elif name in ("claude", "codex", "cursor"):
-                key = "home" if name == "codex" else ("projects_dir" if name == "claude" else "app_support")
+            if name in ("claude", "codex", "cursor", "pi", "opencode"):
+                keys = {"claude": "projects_dir", "codex": "home",
+                        "cursor": "app_support", "pi": "sessions_dir",
+                        "opencode": "data_dir"}
+                key = keys[name]
                 path = util.expand(src.get(key, ""))
                 ok = bool(path and os.path.exists(path))
-                status, msg = ("ok", path) if ok else ("warn", f"路径不存在:{path or key}")
+                if not enabled:
+                    status, msg = "off", f"已关闭 · {path or key}"
+                else:
+                    status, msg = ("ok", path) if ok else ("warn", f"路径不存在:{path or key}")
                 checks = [{"label": key, "ok": ok, "value": path}]
+            elif not enabled:
+                status, msg = "off", "已关闭"
             elif name == "notes":
                 path = config.notes_dir(cfg)
                 ok = os.path.isdir(path)
@@ -792,7 +798,7 @@ def _api_admin_action(cfg, payload):
             name = str(payload.get("name", ""))
             keys = {"claude": "projects_dir", "codex": "home",
                     "cursor": "app_support", "codebuddy": "extension_data",
-                    "notes": "dir"}
+                    "pi": "sessions_dir", "opencode": "data_dir", "notes": "dir"}
             if name not in keys:
                 return _finish_action(cfg, False, f"该来源不支持独立路径:{name}")
             path = os.path.abspath(util.expand(str(payload.get("path", "")).strip()))
