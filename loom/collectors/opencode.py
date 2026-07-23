@@ -38,7 +38,9 @@ def _local_time(value):
 
 def _is_real(text):
     s = (text or "").strip()
-    if not s or s[0] in "<[":
+    # OpenCode 插件会把真实提问包装成 [analyze-mode]/[search-mode]；part.synthetic
+    # 才是可靠的系统注入标记，不能因方括号前缀丢掉整条用户问题。
+    if not s or s.startswith("<"):
         return False
     if s.startswith("/") and " " not in s[:20]:
         return False
