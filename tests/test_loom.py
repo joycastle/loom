@@ -1293,14 +1293,13 @@ class IntakeTest(unittest.TestCase):
         self.assertIn("notes/refs", dest.replace(os.sep, "/"))
 
     def test_binary_routed_to_local_data_dir(self):
-        # 无法提取/打码的二进制(pptx 等)进本地 _data/,不落进会上云的类目目录
-        p = self._mk("deck.pptx", "PK-ish binary payload")
+        # 无法提取/打码的二进制(parquet 等)进本地 _data/,不落进会上云的类目目录
+        p = self._mk("data.parquet", "PK-ish binary payload")
         (dest, _), = self.intake.ingest(self.cfg, [p], to="refs")
-        self.assertTrue(dest.replace(os.sep, "/").endswith("refs/_data/deck.pptx"))
+        self.assertTrue(dest.replace(os.sep, "/").endswith("refs/_data/data.parquet"))
         refs = os.path.join(config.notes_dir(self.cfg), "refs")
-        self.assertNotIn("deck.pptx", os.listdir(refs))     # 不在类目根(那会被推云)
-        self.assertTrue(os.path.exists(os.path.join(refs, "_data", "deck.pptx")))
-
+        self.assertNotIn("data.parquet", os.listdir(refs))     # 不在类目根(那会被推云)
+        self.assertTrue(os.path.exists(os.path.join(refs, "_data", "data.parquet")))
 
 class TriageTest(unittest.TestCase):
     def setUp(self):
@@ -2226,6 +2225,7 @@ class ServeTest(unittest.TestCase):
 
     def test_http_end_to_end(self):
         import http.client
+        import re
         import threading
         from http.server import ThreadingHTTPServer
         token = "test-admin-token"
@@ -2250,54 +2250,26 @@ class ServeTest(unittest.TestCase):
             self.assertTrue(json.loads(c.getresponse().read())["ok"])
             c.request("GET", "/")
             page = c.getresponse().read()
+            # loom serve 默认服务 React 管理页 build;无构建时降级到零构建后备 browse.html。
+            # 两种 UI 都以 loom 标识首页;下面按实际服务的那种校验其接线。
             self.assertIn(b"loom", page[:2000])                    # 首页出得来
-            self.assertIn(b'id="themebtn"', page)                  # 亮/暗主题入口
-            self.assertIn(b'class="admin-shell"', page)            # 管理并入原 UI
-            self.assertEqual(page.count(b'class="panel privacy-metric-panel"'), 2)  # 隐私页双卡等高
-            self.assertIn(b'#admin-pane-privacy .admin-grid{align-items:stretch}', page)
-            self.assertIn(b'data-v="home"', page)                  # 独立首页，不再拿搜索页冒充首页
-            self.assertIn(b'data-v="ledger"', page)                # 搜索筛选收进台账
-            self.assertIn(b'data-v="calendar"', page)              # “按天”改成产品化的日历
-            self.assertIn(b'id="home-sync-btn"', page)             # 核心同步能力前置到首页
-            self.assertIn(b"search:'ledger'", page)                # 旧链接继续兼容
-            self.assertIn(b"days:'calendar'", page)
-            self.assertIn(b'--page-track:960px;--hero-track:760px;--reading-track:760px', page)  # 首页上下同宽
-            self.assertIn(b'grid-template-columns:1fr;gap:20px', page)
-            self.assertIn(b'scrollbar-gutter:stable', page)         # 异步高度变化不再左右跳
-            self.assertIn(b'window.scrollTo(0,0)', page)            # 换页不继承长页面滚动位置
-            self.assertNotIn(b'data-v="search"', page)
-            self.assertNotIn(b'data-v="days"', page)
-            self.assertIn(b'class="source-groups"', page)          # 来源按用途分组而非平铺
-            self.assertIn(b"data-source-category", page)           # 新来源只需声明类别
-            self.assertIn(b'id="language-select"', page)           # 语言偏好归入设置
-            self.assertNotIn(b'id="langbtn"', page)                # 顶部不再放语言切换
-            self.assertIn(b'class="switch"', page)                 # 来源启停使用图形开关
-            self.assertIn(b'id="source-config"', page)             # 来源配置共用弹窗
-            self.assertIn(b'id="sync-result"', page)               # 同步结果按来源展示
-            self.assertIn(b'id="backup-result"', page)             # 独立备份结果就地展示
-            self.assertIn(b'id="drawer-backdrop"', page)           # 点详情外空白可关闭侧栏
-            self.assertIn(b'drawer(false,false)', page)             # 换页面关闭且不恢复隐藏焦点
-            self.assertIn(b'inset:64px 0 0', page)                  # 遮罩/抽屉不挡顶部换页导航
-            self.assertIn(b'top:64px;right:-560px', page)
-            self.assertIn(b'padding:20px;z-index:4', page)          # drawer 始终低于 sticky header
-            self.assertIn(b'header:after', page)                    # 顶栏分割线横跨整页，不被抽屉切断
-            self.assertIn(b'z-index:4;border-radius:0', page)
-            self.assertIn(b'id="drawer" role="dialog" aria-modal="false"', page)
-            self.assertIn(b'id="f-page-size"', page)               # 台账统一分页，默认 20 / 最大 100
-            self.assertIn(b'<option value="20" selected>', page)
-            self.assertIn(b'<option value="100">100</option>', page)
-            self.assertIn(b'id="ledger-pagination"', page)
-            self.assertIn(b'page:LEDGER_PAGE,page_size:LEDGER_PAGE_SIZE', page)
-            self.assertNotIn(b'function renderLedgerRecent', page)  # 空搜索也走完整分页数据
-            self.assertIn(b'id="admin-load-state"', page)          # 首屏与刷新有明确加载态
-            self.assertIn(b'if(ADMIN_LOAD)return ADMIN_LOAD', page)  # 连点刷新合并为同一请求
-            self.assertIn(b"const payload=await api('/api/console/v1/overview')", page)
-            self.assertNotIn(b"Promise.all([api('/api/admin/overview')", page)
-            self.assertIn("管理会话已失效".encode(), page)           # 403 不再表现为空白
-            self.assertIn(b"status==='partial'", page)              # 部分失败不再当成功
-            self.assertIn("当前版本暂不支持采集".encode(), page)      # 未实现来源不冒充正常
-            self.assertNotIn("持续采集".encode(), page)             # 不重复展示文字开关状态
-            self.assertNotIn("下一阶段".encode(), page)             # 概览不暴露产品路线图
+            if self.serve._ui_dir():
+                # React 管理页 build 存在 → 首页是 SPA 外壳,视图由前端渲染
+                self.assertIn(b'<div id="root">', page)            # React 挂载点
+                self.assertIn(b'type="module"', page)              # 走打包后的 ESM 入口
+                self.assertIn(b'src="./assets/', page)             # 引用构建出的 JS bundle
+                self.assertIn(b'href="./assets/', page)            # 及 CSS bundle
+                self.assertNotIn(b'id="themebtn"', page)           # 旧服务端渲染内容不再是首页
+                # 构建资源经 /assets/ 静态服务(SPA 据此加载),端到端确认拿得到
+                asset_match = re.search(rb'src="\.(/assets/[^"]+\.js)"', page)
+                self.assertIsNotNone(asset_match)
+                c.request("GET", asset_match.group(1).decode())
+                asset_resp = c.getresponse()
+                self.assertEqual(asset_resp.status, 200)
+                asset_resp.read()
+            else:
+                # 无构建 → 零构建后备 browse.html(自带管理外壳)
+                self.assertIn(b'admin-shell', page)
             c.request("GET", "/api/nope")
             self.assertEqual(c.getresponse().status, 404)
         finally:

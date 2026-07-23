@@ -1,0 +1,471 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light dark;
+  --accent: #3e8f83;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  /* primary buttons are monochrome (near-black/white) like the rest of loom;
+     green is only a subtle accent (focus ring, active state). */
+  --ink: #f5f5f4;
+  --surface: #ffffff;
+  --surface-subtle: #f6f7f8;
+  --surface-raised: #ebecec;
+  --border: #e4e7eb;
+  --border-strong: #d2d7dd;
+  --text: #1a1d21;
+  --text-secondary: #5c6570;
+  /* macOS-style depth, matching the loom desktop app (browse.html) */
+  --glass: rgba(255, 255, 255, 0.68);
+  --glass-border: rgba(255, 255, 255, 0.7);
+  --hairline: inset 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  --shadow: 0 20px 50px rgba(0, 0, 0, 0.14);
+  --danger: #d64545;
+  --warn: #c9872e;
+  --ok: #3d9a62;
+  font-family:
+    "SF Pro Text",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  line-height: 1.5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #5aa9a0;
+    --surface: #17191c;
+    --surface-subtle: #1f2226;
+    --surface-raised: #282b30;
+    --border: #2d333b;
+    --border-strong: #3a424c;
+    --text: #f3f5f7;
+    --text-secondary: #a4adb8;
+    --ink: #121416;
+    --glass: rgba(28, 31, 36, 0.66);
+    --glass-border: rgba(255, 255, 255, 0.09);
+    --hairline: inset 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+    --shadow: 0 20px 50px rgba(0, 0, 0, 0.38);
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+
+.loom-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.loom-icon-btn:hover,
+.loom-icon-btn.on {
+  background: var(--surface);
+  color: var(--text);
+}
+.loom-rec-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  box-shadow: var(--hairline);
+  text-align: left;
+  cursor: pointer;
+  /* transition + :hover + :focus-visible live authoritatively in polish.css */
+}
+.loom-rec-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+.loom-rec-tool {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.loom-rec-kind {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+}
+.loom-rec-date,
+.loom-rec-proj {
+  font-variant-numeric: tabular-nums;
+}
+.loom-rec-summary {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  word-break: break-word;
+}
+.loom-rec-summary mark {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.loom-rec-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.loom-rec-topic {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+/* ---- record detail drawer ---- */
+.loom-drawer-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--ink) 32%, transparent);
+  display: flex;
+  justify-content: flex-end;
+  animation: loom-fade 0.15s ease;
+}
+.loom-drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 92%);
+  height: 100%;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  animation: loom-slide-in 0.2s ease;
+}
+@keyframes loom-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes loom-slide-in {
+  from { transform: translateX(20px); opacity: 0.6; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.loom-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.loom-drawer-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.loom-drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 28px;
+}
+.loom-drawer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+.loom-drawer-summary {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.55;
+  font-weight: 550;
+  color: var(--text);
+}
+.loom-drawer-hint {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.loom-drawer-section {
+  margin-top: 18px;
+}
+.loom-drawer-section h4 {
+  margin: 0 0 6px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.loom-drawer-prose {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.loom-drawer-ref {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+.loom-drawer-json {
+  margin: 0;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* dev controls float bottom-left over the sidebar when opened */
+.loom-dev-fab {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 30;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 15px;
+  cursor: pointer;
+  opacity: 0.55;
+}
+.loom-dev-fab:hover {
+  opacity: 1;
+}
+.loom-dev-drawer {
+  position: fixed;
+  left: 12px;
+  bottom: 48px;
+  z-index: 31;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 260px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow), var(--hairline);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.loom-dev-drawer label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.loom-dev-drawer select,
+.loom-dev-drawer input {
+  flex: 1;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+}
+.loom-dev-check {
+  justify-content: flex-start;
+}
+.loom-dev-check input {
+  flex: 0 0 auto;
+  width: auto;
+  height: auto;
+}
+
+/* markdown rendering for assistant replies */
+.loom-md {
+  font-size: 13px;
+  line-height: 1.65;
+  word-break: break-word;
+}
+.loom-md > :first-child {
+  margin-top: 0;
+}
+.loom-md > :last-child {
+  margin-bottom: 0;
+}
+.loom-md p {
+  margin: 0 0 10px;
+}
+.loom-md strong {
+  font-weight: 650;
+  color: var(--text);
+}
+.loom-md em {
+  font-style: italic;
+}
+.loom-md ul,
+.loom-md ol {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+.loom-md li {
+  margin: 3px 0;
+}
+.loom-md li::marker {
+  color: var(--text-secondary);
+}
+.loom-md h1,
+.loom-md h2,
+.loom-md h3,
+.loom-md h4 {
+  margin: 14px 0 8px;
+  font-weight: 620;
+  line-height: 1.35;
+}
+.loom-md h1 {
+  font-size: 17px;
+}
+.loom-md h2 {
+  font-size: 15px;
+}
+.loom-md h3 {
+  font-size: 14px;
+}
+.loom-md a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.loom-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+}
+.loom-md pre {
+  margin: 0;
+  padding: 11px 13px;
+  background: transparent;
+  border: 0;
+  overflow-x: auto;
+}
+.loom-md pre code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+}
+.loom-md blockquote {
+  margin: 0 0 10px;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-secondary);
+}
+.loom-md table {
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  font-size: 12px;
+  display: block;
+  overflow-x: auto;
+}
+.loom-md th,
+.loom-md td {
+  border: 1px solid var(--border);
+  padding: 5px 9px;
+  text-align: left;
+}
+.loom-md hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
+}
+
+/* Per-turn error bubble (a failed / unfinished assistant turn). */
+.loom-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  font-size: 13px;
+}
+
+.loom-error-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--danger);
+}
+
+.loom-error p {
+  margin: 0;
+  color: var(--text);
+}
+
+.loom-btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.loom-btn.primary {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--ink);
+}
+
+.loom-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
