@@ -645,17 +645,42 @@ def _source_diagnostics(cfg, repos=None):
                       {"label": "表配置", "ok": bool(bits) and not broken_bits, "value": len(bits)}]
         else:
             src = cfg.get("sources", {}).get(name, {})
-            if name in ("claude", "codex", "cursor", "pi", "opencode"):
+            if name in ("claude", "codex", "cursor", "pi", "opencode",
+                        "codex_feishu_bridge"):
                 key = {"claude": "projects_dir", "codex": "home",
                        "cursor": "app_support", "pi": "sessions_dir",
-                       "opencode": "data_dir"}[name]
+                       "opencode": "data_dir", "codex_feishu_bridge": "home"}[name]
                 path = util.expand(src.get(key, ""))
                 ok = bool(path and os.path.exists(path))
-                if not enabled:
-                    status, msg = "off", f"已关闭 · {path or key}"
+                if name == "codex_feishu_bridge":
+                    probe = collectors.codex_feishu_bridge.probe(cfg)
+                    cli_ok = bool(probe["lark_cli"])
+                    if not enabled:
+                        status, msg = ("off", f"已关闭 · {probe['projects']} 个 "
+                                       "Codex Feishu Bridge 项目群")
+                    elif not ok:
+                        status, msg = "warn", f"路径不存在:{path or key}"
+                    elif not cli_ok:
+                        status, msg = "error", "未找到 lark-cli"
+                    elif not probe["projects"]:
+                        status, msg = "warn", "未发现 Codex Feishu Bridge 绑定项目"
+                    else:
+                        status, msg = "ok", (f"{probe['projects']} 个 Codex Feishu Bridge "
+                                             "项目群 · 完整收集本人实际发言的话题")
+                    checks = [
+                        {"label": key, "ok": ok, "value": path},
+                        {"label": "Codex Feishu Bridge 项目群",
+                         "ok": bool(probe["projects"]), "value": probe["projects"]},
+                        {"label": "lark-cli", "ok": cli_ok,
+                         "value": probe["lark_cli"] or "未找到"},
+                    ]
                 else:
-                    status, msg = ("ok", path) if ok else ("warn", f"路径不存在:{path or key}")
-                checks = [{"label": key, "ok": ok, "value": path}]
+                    if not enabled:
+                        status, msg = "off", f"已关闭 · {path or key}"
+                    else:
+                        status, msg = (("ok", path) if ok else
+                                       ("warn", f"路径不存在:{path or key}"))
+                    checks = [{"label": key, "ok": ok, "value": path}]
             elif not enabled:
                 status, msg = "off", "已关闭"
             elif name == "notes":
@@ -993,7 +1018,8 @@ def _api_admin_action(cfg, payload):
             name = str(payload.get("name", ""))
             keys = {"claude": "projects_dir", "codex": "home",
                     "cursor": "app_support", "codebuddy": "extension_data",
-                    "pi": "sessions_dir", "opencode": "data_dir", "notes": "dir"}
+                    "pi": "sessions_dir", "opencode": "data_dir",
+                    "codex_feishu_bridge": "home", "notes": "dir"}
             if name not in keys:
                 return _finish_action(cfg, False, f"该来源不支持独立路径:{name}")
             path = os.path.abspath(util.expand(str(payload.get("path", "")).strip()))
