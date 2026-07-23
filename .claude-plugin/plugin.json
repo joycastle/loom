@@ -1,0 +1,3 @@
+{"name": "loom", "description": "loom personal work-ledger CLI + skill",
+ "version": "1.0.0", "author": {"name": "joycastle"},
+ "repository": "https://github.com/joycastle/loom", "skills": "./skills"}

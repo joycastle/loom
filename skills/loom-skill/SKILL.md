@@ -13,6 +13,10 @@ AI 工具会话(Claude / Codex / Cursor / CodeBuddy)、文档 / 代码 / 数据 
 **当我问到「我之前/某天/某件事做过什么、结论是什么、相关文档/数据在哪」这类历史问题时,
 先用它查,别只翻当前仓。**
 
+> 前置:若 `loom` 不在 PATH(command not found),先一行装上再用:
+> `curl -fsSL https://raw.githubusercontent.com/joycastle/loom/main/install.sh | sh`
+> (Claude Code 插件用户由 loom-setup 技能自动引导。)
+
 ## 查历史(最常用)
 
 ```bash
