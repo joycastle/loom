@@ -200,9 +200,9 @@
       <b>exactly how each data type is processed and stored</b>, and the trade-offs behind every design decision.</p>
     <div class="kpis">
       <div class="kpi"><div class="n warm">1,842</div><div class="l">normalized entries (demo)</div></div>
-      <div class="kpi"><div class="n">6</div><div class="l">ingestion sources (+daily reports / session digests are AI-synthesized)</div></div>
+      <div class="kpi"><div class="n">many</div><div class="l">ingestion sources (+daily reports / session digests are AI-synthesized)</div></div>
       <div class="kpi"><div class="n cool">3,582</div><div class="l">lines of Python · 0 dependencies</div></div>
-      <div class="kpi"><div class="n">118</div><div class="l">unit tests, all green</div></div>
+      <div class="kpi"><div class="n">152</div><div class="l">unit tests, all green</div></div>
     </div>
     <div class="toc">
       <a href="#arch">Architecture</a><a href="#model">Data model</a><a href="#fields">Field glossary</a><a href="#types">Per-type breakdown</a>
@@ -212,8 +212,8 @@
   </header>
 
   <section id="arch">
-    <h2>Architecture — Seven streams, one truth, derive everything</h2>
-    <p class="sub">Like a loom: <b>6 ingestion sources</b> converge at a knot (normalize + redact) → one source of truth → weave out search, journal, topics, cloud backup.
+    <h2>Architecture — Multiple streams, one truth, derive everything</h2>
+    <p class="sub">Like a loom: <b>multiple ingestion sources</b> converge at a knot (normalize + redact) → one source of truth → weave out search, journal, topics, cloud backup.
       <b>Daily reports are not an ingestion source</b> — they are AI-synthesized output derived from other data already in the store, rendered at the top of each day's journal (see right).</p>
     <div class="figure"><svg class="dg" viewBox="0 0 960 380" role="img" aria-label="Architecture flow diagram">
       <defs>
@@ -224,12 +224,12 @@
           <stop offset="0" stop-color="#5AA9A0"/><stop offset="1" stop-color="#8a6320"/>
         </radialGradient>
       </defs>
-      <!-- Left: 6 ingestion sources -->
+      <!-- Left: collection sources (AI tools grouped by capability) -->
       <g font-size="13" fill="#E8EAED">
         <rect x="8" y="30" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="50">git commits</text>
-        <rect x="8" y="88" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="108">Claude sessions</text>
-        <rect x="8" y="146" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="166">Cursor sessions</text>
-        <rect x="8" y="204" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="224">Codex sessions</text>
+        <rect x="8" y="88" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="108">Claude / Codex</text>
+        <rect x="8" y="146" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="166">pi / OpenCode</text>
+        <rect x="8" y="204" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="224">Cursor / CodeBuddy</text>
         <rect x="8" y="262" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="282">Repo docs .md</text>
         <rect x="8" y="320" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="340">Data · Code · Notes</text>
       </g>
@@ -300,7 +300,7 @@
         <b>Full text of the session's opening message</b> (AI session types only). The literal first real question you typed in that session.
         <span class="ix">◆ Indexed</span></div></div>
       <div class="gl"><span class="nmfx">body</span><div class="gd">
-        <b>Long-form text.</b> <span class="who">git = commit body (why + how verified) · Claude = all your prompts for that day merged (≤8,000 chars)</span>
+        <b>Long-form text.</b> <span class="who">git = commit body (why + how verified) · message-capable AI tools = all your prompts for that day merged (≤8,000 chars)</span>
         <span class="ix">◆ Indexed — full prompts and commit rationale are all searchable</span></div></div>
       <div class="gl"><span class="nmfx">headings</span><div class="gd">
         <b>Document outline</b>: all heading levels concatenated (doc type only). Lets you locate "what this doc covers" without reading the full text.
@@ -363,20 +363,20 @@
     </div>
 
     <div class="ptype">
-      <div class="pt-h"><span class="ic">🖱️</span><span class="nm">Cursor / Codex sessions</span><span class="bd k">tool=cursor·codex</span><span class="bd">kind=session</span></div>
+      <div class="pt-h"><span class="ic">🖱️</span><span class="nm">Other AI coding sessions</span><span class="bd k">tool=codex·pi·opencode·codebuddy·cursor</span><span class="bd">kind=session</span></div>
       <div class="pflow">
-        <div class="ps"><div class="k src">Source</div><div class="v">Cursor <span class="mono">state.vscdb</span> / Codex <span class="mono">state_5.sqlite</span>; <b>copy to a temp dir before reading to avoid lock contention</b></div></div>
-        <div class="ps"><div class="k pro">Processing</div><div class="v">Only session-level timestamps available (no per-message text) → attributed to <b>start date + last active date</b> only</div></div>
-        <div class="ps"><div class="k sto">Stored as</div><div class="v">id = tool:session:date; detail = {start/end, changed files/lines (cursor), git_branch (codex), opening}</div></div>
+        <div class="ps"><div class="k src">Source</div><div class="v">Codex/pi JSONL, OpenCode SQLite + legacy JSON, CodeBuddy history, and Cursor <span class="mono">state.vscdb</span></div></div>
+        <div class="ps"><div class="k pro">Processing</div><div class="v">Codex/pi/OpenCode/CodeBuddy split by <b>each message's local date</b>; Cursor has session-level timestamps only, so it uses start date + last active date</div></div>
+        <div class="ps"><div class="k sto">Stored as</div><div class="v">id = tool:session:date; message-capable sources keep opening + all user prompts for the day; Cursor keeps title and change counts</div></div>
       </div>
-      <div class="ptrade"><b>Trade-off (data limitation)</b> No per-message text available — attribution is <b>title-level + two endpoints only</b> (intermediate days may be missed). This is a tool storage constraint, not a design shortcut — noted in the code.</div>
+      <div class="ptrade"><b>Trade-off (data limitation)</b> All sources except Cursor can split by message date and index user prompts. Cursor remains <b>title-level + two endpoints only</b> (intermediate days may be missed).</div>
       <div class="pidx"><span class="lb">Indexed</span><span class="fx" title="Session title">summary</span><span class="fx" title="Opening text if available">opening</span></div>
       <details class="ex"><summary>What does a stored entry look like? (real entry)</summary><div class="exb">
         <span class="cap">cursor · a multi-day session (two-endpoint attribution demo)</span>
         <span class="fld">summary</span> Checkout flow A/B bucketing issue<br>
         <span class="fld">start → end</span> <span class="v2">2026-04-08 11:02 → 2026-04-09 15:37</span> <span class="ar">← spans two days; attributed only to start date + last active date</span><br>
-        <span class="fld">detail</span> <span class="v2">files changed / add / del (cursor); codex has git_branch + opening instead</span><br>
-        <span class="ar">No per-message text available, so no body — this is a tool storage limitation, not a design choice.</span>
+        <span class="fld">detail</span> <span class="v2">Cursor keeps files/add/del; Codex/pi/OpenCode/CodeBuddy keep opening + body</span><br>
+        <span class="ar">Only Cursor lacks message-level text; the other sources split by actual message date.</span>
       </div></details>
     </div>
 
@@ -570,7 +570,7 @@ secret = Variable.get("secret_api_key")   # variable name / call site preserved,
     <p class="sub">Known limitations, stated plainly.</p>
     <ul class="clean">
       <li><b>Search is keyword-based, not semantic</b> — "cohort" won't recall "retention"; semantic search needs embedding models, which would break the zero-dependency constraint. Not planned for now.</li>
-      <li><b>Only Claude supports per-message splitting</b> — Cursor/Codex have no per-message text; only two-endpoint attribution is possible.</li>
+      <li><b>Cursor still uses two-endpoint attribution</b> — Claude/Codex/CodeBuddy/pi/OpenCode split by message date; Cursor exposes session-level timestamps only.</li>
       <li><b>Assistant replies are not indexed by default</b> — the collector indexes only your prompts; use <span class="mono">loom session gen</span> to have the AI read the full <b>Q&amp;A</b> and generate a digest that brings answer-side content into the index (stored in a sidecar; re-ingestion safe).</li>
       <li><b>Full rescan on every sync</b> — each sync rescans everything; imperceptible for a single user, incremental mode only needed for very large histories.</li>
       <li><b>AI classification is not fully automatic</b> — closed-set labels + human review + audit for precision.</li>
@@ -582,7 +582,7 @@ secret = Variable.get("secret_api_key")   # variable name / call site preserved,
     <div class="quality">
       <div class="q"><div class="n">3,582</div><div class="l">lines of Python</div></div>
       <div class="q"><div class="n">0</div><div class="l">third-party dependencies</div></div>
-      <div class="q"><div class="n">118</div><div class="l">unit tests, all green</div></div>
+      <div class="q"><div class="n">152</div><div class="l">unit tests, all green</div></div>
       <div class="q"><div class="n">7</div><div class="l">data sources</div></div>
     </div>
     <p class="note">Collection / search / render / topics / notes / reports / lifecycle are each their own module; redaction, path traversal, FTS recall, atomic writes, and topic rollup all have end-to-end test coverage.</p>

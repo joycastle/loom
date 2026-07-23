@@ -13,7 +13,9 @@
     "claude":    {"enabled": true, "projects_dir": "~/.claude/projects"},
     "codex":     {"enabled": true, "home": "~/.codex"},
     "cursor":    {"enabled": true, "app_support": "~/Library/Application Support/Cursor"},
-    "codebuddy": {"enabled": true, "app_support": "~/Library/Application Support/CodeBuddy"}
+    "codebuddy": {"enabled": true, "app_support": "~/Library/Application Support/CodeBuddy"},
+    "pi":        {"enabled": false, "sessions_dir": "~/.pi/agent/sessions"},
+    "opencode":  {"enabled": false, "data_dir": "~/.local/share/opencode"}
   },
   "feishu": {
     "enabled": false,
