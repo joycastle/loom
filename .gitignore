@@ -4,3 +4,5 @@ __pycache__/
 # 个人配置/数据/凭证从不进产品仓(它们在 ~/.loom/,与代码物理分离)
 .loom/
 .env
+# React 管理页构建产物(由 prototype/chat-ui 生成,靠 browse.html 兜底)
+loom/assets/ui/

@@ -1,11 +1,18 @@
 # -*- coding: utf-8 -*-
 """配置读写 + 增删助手 + 飞书 URL 解析。config.json 靠子命令管理,免手编。"""
+import copy
 import json
 import os
 import re
 import subprocess
 
 from . import util
+
+# 记录每个 config.json 上一次 load/save 时的 (mtime, 快照),用于保存前检测"自我们
+# 加载以来是否有别的进程(并发的 CLI)改过磁盘"。GUI 常驻内存、CLI 随手写,二者
+# 共用同一 ~/.loom;没有这道守卫,GUI 的下次 save 会用启动快照整体覆盖 CLI 的改动
+# (last-writer-wins)。按路径分键,避免多 LOOM_HOME(测试)相互串。
+_BASELINE = {}
 
 DEFAULT_CONFIG = {
     "owner": {"name": "", "feishu_name": ""},
@@ -23,7 +30,6 @@ DEFAULT_CONFIG = {
             "app_support": "~/Library/Application Support/CodeBuddy",
             "extension_data": "~/Library/Application Support/CodeBuddyExtension/Data",
         },
-        # 新增本地会话源默认关闭，避免升级后未经选择就扩大采集范围。
         "pi":        {"enabled": False, "sessions_dir": "~/.pi/agent/sessions"},
         "opencode":  {"enabled": False, "data_dir": "~/.local/share/opencode"},
         "docs":      {"enabled": True},   # 索引各仓 .md(全文归档,不进日记)
@@ -34,13 +40,51 @@ DEFAULT_CONFIG = {
         "base_url": "https://open.feishu.cn/open-apis",
         "bitables": [],
     },
-    "vault": {"dir": "~/.loom/vault", "remote": ""},
+    # 从 util.HOME(尊重 LOOM_HOME)派生,而非硬编码 ~/.loom/vault——否则临时
+    # LOOM_HOME 下 ~ 仍解析到真实家目录,测试会误写真实 vault(曾导致真配置被污染)。
+    "vault": {"dir": os.path.join(util.HOME, "vault"), "remote": ""},
 }
+
+
+def _mtime_ns(path):
+    try:
+        return os.stat(path).st_mtime_ns
+    except OSError:
+        return None
+
+
+def _remember(cfg):
+    """记下本次 load/save 的 (mtime, 快照),作为下次 save 的三方合并基线。"""
+    _BASELINE[util.CONFIG_PATH] = {
+        "mtime": _mtime_ns(util.CONFIG_PATH),
+        "snapshot": copy.deepcopy(cfg),
+    }
+
+
+def _merge_external(ours, base, theirs):
+    """把磁盘上 `theirs` 相对 `base` 的外部改动就地并入内存 `ours`。
+    规则:本次(ours 相对 base)改过的键 → 保留 ours(本次操作优先);ours 没碰过的键
+    → 采纳 theirs 的外部改动(含新增/删除)。dict 递归,list/标量整体处理。"""
+    if not (isinstance(ours, dict) and isinstance(base, dict) and isinstance(theirs, dict)):
+        return
+    for k, tv in theirs.items():
+        bv = base.get(k)
+        ov = ours.get(k)
+        if isinstance(tv, dict) and isinstance(ov, dict) and isinstance(bv, dict):
+            _merge_external(ov, bv, tv)
+        elif k not in ours or ov == bv:
+            ours[k] = copy.deepcopy(tv)   # ours 没动 → 采纳外部值
+        # else: ours 改过(ov != bv)→ 冲突,保留 ours
+    for k in list(ours.keys()):           # theirs 删掉、且 ours 没改的键 → 一并删
+        if k in base and k not in theirs and ours.get(k) == base.get(k):
+            del ours[k]
 
 
 def load():
     if not os.path.exists(util.CONFIG_PATH):
-        return json.loads(json.dumps(DEFAULT_CONFIG))
+        fresh = json.loads(json.dumps(DEFAULT_CONFIG))
+        _remember(fresh)
+        return fresh
     with open(util.CONFIG_PATH, encoding="utf-8") as f:
         cfg = json.load(f)
     # 补齐缺省键,便于旧配置平滑升级
@@ -57,17 +101,32 @@ def load():
             merged["sources"]["git"]["enabled"] = False
         elif isinstance(old_sources, dict) and "git" not in old_sources:
             merged["sources"]["git"]["enabled"] = True
+    _remember(merged)
     return merged
 
 
 def save(cfg):
     os.makedirs(util.HOME, exist_ok=True)
+    # 并发守卫:若磁盘自我们加载以来被别的进程(CLI)改过,先把它的外部改动并进来,
+    # 再落盘——避免用陈旧的内存快照整体覆盖(last-writer-wins),保持 App↔CLI 一致。
+    prev = _BASELINE.get(util.CONFIG_PATH)
+    if prev and prev["mtime"] is not None:
+        cur = _mtime_ns(util.CONFIG_PATH)
+        if cur is not None and cur != prev["mtime"]:
+            try:
+                with open(util.CONFIG_PATH, encoding="utf-8") as f:
+                    theirs = json.load(f)
+            except Exception:
+                theirs = None
+            if isinstance(theirs, dict):
+                _merge_external(cfg, prev["snapshot"], theirs)
     tmp = f"{util.CONFIG_PATH}.tmp.{os.getpid()}"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, util.CONFIG_PATH)
+    _remember(cfg)
 
 
 def _deep_update(base, overlay):
@@ -144,9 +203,24 @@ def git_worktree_info(path):
 
 
 def add_repo(cfg, path):
-    path = os.path.abspath(util.expand(path))
+    requested = os.path.abspath(util.expand(path))
+    path = requested
     info = git_worktree_info(path)
     if not info:
+        raise ValueError(f"{path} 不是 git 仓")
+    # Always persist the canonical worktree root.  Callers such as the local
+    # Agent may discover a nested directory inside a repository; saving that
+    # arbitrary child path makes later diagnostics and deduplication unstable.
+    # Preserve the user's lexical spelling when they selected the worktree root
+    # itself (macOS commonly aliases /var to /private/var).  Nested selections
+    # are still normalized to the repository root.
+    try:
+        selected_root = os.path.samefile(requested, info["root"])
+    except OSError:
+        selected_root = False
+    path = requested if selected_root else info["root"]
+    info = git_worktree_info(path)
+    if not info:  # Repository state changed between the two fixed probes.
         raise ValueError(f"{path} 不是 git 仓")
     for existing in cfg["repos"]:
         other = git_worktree_info(existing)
