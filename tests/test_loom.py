@@ -670,7 +670,7 @@ class OpenCodeCollectorTest(unittest.TestCase):
             ("prt_synthetic", "msg_u1", self._ms(2026, 6, 2),
              {"type": "text", "text": "系统注入内容", "synthetic": True}),
             ("prt_u1", "msg_u1", self._ms(2026, 6, 2),
-             {"type": "text", "text": "实现 SQLite 采集"}),
+             {"type": "text", "text": "[analyze-mode]\n实现 SQLite 采集"}),
             ("prt_u2", "msg_u2", self._ms(2026, 6, 3),
              {"type": "text", "text": "继续补兼容测试"}),
         ]
@@ -692,6 +692,7 @@ class OpenCodeCollectorTest(unittest.TestCase):
         self.assertEqual(first["summary"], "SQLite 会话采集")
         self.assertEqual(first["project"], "sqlite-project")
         self.assertNotIn("系统注入内容", first["detail"]["body"])
+        self.assertIn("实现 SQLite 采集", first["detail"]["body"])
         self.assertEqual(first["detail"]["files"], 4)
         second = by_id["opencode:ses_sqlite:2026-06-03"]
         self.assertEqual(second["summary"], "继续补兼容测试")

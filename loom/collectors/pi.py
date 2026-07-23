@@ -21,7 +21,7 @@ BODY_CAP = 8000
 def _is_real(text):
     """过滤命令、注入上下文和压缩续接提示，只留下用户的真实提问。"""
     s = (text or "").strip()
-    if not s or s[0] in "<[":
+    if not s or s.startswith("<"):
         return False
     if s.startswith("/") and " " not in s[:20]:
         return False
