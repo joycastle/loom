@@ -108,16 +108,14 @@ GitHub 里点开是源码,**下载后用浏览器打开**即可;或用 [htmlprev
 
 ## 📸 界面预览(`loom serve`)
 
-> 本地零依赖浏览页,仅 127.0.0.1。以下截图为**虚构演示数据**。
+> 本地零依赖浏览页,仅 127.0.0.1,纯管理无聊天。以下为 `loom serve` 实拍,**虚构演示数据**。
 
-**总览:聚光灯搜索 + 织物贡献图(你的日子被织成布)**
-<img src="docs/shots/dashboard.svg" width="100%" alt="dashboard" />
+**首页工作台:今天做了什么、来源分布、最近记录**
+<img src="docs/shots/dashboard.png" width="100%" alt="首页工作台" />
 
-**主题:DAG 图,点一个主题看「一件事」的全景**
-<img src="docs/shots/topics.svg" width="100%" alt="topics" />
-
-**按天:翻页月历热力,点日期看当天全景**
-<img src="docs/shots/calendar.svg" width="100%" alt="calendar" />
+| 台账(全文检索 + 筛选 + 分页) | 日历(月历热力 + 当天全景) | 主题(DAG,点主题看「一件事」) |
+|:---:|:---:|:---:|
+| <img src="docs/shots/ledger.png" alt="台账" /> | <img src="docs/shots/calendar.png" alt="日历" /> | <img src="docs/shots/topics.png" alt="主题" /> |
 
 ---
 
@@ -164,7 +162,7 @@ loom init                      # 交互引导:身份/扫仓/飞书
 loom sync [--push] [--since]   # 采集全部源 → 渲染 → 提交(--push 上云)。日常就这条
 loom collect --source <name>   # 单源采集:git|claude|codex|cursor|codebuddy|pi|opencode|feishu|all
 loom build | today
-loom serve [--port 8787]       # 本地浏览页(仅 127.0.0.1):搜索/主题树/按天 三视角 + 条目详情
+loom serve [--port 8787]       # 本地管理页(仅 127.0.0.1):首页/台账/日历/主题/日报 + 设置,纯管理无聊天
 loom search <词> [--project P] [--tool T] [--since D] [--until D]
                                # SQLite FTS5(trigram):≥3 字符 bm25 排序,<3 字符回退子串;空词+过滤=浏览
 
