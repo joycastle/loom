@@ -519,6 +519,11 @@ def cmd_serve(cfg, a):
     serve.serve(cfg, port=a.port)
 
 
+def cmd_mcp_serve(cfg, a):
+    from . import mcp
+    mcp.serve(cfg)
+
+
 _SKILL_STATUS_LABEL = {
     "installed": "已安装", "update_available": "有更新", "drifted": "⚠ 已被改动",
     "missing": "⚠ 文件缺失", "foreign": "⚠ 非 loom 内容", "not_installed": "未安装",
@@ -639,6 +644,7 @@ def build_parser():
     sub.add_parser("today")
     sp = sub.add_parser("serve")
     sp.add_argument("--port", type=int, default=8787)
+    sub.add_parser("mcp-serve")
     sub.add_parser("init")
     sp = sub.add_parser("search")
     sp.add_argument("term")
@@ -725,6 +731,7 @@ def main(argv=None):
         "source": cmd_source, "doc": cmd_doc, "data": cmd_data, "report": cmd_report,
         "deprecate": cmd_deprecate, "topic": cmd_topic, "note": cmd_note,
         "session": cmd_session, "serve": cmd_serve, "skill": cmd_skill,
+        "mcp-serve": cmd_mcp_serve,
     }
     handlers[args.cmd](cfg, args)
 

@@ -550,6 +550,31 @@ class ClaudeCollectorTest(unittest.TestCase):
         self.assertTrue(by_date["2026-06-02"]["summary"].startswith("第二天"))  # 续日用当天首问
         self.assertEqual(by_date["2026-06-02"]["detail"]["user"], 1)     # 只算当天的消息
 
+    def test_captures_git_branch_and_pr(self):
+        # 抓 Claude Code 记的 gitBranch / prNumber,用于按分支缝到同期提交
+        proj = os.path.join(self.root, "-Users-x-proj-z")
+        lines = [
+            {"cwd": "/Users/x/proj-z", "timestamp": "2026-06-10T09:00:00Z", "type": "user",
+             "gitBranch": "feat/attribution", "message": {"content": "在这条分支上改归因"}},
+            {"timestamp": "2026-06-10T09:05:00Z", "type": "user", "gitBranch": "feat/attribution",
+             "prNumber": 42, "prUrl": "https://x/pr/42", "prRepository": "org/repo",
+             "message": {"content": "开了 PR"}},
+        ]
+        with open(os.path.join(proj, "sid-branch.jsonl"), "w", encoding="utf-8") as f:
+            for d in lines:
+                f.write(json.dumps(d, ensure_ascii=False) + "\n")
+        e = [x for x in claude_col.collect(self.cfg, "2000-01-01")
+             if "sid-branch" in x["id"]][0]
+        self.assertEqual(e["detail"]["branch"], "feat/attribution")   # 当天主分支
+        self.assertEqual(e["detail"]["pr"]["number"], 42)             # 关联 PR
+        self.assertEqual(e["detail"]["pr"]["url"], "https://x/pr/42")
+
+    def test_no_branch_field_when_absent(self):
+        # 原始无 gitBranch → detail 不塞 branch 键(不污染旧数据/无分支会话)
+        e = claude_col.collect(self.cfg, "2000-01-01")[0]
+        self.assertNotIn("branch", e["detail"])
+        self.assertNotIn("pr", e["detail"])
+
 
 class PiCollectorTest(unittest.TestCase):
     def setUp(self):
@@ -1078,6 +1103,34 @@ class RenderNotesTest(unittest.TestCase):
         body = _read(os.path.join(jdir, "2026-07-01.md"))
         self.assertIn("还有一大段展开的上下文", body)   # 追加信息被渲染
         self.assertEqual(body.count("  > 梳理现状"), 0)  # 冗余的不渲染
+
+    def test_topic_backlinks_injected(self):
+        # 有主题映射的条目 → 日记里挂 [[主题]] 反向链接(Obsidian/Logseq 成图)
+        from loom import topics
+        for p in (topics._map_path(), topics._audit_path()):
+            if os.path.exists(p):
+                os.remove(p)
+        topics.save_map({"git:1": ["素材归因", "None-Of-These"], "git:2": []})
+        try:
+            self._build([_entry("git:1", "2026-06-30", "p", "git", "commit", "改归因"),
+                         _entry("git:2", "2026-06-30", "p", "git", "commit", "没打标")])
+            body = _read(os.path.join(config.journal_dir(self.cfg), "2026-06-30.md"))
+            self.assertIn("🏷 [[素材归因]]", body)      # 打了标的挂链
+            # 没映射的那条不挂(它的行是"没打标",其后不应紧跟 🏷)
+            self.assertNotIn("没打标  🏷", body)
+        finally:
+            if os.path.exists(topics._map_path()):
+                os.remove(topics._map_path())
+
+    def test_session_branch_and_pr_shown(self):
+        # 会话的 git 分支 / PR 显示在日记 AI 会话行
+        s = _entry("claude:b:2026-06-30", "2026-06-30", "p", "claude", "session", "改归因",
+                   start="2026-06-30T09:00:00", end="2026-06-30T10:00:00",
+                   branch="feat/attribution", pr={"number": 42, "url": "u", "repo": "r"})
+        self._build([s])
+        body = _read(os.path.join(config.journal_dir(self.cfg), "2026-06-30.md"))
+        self.assertIn("feat/attribution", body)
+        self.assertIn("PR #42", body)
 
     def test_data_and_code_notes_appear_in_journal(self):
         # 数据卡/代码(kind=note, tool=notes)按各自日期进当天日记的「📎 数据/代码/资料」区
@@ -2377,6 +2430,72 @@ class ServeTest(unittest.TestCase):
                              self.cfg.get("identities", {}).get("emails", []))
         finally:
             srv.shutdown()
+
+
+class McpTest(unittest.TestCase):
+    def setUp(self):
+        from loom import mcp
+        self.mcp = mcp
+        self.cfg = {"vault": {"dir": tempfile.mkdtemp(prefix="loom-vault-")}}
+
+    def _call(self, method, params=None, rid=1):
+        msg = {"jsonrpc": "2.0", "id": rid, "method": method}
+        if params is not None:
+            msg["params"] = params
+        return self.mcp.handle(msg, self.cfg)
+
+    def test_initialize_advertises_tools(self):
+        r = self._call("initialize", {})
+        self.assertEqual(r["result"]["serverInfo"]["name"], "loom")
+        self.assertIn("tools", r["result"]["capabilities"])
+
+    def test_initialized_notification_no_response(self):
+        # 通知(无 id)不回响应
+        self.assertIsNone(self.mcp.handle(
+            {"jsonrpc": "2.0", "method": "notifications/initialized"}, self.cfg))
+
+    def test_tools_list(self):
+        names = {t["name"] for t in self._call("tools/list")["result"]["tools"]}
+        self.assertEqual(names, {"loom_search", "loom_topic_ls", "loom_topic_show",
+                                 "loom_today", "loom_note"})
+
+    def test_search_tool_returns_text_content(self):
+        r = self._call("tools/call", {"name": "loom_search",
+                                      "arguments": {"term": "不存在的词xyz"}})
+        self.assertEqual(r["result"]["content"][0]["type"], "text")
+        self.assertIn("无命中", r["result"]["content"][0]["text"])
+
+    def test_unknown_tool_is_error(self):
+        r = self._call("tools/call", {"name": "nope", "arguments": {}})
+        self.assertEqual(r["error"]["code"], -32602)
+
+    def test_unknown_method_is_error(self):
+        self.assertEqual(self._call("bogus")["error"]["code"], -32601)
+
+    def test_tool_exception_returned_as_iserror_not_crash(self):
+        # 工具内部异常 → isError 结果,连接不崩(topic_show 无 vault 目录也不抛到顶)
+        r = self._call("tools/call", {"name": "loom_topic_show",
+                                      "arguments": {"topic": "任意"}})
+        self.assertEqual(r["result"]["content"][0]["type"], "text")   # 有结果,未变成协议错误
+
+    def test_serve_loop_reads_and_writes_ndjson(self):
+        import io
+        stdin = io.StringIO(
+            json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}) + "\n"
+            + json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n"
+            + json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}) + "\n")
+        stdout = io.StringIO()
+        self.mcp.serve(self.cfg, stdin=stdin, stdout=stdout)
+        out_lines = [l for l in stdout.getvalue().splitlines() if l.strip()]
+        self.assertEqual(len(out_lines), 2)              # initialize + tools/list;通知不回
+        self.assertEqual(json.loads(out_lines[0])["id"], 1)
+        self.assertEqual(json.loads(out_lines[1])["id"], 2)
+
+    def test_serve_parse_error_on_bad_json(self):
+        import io
+        stdout = io.StringIO()
+        self.mcp.serve(self.cfg, stdin=io.StringIO("not json\n"), stdout=stdout)
+        self.assertEqual(json.loads(stdout.getvalue())["error"]["code"], -32700)
 
 
 if __name__ == "__main__":

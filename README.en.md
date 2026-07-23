@@ -61,6 +61,14 @@ git clone https://github.com/joycastle/loom.git ~/Documents/loom && cd ~/Documen
 
 Then: `loom sync` to collect, `loom serve` to open the admin page. Daily use is a single `loom sync` (add `--push` to back up to the cloud).
 
+**Let AI call loom directly (MCP)** · the skill teaches an AI *how to type* loom commands; MCP makes loom a **native tool** inside AI coding clients — `loom_search` your ledger and `loom_note` while coding, no commands to remember:
+
+```bash
+claude mcp add loom -- loom mcp-serve      # Claude Code; or put it in a project .mcp.json
+```
+
+Exposes five tools — `loom_search` / `loom_topic_ls` / `loom_topic_show` / `loom_today` / `loom_note` (read-mostly; writes are confirmed by your client). Pure stdio JSON-RPC, zero deps.
+
 > **Want your AI to organize your history too?** After `git clone`, open the folder with your AI assistant and say: "**Read ONBOARDING.md, walk me through setup, then organize my history.**" It picks up the entry files (`AGENTS.md` / `CLAUDE.md`) and follows [`ONBOARDING.md`](./ONBOARDING.md): setup → first collection → ingest loose files → private cloud backup → topic classification → daily routine.
 
 ## 📸 Screenshots (`loom serve`)
@@ -89,6 +97,7 @@ loom's value isn't "another note tool" — it's a few deliberate design choices 
 loom init                      # interactive setup: identity / repos / Feishu
 loom sync [--push]             # collect all sources → render → commit (--push to cloud). Daily driver
 loom serve [--port 8787]       # local admin page (127.0.0.1): home/ledger/calendar/topics/report + settings
+loom mcp-serve                 # MCP server (stdio): expose loom as a native tool to Claude/Codex/…
 loom search <term> [--tool T] [--since D]   # full-text search (CJK substring; empty term + filters = browse)
 loom topic ls | show <topic>   # topic tree / roll up everything about one thing
 loom note "<text>" [--to cat]  # ingest a loose note (--update <keyword> appends to an existing entry)
