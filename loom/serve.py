@@ -282,7 +282,103 @@ def api_entry(eid, by_id):
         return {"error": "not found"}
     out = dict(e)
     out["topics"] = topics.load_map().get(eid, [])
+    out["related"] = api_related(eid, by_id, limit=12)
     return out
+
+
+def api_related(eid, by_id, limit=30):
+    """条目的自动派生关联(会话↔提交、共改、文档↔提交、对话续接)。"""
+    from . import relations
+    return relations.neighbors(by_id, (eid or "").strip(), limit=limit)
+
+
+def api_relation_graph(by_id, max_nodes=48, max_edges=72):
+    """全局结构关系总览;完整计数 + 为可读性裁剪后的强边子图。"""
+    from . import relations
+    return relations.global_graph(by_id, max_nodes=max_nodes, max_edges=max_edges)
+
+
+def api_topic_relation_graph(cfg, by_id):
+    """完整主题 DAG + 按主题聚合的自动结构关系。
+
+    图上的节点始终是主题,所以不会因为原始记录太多而裁掉语义层级。记录类型按
+    直接归类计数展示;自动结构边先在记录层派生,再按两端的主题组合去重聚合。
+    """
+    from . import relations
+
+    topic_view = api_topics(cfg, by_id)
+    pgs = topics.pages(cfg)
+    tmap = topics.load_map()
+    node_by_name = {node["name"]: dict(node) for node in topic_view["nodes"]}
+    for name in topic_view.get("loose", []):
+        node_by_name.setdefault(name, {
+            "name": name, "count": 0, "direct": 0, "multi": False,
+        })
+
+    kinds = defaultdict(lambda: defaultdict(int))
+    resolved_topics = {}
+    for eid, entry in by_id.items():
+        names = sorted(set(topics.resolve(name, pgs) for name in tmap.get(eid, [])))
+        resolved_topics[eid] = names
+        for name in names:
+            node = node_by_name.setdefault(name, {
+                "name": name, "count": 0, "direct": 0, "multi": False,
+            })
+            node["direct"] = node.get("direct", 0) + (0 if name in pgs else 1)
+            node["count"] = node.get("count", 0) + (0 if name in pgs else 1)
+            kinds[name][entry.get("kind") or "other"] += 1
+
+    aggregated = defaultdict(lambda: {
+        "count": 0, "score": 0.0, "reason_counts": defaultdict(int),
+    })
+    raw_edges = relations.all_edges(by_id)
+    mapped_raw_edges = 0
+    within_topic_edges = 0
+    for edge in raw_edges:
+        left_topics = resolved_topics.get(edge["source"], ())
+        right_topics = resolved_topics.get(edge["target"], ())
+        pairs = {tuple(sorted((left, right)))
+                 for left in left_topics for right in right_topics if left != right}
+        if not pairs:
+            if set(left_topics) & set(right_topics):
+                within_topic_edges += 1
+            continue
+        mapped_raw_edges += 1
+        for pair in pairs:
+            meta = aggregated[pair]
+            meta["count"] += 1
+            meta["score"] += edge["score"]
+            for reason in edge["reasons"]:
+                meta["reason_counts"][reason] += 1
+
+    relation_edges = []
+    for (source, target), meta in aggregated.items():
+        reasons = sorted(meta["reason_counts"],
+                         key=lambda reason: (-meta["reason_counts"][reason], reason))[:3]
+        relation_edges.append({
+            "source": source,
+            "target": target,
+            "count": meta["count"],
+            "score": round(meta["score"], 3),
+            "reasons": reasons,
+        })
+    relation_edges.sort(key=lambda edge: (-edge["count"], -edge["score"],
+                                          edge["source"], edge["target"]))
+
+    nodes = []
+    for name, node in node_by_name.items():
+        node["kinds"] = dict(sorted(kinds[name].items()))
+        nodes.append(node)
+    nodes.sort(key=lambda node: (-node.get("count", 0), node["name"]))
+    return {
+        "nodes": nodes,
+        "hierarchy_edges": topic_view["edges"],
+        "relation_edges": relation_edges,
+        "total_tagged": topic_view["total_tagged"],
+        "total_relation_edges": len(raw_edges),
+        "mapped_relation_edges": mapped_raw_edges,
+        "within_topic_edges": within_topic_edges,
+    }
 
 
 def _record_state(e, tmap):
@@ -1083,6 +1179,12 @@ def _make_handler(cfg, admin_token=None):
                     self._json(api_home(cfg, fresh()))
                 elif u.path == "/api/entry":
                     self._json(api_entry(q.get("id", ""), fresh()))
+                elif u.path == "/api/related":
+                    self._json({"related": api_related(q.get("id", ""), fresh())})
+                elif u.path == "/api/relation-graph":
+                    self._json(api_relation_graph(fresh()))
+                elif u.path == "/api/topic-relations":
+                    self._json(api_topic_relation_graph(cfg, fresh()))
                 elif u.path == "/api/admin/overview":
                     if not self._console_authorized():
                         self._json({"error": "forbidden", "message": "Console 会话无效"}, 403)

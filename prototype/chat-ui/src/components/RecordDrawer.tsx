@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { X, FileText, Hash } from "lucide-react";
+import { ArrowRight, X, FileText, Hash, Link2 } from "lucide-react";
 import { useLoom } from "@/runtime/LoomProvider";
 import { Badge, toolSlug } from "@/components/Badge";
 import { useT, type Translate } from "@/lib/lang";
-import type { LoomCard, LoomEntryDetail, LoomSearchHit } from "@/types/loom";
+import type {
+  LoomCard,
+  LoomEntryDetail,
+  LoomRelatedEntry,
+  LoomSearchHit,
+} from "@/types/loom";
 
 // Bilingual labels for record kinds (falls back to the raw value).
 const KIND_LABELS: Record<string, [string, string]> = {
@@ -98,6 +103,125 @@ export function RecordCard({ card }: { card: LoomCard | LoomSearchHit }) {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function RelatedEntryCard({ related }: { related: LoomRelatedEntry }) {
+  const { openRecord } = useLoom();
+  const t = useT();
+  return (
+    <button
+      type="button"
+      className="loom-related-card"
+      onClick={() => openRecord(related.id)}
+      title={t("打开这条关联记录", "Open this related record")}
+    >
+      <div className="loom-related-head">
+        <div className="loom-rec-meta">
+          {related.tool ? (
+            <Badge tone="tool" className={toolSlug(related.tool)}>{related.tool}</Badge>
+          ) : null}
+          <span className="loom-rec-kind">{kindLabel(t, related.kind)}</span>
+          {related.date ? <span className="loom-rec-date">{related.date}</span> : null}
+        </div>
+        <span
+          className="loom-related-score"
+          title={t("自动派生的关联分数", "Automatically derived relation score")}
+        >
+          {related.score.toFixed(1)}
+        </span>
+      </div>
+      <div className="loom-related-summary">
+        <span>{related.summary || t("(无摘要)", "(no summary)")}</span>
+        <ArrowRight size={13} strokeWidth={2} aria-hidden="true" />
+      </div>
+      {related.reasons.length ? (
+        <div className="loom-related-reasons">
+          {related.reasons.map((reason) => (
+            <span key={reason}>{reason}</span>
+          ))}
+        </div>
+      ) : null}
+    </button>
+  );
+}
+
+function shortNodeLabel(value: string, max = 18): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length > max ? `${compact.slice(0, max)}…` : compact;
+}
+
+function RelatedGraph({ entry, related }: { entry: LoomEntryDetail; related: LoomRelatedEntry[] }) {
+  const { openRecord } = useLoom();
+  const t = useT();
+  const nodes = related.slice(0, 6).map((item, index, all) => {
+    const angle = -Math.PI / 2 + (Math.PI * 2 * index) / all.length;
+    return {
+      item,
+      x: 200 + Math.cos(angle) * 145,
+      y: 115 + Math.sin(angle) * 78,
+    };
+  });
+
+  return (
+    <div
+      className="loom-related-graph"
+      role="img"
+      aria-label={t(
+        `当前记录与 ${related.length} 条记录的一跳关联图`,
+        `One-hop graph from this record to ${related.length} related records`,
+      )}
+    >
+      <svg viewBox="0 0 400 230" aria-hidden="true">
+        {nodes.map(({ item, x, y }) => (
+          <g key={item.id}>
+            <line x1="200" y1="115" x2={x} y2={y} />
+            <text x={200 + (x - 200) * 0.58} y={115 + (y - 115) * 0.58 - 4}>
+              {item.score.toFixed(1)}
+            </text>
+          </g>
+        ))}
+      </svg>
+      <div className="loom-graph-center">
+        <strong>{kindLabel(t, entry.kind)}</strong>
+        <span>{shortNodeLabel(entry.summary || t("当前记录", "Current record"), 16)}</span>
+      </div>
+      {nodes.map(({ item, x, y }) => (
+        <button
+          key={item.id}
+          type="button"
+          className="loom-graph-node"
+          style={{ left: `${x / 4}%`, top: `${y / 2.3}%` }}
+          onClick={() => openRecord(item.id)}
+          title={`${item.summary || item.id}\n${item.reasons.join(" · ")}`}
+        >
+          <strong>{kindLabel(t, item.kind)}</strong>
+          <span>{shortNodeLabel(item.summary || item.id)}</span>
+          <small>{shortNodeLabel(item.reasons[0] || t("关联", "Related"), 15)}</small>
+        </button>
+      ))}
+      {related.length > nodes.length ? (
+        <span className="loom-graph-more">+{related.length - nodes.length}</span>
+      ) : null}
+    </div>
+  );
+}
+
+function RelatedEntries({ entry, related }: { entry: LoomEntryDetail; related: LoomRelatedEntry[] }) {
+  const t = useT();
+  if (!related.length) return null;
+  return (
+    <section className="loom-drawer-section">
+      <h4 className="loom-related-title">
+        <span><Link2 size={12} strokeWidth={2.2} aria-hidden="true" />{t("关联图", "Relation map")}</span>
+        <span>{related.length}</span>
+      </h4>
+      <RelatedGraph entry={entry} related={related} />
+      <h5 className="loom-related-list-title">{t("关联记录", "Related records")}</h5>
+      <div className="loom-related-list">
+        {related.map((item) => <RelatedEntryCard key={item.id} related={item} />)}
+      </div>
+    </section>
+  );
 }
 
 function DetailBody({ entry }: { entry: LoomEntryDetail }) {
@@ -239,6 +363,7 @@ export function RecordDrawer() {
                   <code className="loom-drawer-ref">{entry.ref}</code>
                 </section>
               ) : null}
+              <RelatedEntries entry={entry} related={entry.related || []} />
               <DetailBody entry={entry} />
             </>
           ) : null}

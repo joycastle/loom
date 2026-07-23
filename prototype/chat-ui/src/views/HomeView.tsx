@@ -7,7 +7,7 @@
 // been removed — this is a local admin surface.
 
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw, Check, X } from "lucide-react";
+import { RefreshCw, Check, X, ArrowRight, Search, Settings2 } from "lucide-react";
 import { useLoom } from "@/runtime/LoomProvider";
 import { useAppRouter } from "@/lib/app-router";
 import { RecordCard } from "@/components/RecordDrawer";
@@ -269,15 +269,43 @@ export function HomeView() {
 
         {/* ---- daily report workspace link ---- */}
         <section className="home-panel home-report">
-          <div className="home-panel-head">
-            <div className="home-panel-title">
-              <h2>{t("日报", "Daily report")}</h2>
-              <p>{t("查看历史日报,或导出当天原材料交给外部 AI 撰写", "Review past reports, or export today's material for an external AI")}</p>
-            </div>
+          <div className="home-panel-title">
+            <h2>{t("日报", "Daily report")}</h2>
+            <p>{t("查看历史日报,或导出当天原材料交给外部 AI 撰写", "Review past reports, or export today's material for an external AI")}</p>
           </div>
-          <button className="act home-report-action" id="home-report-open" onClick={() => setView("report", true)}>
-            {t("打开日报工作区", "Open report workspace")}
+          <button className="home-utility-link" id="home-report-open" onClick={() => setView("report", true)}>
+            <span>{t("打开日报工作区", "Open report workspace")}</span>
+            <ArrowRight aria-hidden="true" />
           </button>
+        </section>
+
+        {/* ---- compact workspace status strip ---- */}
+        <section className="home-workspace-bar" aria-label={t("工作区状态", "Workspace status")}>
+          <div className="home-workspace-heading">
+            <h2>{t("工作区状态", "Workspace status")}</h2>
+            <p>{t("本地摘要", "Local summary")}</p>
+          </div>
+          <div className="home-status-list" id="home-workspace-status">
+            <HomeStatusRow
+              label={t("本地台账", "Local ledger")}
+              value={home ? t(`${home.total_entries || 0} 条记录`, `${home.total_entries || 0} records`) : "…"}
+            />
+            <HomeStatusRow
+              label={t("数据来源", "Data sources")}
+              value={home ? `${home.active_sources || 0} / ${home.available_sources || 0}` : "…"}
+              state={home ? (home.active_sources ? "" : "warn") : "off"}
+            />
+          </div>
+          <div className="home-quick-actions">
+            <button className="home-utility-action" onClick={() => setView("ledger", true)}>
+              <Search aria-hidden="true" />
+              {t("搜索台账", "Search ledger")}
+            </button>
+            <button className="home-utility-action" onClick={() => setView("admin", true)}>
+              <Settings2 aria-hidden="true" />
+              {t("管理来源", "Manage sources")}
+            </button>
+          </div>
         </section>
 
         {/* ---- recent records ---- */}
@@ -320,34 +348,6 @@ export function HomeView() {
           </div>
         </section>
 
-        {/* ---- workspace status ---- */}
-        <section className="home-panel home-workspace">
-          <div className="home-panel-head">
-            <div className="home-panel-title">
-              <h2>{t("工作区状态", "Workspace status")}</h2>
-              <p>{t("这里只显示摘要,详细配置仍在设置中", "Summary only; detailed configuration stays in Settings")}</p>
-            </div>
-          </div>
-          <div className="home-status-list" id="home-workspace-status">
-            <HomeStatusRow
-              label={t("本地台账", "Local ledger")}
-              value={home ? t(`${home.total_entries || 0} 条记录`, `${home.total_entries || 0} records`) : "…"}
-            />
-            <HomeStatusRow
-              label={t("数据来源", "Data sources")}
-              value={home ? `${home.active_sources || 0} / ${home.available_sources || 0}` : "…"}
-              state={home ? (home.active_sources ? "" : "warn") : "off"}
-            />
-          </div>
-          <div className="home-quick-actions">
-            <button className="act" onClick={() => setView("ledger", true)}>
-              {t("搜索台账", "Search ledger")}
-            </button>
-            <button className="act" onClick={() => setView("admin", true)}>
-              {t("管理来源", "Manage sources")}
-            </button>
-          </div>
-        </section>
       </div>
     </div>
   );
