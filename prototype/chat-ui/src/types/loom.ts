@@ -30,6 +30,55 @@ export type LoomCard = {
 // Search hits add a (possibly highlight-marked) snippet.
 export type LoomSearchHit = LoomCard & { snip?: string };
 
+// An automatically derived structural edge returned with /api/entry. The
+// backend includes the target's card fields so the drawer can render and open
+// it without another list request.
+export type LoomRelatedEntry = LoomCard & {
+  score: number;
+  reasons: string[];
+};
+
+export type LoomRelationGraphNode = LoomCard & { degree: number };
+export type LoomRelationGraphEdge = {
+  source: string;
+  target: string;
+  score: number;
+  reasons: string[];
+};
+export type LoomRelationGraph = {
+  nodes: LoomRelationGraphNode[];
+  edges: LoomRelationGraphEdge[];
+  total_entries: number;
+  total_nodes: number;
+  total_edges: number;
+  shown_nodes: number;
+  shown_edges: number;
+};
+
+export type LoomTopicRelationNode = {
+  name: string;
+  count: number;
+  direct: number;
+  multi?: boolean;
+  kinds: Record<string, number>;
+};
+export type LoomTopicRelationEdge = {
+  source: string;
+  target: string;
+  count: number;
+  score: number;
+  reasons: string[];
+};
+export type LoomTopicRelationGraph = {
+  nodes: LoomTopicRelationNode[];
+  hierarchy_edges: [string, string][];
+  relation_edges: LoomTopicRelationEdge[];
+  total_tagged: number;
+  total_relation_edges: number;
+  mapped_relation_edges: number;
+  within_topic_edges: number;
+};
+
 export type LoomStats = {
   entries: number;
   days: number;
@@ -73,7 +122,7 @@ export type LoomDayResponse = {
   groups: Record<string, LoomCard[]>;
 };
 
-export type LoomTopicNode = { name: string; children?: LoomTopicNode[] };
+export type LoomTopicNode = { name: string; count?: number; children?: LoomTopicNode[] };
 
 export type LoomTopicsResponse = {
   tree: LoomTopicNode[];
@@ -93,6 +142,7 @@ export type LoomTopicResponse = {
 // Full entry = raw record dict + topics + a kind-dependent `detail` bag.
 export type LoomEntryDetail = LoomCard & {
   topics?: string[];
+  related?: LoomRelatedEntry[];
   detail?: Record<string, unknown>;
   error?: string;
   [key: string]: unknown;

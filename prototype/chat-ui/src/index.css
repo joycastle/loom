@@ -244,6 +244,202 @@ body {
   color: var(--text-secondary);
   word-break: break-all;
 }
+.loom-related-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.loom-related-title > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.loom-related-graph {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 400 / 230;
+  margin: 4px 0 12px;
+  overflow: hidden;
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at center, var(--accent-soft), transparent 42%),
+    var(--surface-subtle);
+}
+.loom-related-graph > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.loom-related-graph line {
+  stroke: var(--border-strong);
+  stroke-width: 1.25;
+}
+.loom-related-graph text {
+  fill: var(--text-secondary);
+  font-size: 8px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--surface-subtle);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  text-anchor: middle;
+}
+.loom-graph-center,
+.loom-graph-node {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+.loom-graph-center {
+  left: 50%;
+  top: 50%;
+  width: 116px;
+  min-height: 48px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.loom-graph-center strong,
+.loom-graph-node strong {
+  font-size: 9.5px;
+  color: var(--accent);
+}
+.loom-graph-center span,
+.loom-graph-node span {
+  width: 100%;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.loom-graph-node {
+  width: clamp(78px, 25%, 104px);
+  min-height: 42px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.loom-graph-node:hover {
+  z-index: 2;
+  border-color: var(--accent);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--ink) 12%, transparent);
+  transform: translate(-50%, -50%) scale(1.03);
+}
+.loom-graph-node:focus-visible {
+  z-index: 2;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.loom-graph-node small {
+  width: 100%;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 8.5px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.loom-graph-more {
+  position: absolute;
+  right: 6px;
+  bottom: 5px;
+  color: var(--text-secondary);
+  font-size: 9.5px;
+}
+.loom-related-list-title {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.loom-related-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.loom-related-card {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.loom-related-card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+  transform: translateX(2px);
+}
+.loom-related-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.loom-related-head,
+.loom-related-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.loom-related-score {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+.loom-related-summary {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.loom-related-summary > span {
+  min-width: 0;
+  word-break: break-word;
+}
+.loom-related-summary > svg {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+}
+.loom-related-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 7px;
+}
+.loom-related-reasons > span {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
 .loom-drawer-json {
   margin: 0;
   padding: 11px 13px;

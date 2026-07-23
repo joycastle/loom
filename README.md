@@ -77,9 +77,11 @@ claude mcp add loom -- loom mcp-serve      # Claude Code;或写进项目 .mcp.js
 
 <img src="docs/shots/dashboard.png" width="100%" alt="首页工作台" />
 
-| 台账(全文检索 + 筛选 + 分页) | 日历(月历热力 + 当天全景) | 主题(DAG,点主题看「一件事」) |
+| 台账(全文检索 + 筛选 + 分页) | 日历(月历热力 + 当天全景) | 主题层级树(双击展开) |
 |:---:|:---:|:---:|
 | <img src="docs/shots/ledger.png" alt="台账" /> | <img src="docs/shots/calendar.png" alt="日历" /> | <img src="docs/shots/topics.png" alt="主题" /> |
+
+主题页把两种视角分开呈现:「主题汇总」用树形布局展示父子层级,默认仅显示顶层、双击逐层展开;「关联总览」用聚合矩阵展示不同主题族之间的真实结构关联。
 
 ## 🧵 为什么是这样
 
