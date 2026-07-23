@@ -1668,6 +1668,34 @@ class TopicTest(unittest.TestCase):
         self.assertIn("[素材归因]  ← 在此基础上补充", ref)   # 展示现主题,让 AI 在其上补充
         self.assertIn("补上遗漏的侧面主题", ref)             # 指令是"补充/更细",不是重判
 
+    def test_set_parents_writes_edges_and_enables_rollup(self):
+        for t in ("素材", "素材归因", "serial兜底"):
+            self._page(t)
+        n, created = self.topics.set_parents(
+            self.cfg, [("素材归因", ["素材"]), ("serial兜底", ["素材归因"])])
+        self.assertEqual(n, 2)
+        pgs = self.topics.pages(self.cfg)
+        self.assertEqual(pgs["素材归因"]["parents"], ["素材"])        # 父边写盘
+        self.assertEqual(self.topics.descendants("素材", pgs),
+                         {"素材", "素材归因", "serial兜底"})           # 上卷整棵树
+
+    def test_set_parents_creates_missing_and_rejects_cycle(self):
+        self._page("素材归因")
+        # 父主题不存在 → 自动建页
+        self.topics.set_parents(self.cfg, [("素材归因", ["素材"])])
+        self.assertIn("素材", self.topics.pages(self.cfg))
+        # 成环 → 抛错,不写盘
+        with self.assertRaises(ValueError):
+            self.topics.set_parents(self.cfg, [("素材", ["素材归因"])])
+
+    def test_hierarchy_prompt_lists_topics_and_parents(self):
+        self._page("素材")
+        self._page("素材归因", parent="[[素材]]")
+        out = self.topics.hierarchy_prompt(self.cfg)
+        self.assertIn("建立层级", out)
+        self.assertIn("→ 素材", out)               # 显示当前父级
+        self.assertIn("set-parents --file", out)    # 指向落地命令
+
     def test_gather_shows_member_counts(self):
         self._page("素材归因")
         by = {"git:1": _entry("git:1", "2026-06-30", "p", "git", "commit", "a"),
