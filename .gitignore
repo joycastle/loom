@@ -5,4 +5,3 @@ __pycache__/
 .loom/
 .env
 # React 管理页构建产物(由 prototype/chat-ui 生成,靠 browse.html 兜底)
-loom/assets/ui/
