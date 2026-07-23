@@ -20,6 +20,8 @@ from loom.collectors import cursor as cursor_col               # noqa: E402
 from loom.collectors import git as git_col                     # noqa: E402
 from loom.collectors import claude as claude_col                # noqa: E402
 from loom.collectors import codebuddy as codebuddy_col          # noqa: E402
+from loom.collectors import pi as pi_col                          # noqa: E402
+from loom.collectors import opencode as opencode_col              # noqa: E402
 from loom.collectors import docs as docs_col                    # noqa: E402
 from loom.collectors import notes as notes_col                  # noqa: E402
 import subprocess                                              # noqa: E402
@@ -247,6 +249,10 @@ class ConfigTest(unittest.TestCase):
             cfg = config.load()
             self.assertEqual(cfg["owner"]["name"], "测试")
             self.assertIn("cursor", cfg["sources"])       # 默认键补齐
+            self.assertIn("pi", cfg["sources"])
+            self.assertIn("opencode", cfg["sources"])
+            self.assertFalse(cfg["sources"]["pi"]["enabled"])
+            self.assertFalse(cfg["sources"]["opencode"]["enabled"])
             self.assertIn("bitables", cfg["feishu"])
         finally:
             os.remove(util.CONFIG_PATH)
@@ -543,6 +549,160 @@ class ClaudeCollectorTest(unittest.TestCase):
         self.assertEqual(by_date["2026-06-01"]["summary"], "归因管道")     # 首日用整会话标题
         self.assertTrue(by_date["2026-06-02"]["summary"].startswith("第二天"))  # 续日用当天首问
         self.assertEqual(by_date["2026-06-02"]["detail"]["user"], 1)     # 只算当天的消息
+
+
+class PiCollectorTest(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="loom-pi-")
+        project_dir = os.path.join(self.root, "--Users-x-pi-project--")
+        os.makedirs(project_dir)
+        self.fp = os.path.join(project_dir, "2026-06-01T00-00-00Z_sid-pi.jsonl")
+        rows = [
+            {"type": "session", "version": 3, "id": "sid-pi",
+             "timestamp": "2026-06-01T09:00:00Z", "cwd": "/Users/x/pi-project"},
+            {"type": "message", "id": "u0", "parentId": None,
+             "timestamp": "2026-06-01T09:00:00Z",
+             "message": {"role": "user", "content": "/model"}},
+            {"type": "message", "id": "u1", "parentId": "u0",
+             "timestamp": "2026-06-01T09:01:00Z",
+             "message": {"role": "user", "content": [
+                 {"type": "text", "text": "第一天实现 pi 采集器"},
+                 {"type": "image", "data": "base64", "mimeType": "image/png"}]}},
+            {"type": "message", "id": "a1", "parentId": "u1",
+             "timestamp": "2026-06-01T10:00:00Z",
+             "message": {"role": "assistant", "content": [
+                 {"type": "text", "text": "已实现"}]}},
+            {"type": "message", "id": "u2", "parentId": "a1",
+             "timestamp": "2026-06-02T09:00:00Z",
+             "message": {"role": "user", "content": "第二天补分支与测试"}},
+            {"type": "message", "id": "a2", "parentId": "u2",
+             "timestamp": "2026-06-02T10:00:00Z",
+             "message": {"role": "assistant", "content": "完成"}},
+            {"type": "session_info", "id": "info", "parentId": "a2",
+             "timestamp": "2026-06-02T10:01:00Z", "name": "pi 会话采集"},
+        ]
+        with open(self.fp, "w", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            f.write("{损坏行\n")
+        self.cfg = {"sources": {"pi": {"enabled": True,
+                                                "sessions_dir": self.root}}}
+
+    def test_collects_named_tree_session_by_real_message_day(self):
+        out = pi_col.collect(self.cfg, "2000-01-01")
+        by_date = {entry["date"]: entry for entry in out}
+        self.assertEqual(set(by_date), {"2026-06-01", "2026-06-02"})
+        self.assertEqual(by_date["2026-06-01"]["summary"], "pi 会话采集")
+        self.assertEqual(by_date["2026-06-01"]["project"], "pi-project")
+        self.assertEqual(by_date["2026-06-01"]["detail"]["opening"],
+                         "第一天实现 pi 采集器")
+        self.assertNotIn("/model", by_date["2026-06-01"]["detail"]["body"])
+        self.assertTrue(by_date["2026-06-02"]["summary"].startswith("第二天"))
+        self.assertEqual(by_date["2026-06-02"]["detail"]["asst"], 1)
+        self.assertEqual(by_date["2026-06-02"]["ref"], self.fp)
+
+    def test_since_and_disabled(self):
+        out = pi_col.collect(self.cfg, "2026-06-02")
+        self.assertEqual([entry["date"] for entry in out], ["2026-06-02"])
+        self.assertEqual(pi_col.collect({"sources": {"pi": {"enabled": False}}},
+                                        "2000-01-01"), [])
+
+
+class OpenCodeCollectorTest(unittest.TestCase):
+    @staticmethod
+    def _ms(year, month, day, hour=9):
+        import datetime
+        return int(datetime.datetime(year, month, day, hour).timestamp() * 1000)
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="loom-opencode-")
+        self._legacy()
+        self._sqlite()
+        self.cfg = {"sources": {"opencode": {"enabled": True,
+                                                      "data_dir": self.root}}}
+
+    def _legacy(self):
+        storage = os.path.join(self.root, "storage")
+        sid, mid = "ses_legacy", "msg_legacy_user"
+        session_dir = os.path.join(storage, "session", "project-a")
+        message_dir = os.path.join(storage, "message", sid)
+        part_dir = os.path.join(storage, "part", mid)
+        os.makedirs(session_dir); os.makedirs(message_dir); os.makedirs(part_dir)
+        with open(os.path.join(session_dir, sid + ".json"), "w", encoding="utf-8") as f:
+            json.dump({"id": sid, "directory": "/Users/x/legacy-project",
+                       "title": "旧版 JSON 会话",
+                       "time": {"created": self._ms(2026, 6, 1),
+                                "updated": self._ms(2026, 6, 1)},
+                       "summary": {"additions": 3, "deletions": 1, "files": 1}}, f)
+        with open(os.path.join(message_dir, mid + ".json"), "w", encoding="utf-8") as f:
+            json.dump({"id": mid, "sessionID": sid, "role": "user",
+                       "time": {"created": self._ms(2026, 6, 1)}}, f)
+        with open(os.path.join(part_dir, "prt_real.json"), "w", encoding="utf-8") as f:
+            json.dump({"type": "text", "text": "读取旧版 OpenCode 历史"}, f,
+                      ensure_ascii=False)
+
+    def _sqlite(self):
+        db = os.path.join(self.root, "opencode.db")
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE session (id TEXT, directory TEXT, title TEXT, "
+                     "time_created INTEGER, time_updated INTEGER, summary_additions INTEGER, "
+                     "summary_deletions INTEGER, summary_files INTEGER)")
+        conn.execute("CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, "
+                     "data TEXT)")
+        conn.execute("CREATE TABLE part (id TEXT, message_id TEXT, session_id TEXT, "
+                     "time_created INTEGER, data TEXT)")
+        sid = "ses_sqlite"
+        conn.execute("INSERT INTO session VALUES (?,?,?,?,?,?,?,?)",
+                     (sid, "/Users/x/sqlite-project", "SQLite 会话采集",
+                      self._ms(2026, 6, 2), self._ms(2026, 6, 3), 12, 2, 4))
+        rows = [
+            ("msg_u1", sid, self._ms(2026, 6, 2),
+             {"role": "user", "time": {"created": self._ms(2026, 6, 2)}}),
+            ("msg_a1", sid, self._ms(2026, 6, 2, 10),
+             {"role": "assistant", "time": {"created": self._ms(2026, 6, 2, 10)}}),
+            ("msg_u2", sid, self._ms(2026, 6, 3),
+             {"role": "user", "time": {"created": self._ms(2026, 6, 3)}}),
+        ]
+        for mid, session_id, created, data in rows:
+            conn.execute("INSERT INTO message VALUES (?,?,?,?)",
+                         (mid, session_id, created, json.dumps(data)))
+        parts = [
+            ("prt_synthetic", "msg_u1", self._ms(2026, 6, 2),
+             {"type": "text", "text": "系统注入内容", "synthetic": True}),
+            ("prt_u1", "msg_u1", self._ms(2026, 6, 2),
+             {"type": "text", "text": "[analyze-mode]\n实现 SQLite 采集"}),
+            ("prt_u2", "msg_u2", self._ms(2026, 6, 3),
+             {"type": "text", "text": "继续补兼容测试"}),
+        ]
+        for pid, mid, created, data in parts:
+            conn.execute("INSERT INTO part VALUES (?,?,?,?,?)",
+                         (pid, mid, sid, created, json.dumps(data, ensure_ascii=False)))
+        conn.commit(); conn.close()
+
+    def test_merges_sqlite_and_legacy_json_and_splits_days(self):
+        out = opencode_col.collect(self.cfg, "2000-01-01")
+        by_id = {entry["id"]: entry for entry in out}
+        self.assertIn("opencode:ses_legacy:2026-06-01", by_id)
+        self.assertIn("opencode:ses_sqlite:2026-06-02", by_id)
+        self.assertIn("opencode:ses_sqlite:2026-06-03", by_id)
+        legacy = by_id["opencode:ses_legacy:2026-06-01"]
+        self.assertEqual(legacy["summary"], "旧版 JSON 会话")
+        self.assertEqual(legacy["detail"]["opening"], "读取旧版 OpenCode 历史")
+        first = by_id["opencode:ses_sqlite:2026-06-02"]
+        self.assertEqual(first["summary"], "SQLite 会话采集")
+        self.assertEqual(first["project"], "sqlite-project")
+        self.assertNotIn("系统注入内容", first["detail"]["body"])
+        self.assertIn("实现 SQLite 采集", first["detail"]["body"])
+        self.assertEqual(first["detail"]["files"], 4)
+        second = by_id["opencode:ses_sqlite:2026-06-03"]
+        self.assertEqual(second["summary"], "继续补兼容测试")
+        self.assertEqual(second["detail"]["user"], 1)
+
+    def test_since_and_disabled(self):
+        out = opencode_col.collect(self.cfg, "2026-06-03")
+        self.assertEqual([entry["date"] for entry in out], ["2026-06-03"])
+        self.assertEqual(opencode_col.collect(
+            {"sources": {"opencode": {"enabled": False}}}, "2000-01-01"), [])
 
 
 class CodeBuddyCollectorTest(unittest.TestCase):
@@ -1884,6 +2044,25 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(result["sync"]["sources"][0]["name"], "codebuddy")
         self.assertIn("已关闭", result["sync"]["sources"][0]["message"])
 
+    def test_pi_and_opencode_are_registered_opt_in_sources(self):
+        from loom import collectors
+        cfg = json.loads(json.dumps(self.cfg))
+        cfg["sources"] = {}
+        for name in ("pi", "opencode"):
+            cfg["sources"][name] = dict(config.DEFAULT_CONFIG["sources"][name])
+        ov = self.serve.api_admin_overview(cfg, store.load())
+        rows = {row["name"]: row for row in ov["sources"]}
+        for name, key in (("pi", "sessions_dir"), ("opencode", "data_dir")):
+            self.assertIn(name, collectors.sync_names())
+            self.assertFalse(config.DEFAULT_CONFIG["sources"][name]["enabled"])
+            self.assertEqual(rows[name]["category"], "development")
+            self.assertTrue(rows[name]["available"])
+            self.assertEqual(rows[name]["status"], "off")
+            self.assertEqual(rows[name]["checks"][0]["label"], key)
+            self.assertEqual(rows[name]["checks"][0]["value"],
+                             util.expand(config.DEFAULT_CONFIG["sources"][name][key]))
+            self.assertIn(key, config.DEFAULT_CONFIG["sources"][name])
+
     def test_admin_repo_rows_accepts_git_worktree(self):
         root = tempfile.mkdtemp(prefix="loom-admin-repo-")
         wt = tempfile.mkdtemp(prefix="loom-admin-wt-")
@@ -1940,6 +2119,11 @@ class ServeTest(unittest.TestCase):
                                                    "name": "codebuddy", "path": source_dir})
         self.assertTrue(r["ok"])
         self.assertEqual(self.cfg["sources"]["codebuddy"]["extension_data"], source_dir)
+        for name, key in (("pi", "sessions_dir"), ("opencode", "data_dir")):
+            r = self.serve.api_admin_action(self.cfg, {"action": "source_path_set",
+                                                       "name": name, "path": source_dir})
+            self.assertTrue(r["ok"])
+            self.assertEqual(self.cfg["sources"][name][key], source_dir)
         r = self.serve.api_admin_action(self.cfg, {"action": "source_path_set",
                                                    "name": "docs", "path": source_dir})
         self.assertFalse(r["ok"])

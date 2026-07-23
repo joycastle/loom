@@ -647,7 +647,7 @@ async function doSearch(resetPage=false){
 $('#q').addEventListener('input',()=>{clearTimeout(deb);deb=setTimeout(()=>doSearch(true),280)});
 ['#f-tool','#f-since','#f-until'].forEach(s=>$(s).onchange=()=>{clearTimeout(deb);doSearch(true)});
 $('#f-page-size').onchange=()=>{clearTimeout(deb);LEDGER_PAGE_SIZE=Number($('#f-page-size').value)||20;doSearch(true)};
-['git','claude','codex','cursor','codebuddy','feishu','docs','notes','日报'].forEach(t=>{
+['git','claude','codex','cursor','codebuddy','pi','opencode','feishu','docs','notes','日报'].forEach(t=>{
   const o=document.createElement('option');o.value=t;o.textContent=t;$('#f-tool').appendChild(o)});
 document.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();showView('ledger',true);$('#q').focus({preventScroll:false})}
@@ -804,7 +804,7 @@ let ADMIN=null,CONSOLE=null,RESOURCES=null,ADMIN_LOAD=null;
 const jsq=s=>esc(String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,' '));
 const pct=(n,max)=>max?Math.max(4,100*n/max).toFixed(1):0;
 function fmtBytes(n){n=Number(n)||0;if(n<1024)return n+' B';const u=['KB','MB','GB','TB'];let i=-1;do{n/=1024;i++}while(n>=1024&&i<u.length-1);return n.toFixed(n>=100?0:n>=10?1:2)+' '+u[i]}
-function sourceLabel(n){return ({git:'Git',claude:'Claude',codex:'Codex',cursor:'Cursor',codebuddy:'CodeBuddy',feishu:T('飞书需求表','Feishu Bitable'),docs:T('项目文档','Project Docs'),notes:T('个人笔记','Notes'),backup:T('知识库备份','Knowledge backup')})[n]||n}
+function sourceLabel(n){return ({git:'Git',claude:'Claude',codex:'Codex',cursor:'Cursor',codebuddy:'CodeBuddy',pi:'pi',opencode:'OpenCode',feishu:T('飞书需求表','Feishu Bitable'),docs:T('项目文档','Project Docs'),notes:T('个人笔记','Notes'),backup:T('知识库备份','Knowledge backup')})[n]||n}
 function icon(name){const p={
   sync:'<path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M18.5 9A7 7 0 0 0 6.6 6.6L4 11M20 13l-2.6 4.4A7 7 0 0 1 5.5 15"/>',
   settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.4.33.75.6 1 .3.28.68.42 1.1.4h.1v4h-.1c-.42-.02-.8.12-1.1.4-.27.25-.48.6-.6 1Z"/>',
@@ -903,7 +903,7 @@ function renderGenericSourceConfig(name){
     body.innerHTML=`<section class="config-section"><div class="config-section-title">${T('仓库范围','Repository scope')}</div><div class="config-section-copy">${T('项目文档从已配置的 Git 仓库中读取 Markdown 文件。','Project documents read Markdown files from configured Git repositories.')}</div><div class="credential-note"><i class="status-dot ${s.status==='ok'?'':'warn'}"></i><span>${esc(s.message)}</span></div><div class="inline-actions"><button class="act primary" onclick="openSourceConfig('git')">${icon('settings')}${T('配置 Git 仓库','Configure Git repositories')}</button></div></section>`;
     return;
   }
-  const labels={claude:T('Claude 项目目录','Claude projects directory'),codex:T('Codex 主目录','Codex home directory'),cursor:T('Cursor 数据目录','Cursor data directory'),codebuddy:T('CodeBuddy 数据目录','CodeBuddy data directory'),notes:T('个人笔记目录','Notes directory')};
+  const labels={claude:T('Claude 项目目录','Claude projects directory'),codex:T('Codex 主目录','Codex home directory'),cursor:T('Cursor 数据目录','Cursor data directory'),codebuddy:T('CodeBuddy 数据目录','CodeBuddy data directory'),pi:T('pi 会话目录','pi sessions directory'),opencode:T('OpenCode 数据目录','OpenCode data directory'),notes:T('个人笔记目录','Notes directory')};
   body.innerHTML=`<section class="config-section"><div class="config-section-title">${labels[name]||T('扫描目录','Scan directory')}</div><div class="config-section-copy">${T('Loom 会从这个本地目录读取记录。','Loom reads records from this local directory.')}</div><div class="config-add-row"><label class="field" for="generic-source-path"><span>${T('目录路径','Directory path')}</span><input class="path" id="generic-source-path" name="source_path" autocomplete="off" spellcheck="false" value="${esc(path)}"></label><button class="act primary" onclick="sourcePathSet('${jsq(name)}')">${T('保存','Save')}</button></div></section><section class="config-section"><div class="credential-note"><i class="status-dot ${s.status==='ok'?'':'warn'}"></i><span>${esc(s.message)}</span></div></section>`;
 }
 function openSourceConfig(name){

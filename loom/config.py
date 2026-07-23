@@ -23,6 +23,9 @@ DEFAULT_CONFIG = {
             "app_support": "~/Library/Application Support/CodeBuddy",
             "extension_data": "~/Library/Application Support/CodeBuddyExtension/Data",
         },
+        # 新增本地会话源默认关闭，避免升级后未经选择就扩大采集范围。
+        "pi":        {"enabled": False, "sessions_dir": "~/.pi/agent/sessions"},
+        "opencode":  {"enabled": False, "data_dir": "~/.local/share/opencode"},
         "docs":      {"enabled": True},   # 索引各仓 .md(全文归档,不进日记)
         "notes":     {"enabled": True},   # 索引 vault/notes/ 手动加的文档(loom doc add 闭环)
     },

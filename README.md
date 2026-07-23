@@ -13,7 +13,7 @@
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)
 ![dependencies](https://img.shields.io/badge/dependencies-0-5AA9A0)
 ![stdlib only](https://img.shields.io/badge/stdlib-only-5AA9A0)
-![tests](https://img.shields.io/badge/tests-117%20passing-3FB950)
+![tests](https://img.shields.io/badge/tests-152%20passing-3FB950)
 ![single-user](https://img.shields.io/badge/private-first-E0A84E)
 [![license](https://img.shields.io/badge/license-MIT-8A93A3)](./LICENSE)
 
@@ -22,6 +22,8 @@
 ![Cursor](https://img.shields.io/badge/Cursor-1a1a2e)
 ![Copilot](https://img.shields.io/badge/Copilot-24292e?logo=githubcopilot&logoColor=white)
 ![CodeBuddy](https://img.shields.io/badge/CodeBuddy-0052d9)
+![pi](https://img.shields.io/badge/pi-coding_agent-5AA9A0)
+![OpenCode](https://img.shields.io/badge/OpenCode-1a1a1a)
 ![Windsurf](https://img.shields.io/badge/Windsurf-0e7c66)
 
 **简体中文** | [English](./README.en.md)
@@ -34,7 +36,7 @@
 
 ---
 
-> 🧵 **loom(织机)** 把散落在「多个 git 仓 + 多个 AI 工具会话(Claude / Codex / Cursor / CodeBuddy)+ 文档 / 代码 / 数据 / 飞书」里的
+> 🧵 **loom(织机)** 把散落在「多个 git 仓 + 多个 AI 工具会话(Claude / Codex / Cursor / CodeBuddy / pi / OpenCode)+ 文档 / 代码 / 数据 / 飞书」里的
 > **你自己**的工作痕迹,自动归一成一份扁平记录,再织出可检索、可按主题追溯、可私有云备份的台账。纯标准库 Python,**零第三方依赖**。
 
 ## ⚡ 5 分钟落地:让你的 AI 助手带你走(推荐)
@@ -102,7 +104,7 @@ GitHub 里点开是源码,**下载后用浏览器打开**即可;或用 [htmlprev
   > 真实一例(全库 129/129 会话已生成):首问 `拉取最新代码了吗` → ✦标题
   > `梳理 Google Ads Asset 数据从 DWD 到 DWS 的全链路 ETL 流程`;连答案侧才有的 `auto_stop_mins` 等词都能搜到。
 
-- **⑦ 零依赖 · 纯标准库 · 117 单测全绿。** clone 即用,不装环境;打码/路径穿越/FTS 召回/原子写/主题上卷都有端到端测试守护。
+- **⑦ 零依赖 · 纯标准库 · 152 单测全绿。** clone 即用,不装环境;打码/路径穿越/FTS 召回/原子写/主题上卷都有端到端测试守护。
 
 ## 📸 界面预览(`loom serve`)
 
@@ -122,12 +124,12 @@ GitHub 里点开是源码,**下载后用浏览器打开**即可;或用 [htmlprev
 ## 架构一图
 
 ```
-6 股采集来源                    归一 + 打码            派生
+多股采集来源                    归一 + 打码            派生
 ─────────────                 ──────────            ──────────────
 git 提交        ┐                                  ┌ 全文检索 FTS5(中文子串)
-Claude 会话     │                                  │ 按天日记(markdown)
-Cursor 会话     ├──►  loom  ──►  entries.jsonl ──► ├ 主题关联(DAG,可上卷)
-Codex 会话      │   (归一·打码)     一份真相         │ 日报(AI 读库合成,非采集源)
+Claude / Codex  │                                  │ 按天日记(markdown)
+pi / OpenCode   ├──►  loom  ──►  entries.jsonl ──► ├ 主题关联(DAG,可上卷)
+Cursor/CodeBuddy│   (归一·打码)     一份真相         │ 日报(AI 读库合成,非采集源)
 仓库文档 .md    │                                  └ 私有云备份(git push)
 数据·代码·散信息 ┘
 ```
@@ -160,7 +162,7 @@ cd ~/Documents/loom && ./install.sh      # 装 CLI 到 PATH + 引导配置 + 首
 ```bash
 loom init                      # 交互引导:身份/扫仓/飞书
 loom sync [--push] [--since]   # 采集全部源 → 渲染 → 提交(--push 上云)。日常就这条
-loom collect --source <name>   # 单源采集:git|claude|codex|cursor|codebuddy|feishu|all
+loom collect --source <name>   # 单源采集:git|claude|codex|cursor|codebuddy|pi|opencode|feishu|all
 loom build | today
 loom serve [--port 8787]       # 本地浏览页(仅 127.0.0.1):搜索/主题树/按天 三视角 + 条目详情
 loom search <词> [--project P] [--tool T] [--since D] [--until D]
@@ -195,6 +197,8 @@ loom source enable|disable <name>
 | `sources.claude.projects_dir` | Claude Code 对话记录根目录,默认 `~/.claude/projects` | 很少需要改 |
 | `sources.codex.home` | Codex 数据目录,默认 `~/.codex` | 很少需要改 |
 | `sources.cursor.app_support` | Cursor 数据目录,默认 `~/Library/Application Support/Cursor` | 很少需要改 |
+| `sources.pi.sessions_dir` | pi 会话目录,默认 `~/.pi/agent/sessions` | `loom source enable pi` 后采集 |
+| `sources.opencode.data_dir` | OpenCode 数据目录,默认 `~/.local/share/opencode` | `loom source enable opencode` 后采集 |
 | `sources.<name>.enabled` | `false` 关闭某个采集器 | `loom source disable cursor` |
 | `feishu.bitables[]` | 需求池多维表格列表(app_token + table_id + 字段映射) | `loom feishu add <飞书表格 URL>` |
 | `vault.dir` | markdown 输出目录,默认 `~/.loom/vault` | 一般不动 |
@@ -211,9 +215,11 @@ loom source enable|disable <name>
 |---|---|---|
 | git | 所有配置仓 `git log --all`(按你的邮箱/名字过滤) | 提交(标题 + **正文** + 每文件改动;整 diff 走回链) |
 | claude | `~/.claude/projects/*/*.jsonl` | 会话:意图标题 + **开场提问 + 当天全部提问**(按天拆分;完整对话走回链) |
-| codex | `~/.codex/state_5.sqlite` threads | 会话:cwd/标题/**开场提问全文** + 时间(两端归属) |
+| codex | `~/.codex/sessions/**/*.jsonl`（旧版回退 `state*.sqlite`） | 会话:按天拆分,标题 + 开场提问 + 当天全部提问 |
+| pi | `~/.pi/agent/sessions/**/*.jsonl` | 树状会话:按真实消息日期拆分,命名标题 + 当天全部用户提问（默认关闭） |
+| opencode | `~/.local/share/opencode/opencode.db` + 旧版 `storage/` JSON | 新旧存储合并去重,按消息日期拆分,标题 + 当天全部用户提问（默认关闭） |
 | cursor | `Cursor/.../globalStorage/state.vscdb` composer 头 | 会话:标题 + 改动量(无消息级正文) |
-| codebuddy | `CodeBuddy/.../state.vscdb` | 占位;本地无缓存时由 git 兜底 |
+| codebuddy | `CodeBuddyExtension/Data/.../history` + `codebuddy-sessions.vscdb` | 本地 craft 会话:按天拆分,标题 + 当天全部用户提问 |
 | docs | 各配置仓里的 `*.md` | 全文归档进 `notes/_archive/`(打码、永不裁剪 → **删源也不丢**)+ 标题/大纲索引;不进日记 |
 | notes | `vault/notes/`(手动加的) | 把 `loom doc add`/`note` 的内容纳入 `loom search`(闭环);跳过 `_archive`/`_attic` |
 | feishu | 多维表格 `bitable/v1 list records` | 需求 / 记事:按「负责人=你」+ 日期筛 |
@@ -227,8 +233,8 @@ loom source enable|disable <name>
 | 类型 | 怎么处理 | 存成啥 · 取舍 | 进检索 |
 |---|---|---|---|
 | **git 提交** | 解析标题 + 正文(为什么改)+ 每文件增删;哨兵分隔正文与 numstat;重命名取新路径;同题同改动量去重 | body≤4000、file_list≤40;**不存完整 diff**(ref=hash,`git show` 看全)——库轻又留住决策理由 | summary · body |
-| **Claude 会话** | UTC→本地,**按天分桶**(跨天长会话拆到每天);跳过命令/工具/压缩摘要;取当天首个真实提问作标题 | opening + **当天全部提问** body≤8000;只索引**你的提问**,ref 指原 jsonl | summary · opening · body · *digest* |
-| **Cursor / Codex 会话** | 先把库拷到临时目录**避开锁**;只有会话级时间→按**开始日 + 最后活跃日**两端归属 | 标题 + 改动量/分支 + opening;**拿不到消息级文本**(工具存储限制,中间天可能漏,已在码里注明) | summary · opening |
+| **Claude / Codex / pi / OpenCode / CodeBuddy 会话** | 读取本地消息时间,UTC→本地后**按天分桶**;过滤命令/工具/系统注入;pi 保留树上各分支的真实提问;OpenCode 合并 SQLite 与旧 JSON | opening + **当天全部用户提问** body≤8000;只索引**你的提问**,ref 回链原会话；pi/OpenCode 默认关闭、需显式启用 | summary · opening · body · *digest*(当前仅 Claude) |
+| **Cursor 会话** | 先把库拷到临时目录**避开锁**;只有会话级时间→按**开始日 + 最后活跃日**两端归属 | 标题 + 改动量;拿不到消息级文本,中间天可能漏 | summary · opening |
 | **仓库文档 .md** | 取 H1 + 大纲 + 全文(≤200k);全文快照写进 `notes/_archive`,**永不裁剪** | headings + content;**删源也不丢**;不进按天日记(量大),只留最新版(旧版在 git 历史) | headings · content |
 | **数据 csv / xlsx** | 纯标准库解析(csv 模块 / xlsx 用 zip+xml,含**日期序列号还原**)→ 蒸馏"数据卡" | **数据卡**(列/类型/统计/前5行样例 + 血缘)上云;**原始文件拷进 `_data/` 留本地**、gitignore | 数据卡(schema+样例+血缘) |
 | **代码 sql / py 等** | 入库**打码**(只抹值不动变量名);日期优先级 frontmatter > 文件名日期 > mtime | 原样存(可检索);无可靠日期的标 `dated=False`**不塞进某天日记**(免得虚胖导入当天) | 代码全文 |
@@ -293,7 +299,7 @@ loom source enable|disable <name>
 ## 已知边界(诚实的取舍)
 
 - **检索是关键词,不是语义** — "cohort" 召不回"留存";语义检索要向量模型,会破坏零依赖,暂不上。
-- **只 Claude 能逐条拆会话** — Cursor/Codex 无消息级文本,只能标题级 + 两端归属。
+- **Cursor 仍只能两端归属** — Claude/Codex/CodeBuddy/pi/OpenCode 可按消息日期拆分；Cursor 本地仅有会话级时间和标题。
 - **助手回答默认不进检索** — 采集只索引你的提问;需要时 `loom session gen` 让 AI 读问+答补摘要。
 - **全量重建** — 每次 sync 全量重扫;单人无感,超大历史才需增量。
 - **AI 分类 / 摘要非全自动** — 闭集 + 人过目 + 审计控准,不图快(见 ONBOARDING 阶段 E)。

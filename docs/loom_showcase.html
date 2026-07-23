@@ -199,9 +199,9 @@
       <b>每种数据具体怎么处理与保存</b>、以及每个设计的取舍。</p>
     <div class="kpis">
       <div class="kpi"><div class="n warm">1,842</div><div class="l">条归一化记录(示例)</div></div>
-      <div class="kpi"><div class="n">6</div><div class="l">个采集来源(+日报/会话摘要为 AI 合成)</div></div>
+      <div class="kpi"><div class="n">多类</div><div class="l">采集来源(+日报/会话摘要为 AI 合成)</div></div>
       <div class="kpi"><div class="n cool">3,582</div><div class="l">行 Python · 0 依赖</div></div>
-      <div class="kpi"><div class="n">118</div><div class="l">单元测试全绿</div></div>
+      <div class="kpi"><div class="n">152</div><div class="l">单元测试全绿</div></div>
     </div>
     <div class="toc">
       <a href="#arch">系统架构</a><a href="#model">数据模型</a><a href="#fields">字段词典</a><a href="#types">每种数据怎么处理</a>
@@ -211,8 +211,8 @@
   </header>
 
   <section id="arch">
-    <h2>系统架构 —— 七源汇流,一份真相,派生一切</h2>
-    <p class="sub">像织机:<b>6 股采集来源</b>汇入一个结(归一 + 打码)→ 一份真相 → 织出检索、日记、主题、云备份。
+    <h2>系统架构 —— 多源汇流,一份真相,派生一切</h2>
+    <p class="sub">像织机:<b>多股采集来源</b>汇入一个结(归一 + 打码)→ 一份真相 → 织出检索、日记、主题、云备份。
       <b>日报不是采集源</b>——它是 AI 读本库其它数据<b>合成</b>的产出,渲染回日记顶部(见右侧)。</p>
     <div class="figure"><svg class="dg" viewBox="0 0 960 380" role="img" aria-label="架构汇流图">
       <defs>
@@ -223,12 +223,12 @@
           <stop offset="0" stop-color="#5AA9A0"/><stop offset="1" stop-color="#8a6320"/>
         </radialGradient>
       </defs>
-      <!-- 左:6 采集来源 -->
+      <!-- 左:采集来源（AI 工具按能力分组） -->
       <g font-size="13" fill="#E8EAED">
         <rect x="8" y="30" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="50">git 提交</text>
-        <rect x="8" y="88" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="108">Claude 会话</text>
-        <rect x="8" y="146" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="166">Cursor 会话</text>
-        <rect x="8" y="204" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="224">Codex 会话</text>
+        <rect x="8" y="88" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="108">Claude / Codex</text>
+        <rect x="8" y="146" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="166">pi / OpenCode</text>
+        <rect x="8" y="204" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="224">Cursor / CodeBuddy</text>
         <rect x="8" y="262" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="282">仓库文档 .md</text>
         <rect x="8" y="320" width="176" height="30" rx="7" fill="#1D222C" stroke="#2A313D"/><text x="20" y="340">数据·代码·散信息</text>
       </g>
@@ -299,7 +299,7 @@
         <b>会话的「开场首问」全文</b>(仅 AI 会话类)。你打开这个 session 说的第一句真实提问。
         <span class="ix">◆ 进检索</span></div></div>
       <div class="gl"><span class="nmfx">body</span><div class="gd">
-        <b>长正文。</b> <span class="who">git = 提交正文(为什么改 + 怎么验证)· Claude = 当天全部提问合并(≤8000 字)</span>
+        <b>长正文。</b> <span class="who">git = 提交正文(为什么改 + 怎么验证)· 支持消息历史的 AI 工具 = 当天全部提问合并(≤8000 字)</span>
         <span class="ix">◆ 进检索 —— 所以整段提问 / 提交理由都搜得到</span></div></div>
       <div class="gl"><span class="nmfx">headings</span><div class="gd">
         <b>文档大纲</b>:各级标题拼成的目录(仅文档类)。用它定位"这文档讲了啥"而不必读全文。
@@ -362,20 +362,20 @@
     </div>
 
     <div class="ptype">
-      <div class="pt-h"><span class="ic">🖱️</span><span class="nm">Cursor / Codex 会话</span><span class="bd k">tool=cursor·codex</span><span class="bd">kind=session</span></div>
+      <div class="pt-h"><span class="ic">🖱️</span><span class="nm">其它 AI 编程会话</span><span class="bd k">tool=codex·pi·opencode·codebuddy·cursor</span><span class="bd">kind=session</span></div>
       <div class="pflow">
-        <div class="ps"><div class="k src">采自</div><div class="v">Cursor <span class="mono">state.vscdb</span> / Codex <span class="mono">state_5.sqlite</span>;<b>先拷到临时目录再读,避开锁</b></div></div>
-        <div class="ps"><div class="k pro">处理</div><div class="v">只有会话级时间(无逐条消息文本)→ 按<b>开始日 + 最后活跃日</b>两端归属</div></div>
-        <div class="ps"><div class="k sto">存为</div><div class="v">id=工具:会话:日期;detail={start/end、改动文件/行数(cursor)、git_branch(codex)、opening}</div></div>
+        <div class="ps"><div class="k src">采自</div><div class="v">Codex/pi 的 JSONL、OpenCode SQLite + 旧 JSON、CodeBuddy history，以及 Cursor <span class="mono">state.vscdb</span></div></div>
+        <div class="ps"><div class="k pro">处理</div><div class="v">Codex/pi/OpenCode/CodeBuddy 按<b>逐条消息的本地日期</b>拆分；Cursor 只有会话级时间，按开始日 + 最后活跃日归属</div></div>
+        <div class="ps"><div class="k sto">存为</div><div class="v">id=工具:会话:日期;有消息历史的来源保存 opening + 当天全部用户提问 body；Cursor 保存标题与改动量</div></div>
       </div>
-      <div class="ptrade"><b>取舍(数据限制)</b> 拿不到消息级文本,只能到<b>标题级 + 两端归属</b>(中间天可能漏)。这是工具存储决定的,非设计偷懒——已在代码里注明。</div>
+      <div class="ptrade"><b>取舍(数据限制)</b> 除 Cursor 外都能按消息日期拆分并索引用户提问；Cursor 仍只能到<b>标题级 + 两端归属</b>(中间天可能漏)。</div>
       <div class="pidx"><span class="lb">进检索</span><span class="fx" title="会话标题">summary</span><span class="fx" title="能拿到的开场文本(有则存)">opening</span></div>
       <details class="ex"><summary>看这类长啥样(真实条目)</summary><div class="exb">
         <span class="cap">cursor · 一条跨天会话(两端归属演示)</span>
         <span class="fld">summary</span> Checkout flow A/B bucketing issue<br>
         <span class="fld">start → end</span> <span class="v2">2026-04-08 11:02 → 2026-04-09 15:37</span> <span class="ar">← 跨两天,只落在开始日+最后活跃日两端</span><br>
-        <span class="fld">detail</span> <span class="v2">files 改动数 / add / del(cursor);codex 则是 git_branch + opening</span><br>
-        <span class="ar">拿不到消息级文本,故没有 body——这是工具存储的限制,不是设计取巧。</span>
+        <span class="fld">detail</span> <span class="v2">Cursor 保存 files/add/del；Codex/pi/OpenCode/CodeBuddy 保存 opening + body</span><br>
+        <span class="ar">只有 Cursor 拿不到消息级文本；其它来源按真实消息日期拆分。</span>
       </div></details>
     </div>
 
@@ -570,7 +570,7 @@ secret = Variable.get("secret_api_key")   # 变量名/调用照留,可检索
     <p class="sub">明知的边界,写出来才可信。</p>
     <ul class="clean">
       <li><b>检索是关键词,不是语义</b> — "cohort" 召不回"留存";语义检索要向量模型,会破坏零依赖,暂不上。</li>
-      <li><b>只 Claude 能逐条拆会话</b> — Cursor/Codex 无消息级文本,只能两端归属。</li>
+      <li><b>Cursor 仍只能两端归属</b> — Claude/Codex/CodeBuddy/pi/OpenCode 可按消息日期拆分；Cursor 本地只有会话级时间。</li>
       <li><b>助手回答默认不进检索</b> — 采集只索引你的提问;需要时用 <span class="mono">loom session gen</span> 让 AI 读当天<b>问+答</b>生成摘要,把答案侧内容也纳入检索(存独立 sidecar,重采不丢)。</li>
       <li><b>全量重建</b> — 每次 sync 全量重扫;单人无感,超大历史才需增量。</li>
       <li><b>AI 分类非全自动</b> — 闭集 + 人过目 + 审计控准。</li>
@@ -582,7 +582,7 @@ secret = Variable.get("secret_api_key")   # 变量名/调用照留,可检索
     <div class="quality">
       <div class="q"><div class="n">3,582</div><div class="l">行 Python</div></div>
       <div class="q"><div class="n">0</div><div class="l">第三方依赖</div></div>
-      <div class="q"><div class="n">118</div><div class="l">单元测试全绿</div></div>
+      <div class="q"><div class="n">152</div><div class="l">单元测试全绿</div></div>
       <div class="q"><div class="n">7</div><div class="l">数据来源</div></div>
     </div>
     <p class="note">采集/检索/渲染/主题/散信息/日报/生命周期各自成模块;打码、路径穿越、FTS 召回、原子写、主题上卷都有端到端测试守护。</p>
