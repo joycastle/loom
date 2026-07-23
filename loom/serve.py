@@ -24,9 +24,8 @@ from . import (collectors, config, digest, render, report, search, skillsync,
                store, topics, util)
 
 _ASSET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "browse.html")
-# React admin frontend (prototype/chat-ui build). When a valid dist dir exists,
-# `loom serve` serves it (index.html + /assets/*) as the admin console; the
-# vanilla browse.html is the zero-build fallback when no build is present.
+# Optional legacy React frontend. The zero-build Vanilla console is the default;
+# a bundled or explicitly supplied React build remains available at /app.
 _UI_STATIC_TYPES = {
     ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
     ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp",
@@ -36,18 +35,17 @@ _UI_STATIC_TYPES = {
 
 
 def _ui_dir():
-    """Locate the React admin build to serve, or "" to fall back to browse.html.
+    """Locate the optional React build exposed at ``/app``.
 
     Build chain: ``cd prototype/chat-ui && npm run build`` writes its output to
-    ``loom/assets/ui`` (vite ``outDir``), which is what ``loom serve`` serves by
-    default — no env var required. ``LOOM_DESKTOP_UI_DIR`` still overrides for
-    source-served development.
+    ``loom/assets/ui`` (vite ``outDir``). ``LOOM_DESKTOP_UI_DIR`` can override
+    that directory for development; neither changes the default ``/`` console.
     """
     # 1) explicit override (source-served during development, or a custom build)
     directory = os.environ.get("LOOM_DESKTOP_UI_DIR", "")
     if directory and os.path.isfile(os.path.join(directory, "index.html")):
         return os.path.realpath(directory)
-    # 2) bundled build inside the package (loom/assets/ui) — the default admin UI.
+    # 2) bundled build inside the package (loom/assets/ui).
     bundled = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui")
     if os.path.isfile(os.path.join(bundled, "index.html")):
         return os.path.realpath(bundled)
@@ -1155,11 +1153,12 @@ def _make_handler(cfg, admin_token=None):
                 if ui and (u.path.startswith("/assets/")
                            or u.path in ("/favicon.svg", "/favicon.ico", "/vite.svg")):
                     self._static(ui, u.path)
+                elif ui and u.path in ("/app", "/app/"):
+                    with open(os.path.join(ui, "index.html"), "rb") as handle:
+                        self._html(handle.read())
                 elif u.path in ("/", "/browse"):
-                    source = os.path.join(ui, "index.html") if ui else _ASSET
-                    with open(source, "rb") as handle:
-                        body = handle.read()
-                    self._html(body)
+                    with open(_ASSET, "rb") as handle:
+                        self._html(handle.read())
                 elif u.path == "/api/search":
                     self._json(api_search(cfg, q.get("q", ""), q.get("project"),
                                           q.get("tool"), q.get("since"), q.get("until"),
