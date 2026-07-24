@@ -980,6 +980,25 @@ class CodexFeishuBridgeCollectorTest(unittest.TestCase):
         self.assertEqual(sum("--page-token" in c for c in calls), 2)
         self.assertTrue(all(c[c.index("--page-size") + 1] == "50" for c in calls))
 
+    def test_pagination_stops_at_max_pages_guard(self):
+        # 服务端一直 has_more + 每次给新 token → 不能无限翻,必须在上限处报错(不静默截断)
+        calls = {"n": 0}
+
+        def runaway(binary, args, timeout):
+            calls["n"] += 1
+            return {"data": {"messages": [{"message_id": f"m{calls['n']}"}],
+                             "has_more": True, "page_token": f"tok-{calls['n']}"}}
+
+        original = feishu_bridge_col._run_lark
+        feishu_bridge_col._run_lark = runaway
+        try:
+            with self.assertRaises(RuntimeError) as ctx:
+                feishu_bridge_col._paged_messages("lark-cli", ["im", "+x"], 10)
+        finally:
+            feishu_bridge_col._run_lark = original
+        self.assertIn("上限", str(ctx.exception))
+        self.assertEqual(calls["n"], feishu_bridge_col.MAX_PAGES)   # 恰在上限处停
+
     def test_since_filters_topic_days(self):
         root = self._message("om_root", "ou_other", "花生", "问题", "2026-07-01 09:00")
         root.update({"thread_id": "omt_topic", "thread_replies": [

@@ -19,6 +19,7 @@ from .. import util
 TITLE_CAP = 180
 OPENING_CAP = 1200
 PAGE_SIZE = 50
+MAX_PAGES = 1000     # 分页硬上限(1000×50=5万条),防服务端一直 has_more+新 token 时无限翻页
 
 _IMAGE_RE = re.compile(r"!\[[^\]]*\]\(([^)]*)\)")
 _PLAIN_IMAGE_RE = re.compile(r"\[Image:\s*([^\]]+)\]", re.I)
@@ -109,7 +110,7 @@ def _owner_open_id(src, binary, timeout):
 
 def _list_chat_roots(binary, chat_id, since, end, timeout):
     roots, page_token = [], ""
-    seen_tokens = set()
+    seen_tokens, pages = set(), 0
     while True:
         args = ["im", "+chat-messages-list", "--as", "user",
                 "--chat-id", chat_id, "--start", since, "--end", end,
@@ -120,8 +121,11 @@ def _list_chat_roots(binary, chat_id, since, end, timeout):
         raw = _run_lark(binary, args, timeout)
         data = raw.get("data", raw) if isinstance(raw, dict) else {}
         roots.extend(data.get("messages") or [])
+        pages += 1
         if not data.get("has_more"):
             break
+        if pages >= MAX_PAGES:
+            raise RuntimeError(f"飞书消息分页超过 {MAX_PAGES} 页上限,疑似异常,已中止(不静默截断)")
         next_token = str(data.get("page_token") or "")
         if not next_token or next_token in seen_tokens:
             raise RuntimeError("飞书消息分页未返回有效 page_token")
@@ -150,6 +154,8 @@ def _paged_messages(binary, base_args, timeout):
         pages += 1
         if not data.get("has_more"):
             return messages, pages
+        if pages >= MAX_PAGES:
+            raise RuntimeError(f"飞书消息分页超过 {MAX_PAGES} 页上限,疑似异常,已中止(不静默截断)")
         next_token = str(data.get("page_token") or "")
         if not next_token or next_token in seen_tokens:
             raise RuntimeError("飞书消息分页未返回有效 page_token")
