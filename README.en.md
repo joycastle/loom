@@ -61,6 +61,8 @@ git clone https://github.com/joycastle/loom.git ~/Documents/loom && cd ~/Documen
 
 Then: `loom sync` to collect, `loom serve` to open the admin page. Daily use is a single `loom sync` (add `--push` to back up to the cloud).
 
+Codex Feishu Bridge topics are opt-in. Sign in with lark-cli, grant `search:message`, then run `loom source enable codex_feishu_bridge`. See [`docs/codex-feishu-bridge.md`](./docs/codex-feishu-bridge.md) for configuration and privacy boundaries.
+
 **Let AI call loom directly (MCP)** · the skill teaches an AI *how to type* loom commands; MCP makes loom a **native tool** inside AI coding clients — `loom_search` your ledger and `loom_note` while coding, no commands to remember:
 
 ```bash
@@ -75,11 +77,15 @@ Exposes five tools — `loom_search` / `loom_topic_ls` / `loom_topic_show` / `lo
 
 > Local zero-dependency browse UI, 127.0.0.1 only, all admin — no chat. Real `loom serve` shots below, **fictional demo data**.
 
-<img src="docs/shots/dashboard.en.png" width="100%" alt="home dashboard" />
+<img src="docs/shots/dashboard-overview.en.png" width="100%" alt="home work overview" />
 
-| Ledger (full-text search + filters + paging) | Calendar (heatmap + day view) | Topic hierarchy (double-click to expand) |
-|:---:|:---:|:---:|
-| <img src="docs/shots/ledger.en.png" alt="ledger" /> | <img src="docs/shots/calendar.en.png" alt="calendar" /> | <img src="docs/shots/topics.en.png" alt="topics" /> |
+| Ledger (full-text search + filters + paging) | Calendar (heatmap + day view) |
+|:---:|:---:|
+| <img src="docs/shots/ledger.en.png" alt="ledger" /> | <img src="docs/shots/calendar.en.png" alt="calendar" /> |
+
+| Topic hierarchy (double-click to expand) | Cross-topic relation overview |
+|:---:|:---:|
+| <img src="docs/shots/topics-hierarchy.en.png" alt="topic hierarchy" /> | <img src="docs/shots/topics-relations.en.png" alt="cross-topic relation overview" /> |
 
 The Topics page keeps the two views distinct: **Topic summary** is a hierarchy tree that starts at the roots and expands on double-click; **Relation overview** is an aggregate matrix of real structural links across topic families.
 
@@ -116,12 +122,13 @@ sources                    normalize + redact     derived
 git · Claude/Codex ┐                            ┌ full-text search FTS5 (CJK)
 pi · OpenCode      ├─► loom ─► entries ────────►│ daily journals · topic DAG (roll-up)
 Cursor · CodeBuddy │  (normalize·redact) truth   │ daily reports (AI-synthesized)
+Codex Feishu Bridge│
 repo docs · data · notes ┘                       └ private cloud backup (git push)
 ```
 
 - **Raw data stays on device** — only `vault/` markdown is pushed via `loom sync --push` to **your own** private git remote; full `entries.jsonl`, raw `detail`, `_data/` csv/xlsx and `.env` are held out by a code-enforced `.gitignore`.
 - **Code / data physically separated** — this repo = shared code (public-shareable); your instance lives in `~/.loom/` (created by `init`, never in the code repo: `config.json` identity/source switches, `.env` credentials, `data/` normalized entries + FTS index, `vault/` journals + docs → its own private repo). `LOOM_HOME` overrides `~/.loom`.
-- **Honest trade-offs** — search is keyword, not semantic; Feishu capture runs through a [standalone bot](./docs/loom-bot-design.md), not IM-reading inside loom; daily reports are synthesized by an external AI — loom only supplies the material.
+- **Honest trade-offs** — search is keyword, not semantic; Feishu demand capture uses a [standalone bot](./docs/loom-bot-design.md); only the optional Codex Feishu Bridge connector reads topics you actually joined through local lark-cli; daily reports are synthesized by an external AI — loom only supplies the material.
 
 ## License
 

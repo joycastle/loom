@@ -22,6 +22,7 @@ from loom.collectors import claude as claude_col                # noqa: E402
 from loom.collectors import codebuddy as codebuddy_col          # noqa: E402
 from loom.collectors import pi as pi_col                          # noqa: E402
 from loom.collectors import opencode as opencode_col              # noqa: E402
+from loom.collectors import codex_feishu_bridge as feishu_bridge_col  # noqa: E402
 from loom.collectors import docs as docs_col                    # noqa: E402
 from loom.collectors import notes as notes_col                  # noqa: E402
 import subprocess                                              # noqa: E402
@@ -251,9 +252,25 @@ class ConfigTest(unittest.TestCase):
             self.assertIn("cursor", cfg["sources"])       # 默认键补齐
             self.assertIn("pi", cfg["sources"])
             self.assertIn("opencode", cfg["sources"])
+            self.assertIn("codex_feishu_bridge", cfg["sources"])
             self.assertFalse(cfg["sources"]["pi"]["enabled"])
             self.assertFalse(cfg["sources"]["opencode"]["enabled"])
+            self.assertFalse(cfg["sources"]["codex_feishu_bridge"]["enabled"])
             self.assertIn("bitables", cfg["feishu"])
+        finally:
+            os.remove(util.CONFIG_PATH)
+
+    def test_load_migrates_early_codex_feishu_bridge_name(self):
+        legacy = {"sources": {"feishu_bridge": {
+            "enabled": True, "home": "/tmp/bridge", "user_open_id": "ou_me"}}}
+        with open(util.CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(legacy, f)
+        try:
+            cfg = config.load()
+            self.assertNotIn("feishu_bridge", cfg["sources"])
+            self.assertTrue(cfg["sources"]["codex_feishu_bridge"]["enabled"])
+            self.assertEqual(cfg["sources"]["codex_feishu_bridge"]["home"],
+                             "/tmp/bridge")
         finally:
             os.remove(util.CONFIG_PATH)
 
@@ -832,6 +849,165 @@ class CodeBuddyCollectorTest(unittest.TestCase):
         self.assertEqual(result["status"], "success")               # 未安装/无历史是 0 条，不是假故障
         self.assertEqual(result["entries"], [])
         self.assertEqual(result["sessions"], 0)
+
+
+class CodexFeishuBridgeCollectorTest(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="loom-codex-feishu-bridge-")
+        bot_dir = os.path.join(self.home, "bots", "cli_test")
+        os.makedirs(bot_dir)
+        with open(os.path.join(bot_dir, "projects.json"), "w", encoding="utf-8") as f:
+            json.dump({"projects": [{
+                "name": "配置工具协作群", "chatId": "oc_project",
+                "cwd": "/work/matching-story-config-pro",
+            }]}, f, ensure_ascii=False)
+        self.project = feishu_bridge_col.bridge_projects(self.home)[0]
+        self.me = "ou_me"
+
+    @staticmethod
+    def _message(mid, sender_id, sender_name, content, when, sender_type="user",
+                 msg_type="text"):
+        sender = {"id": sender_id, "sender_type": sender_type}
+        if sender_name:
+            sender["name"] = sender_name
+        return {"message_id": mid, "create_time": when, "content": content,
+                "msg_type": msg_type, "sender": sender, "deleted": False}
+
+    def test_discovers_bound_projects(self):
+        self.assertEqual(self.project["chat_id"], "oc_project")
+        self.assertEqual(self.project["project"], "matching-story-config-pro")
+        cfg = {"sources": {"codex_feishu_bridge": {"home": self.home}}}
+        self.assertEqual(feishu_bridge_col.probe(cfg)["projects"], 1)
+
+    def test_collects_every_topic_where_self_actually_spoke(self):
+        root = self._message("om_root", "ou_other", "花生",
+                             "![Image](img_xxx)\n空表无法拉入发布单", "2026-07-22 15:22")
+        root.update({
+            "thread_id": "omt_topic", "message_app_link": "https://example/topic",
+            "thread_replies": [
+                self._message("om_me", self.me, "宪伟", "请分析原因", "2026-07-22 15:25"),
+                self._message("om_bot", "cli_bot", "", "<card>机器人长回复</card>",
+                              "2026-07-22 15:26", sender_type="app"),
+                self._message("om_forwarded_card", "ou_other", "花生",
+                              "<card>显示成用户的机器人卡片</card>", "2026-07-22 15:27"),
+                self._message("om_bot_text", "cli_bot", "Codex 助手", "普通文本答复",
+                              "2026-07-22 15:28", sender_type="app"),
+                self._message("om_file", "ou_other", "花生",
+                              '<file key="file_x" name="错误现场.log"/>',
+                              "2026-07-22 15:29", msg_type="file"),
+                self._message("om_later", "ou_other", "花生", "确认，麻烦修复",
+                              "2026-07-23 09:01"),
+            ],
+        })
+        entries = feishu_bridge_col.topic_entries(
+            self.project, [root], self.me, "2026-07-01")
+        self.assertEqual([e["date"] for e in entries], ["2026-07-22", "2026-07-23"])
+        first = entries[0]
+        self.assertEqual(first["id"], "codex_feishu_bridge:omt_topic:2026-07-22")
+        self.assertEqual(first["project"], "matching-story-config-pro")
+        self.assertEqual(first["summary"], "空表无法拉入发布单")
+        self.assertEqual(first["ref"], "https://example/topic")
+        self.assertEqual(first["detail"]["participants"], ["花生", "宪伟"])
+        self.assertIn("宪伟: 请分析原因", first["detail"]["body"])
+        self.assertIn("Codex 助手: 普通文本答复", first["detail"]["body"])
+        self.assertNotIn("机器人长回复", first["detail"]["body"])
+        self.assertNotIn("显示成用户的机器人卡片", first["detail"]["body"])
+        self.assertEqual(first["detail"]["bots"], ["Codex 助手"])
+        self.assertEqual(first["detail"]["excluded_card_count"], 2)
+        attachments = first["detail"]["attachments"]
+        self.assertEqual([(a["type"], a["key"]) for a in attachments],
+                         [("image", "img_xxx"), ("file", "file_x")])
+        self.assertEqual(attachments[1]["name"], "错误现场.log")
+        self.assertIn("om_bot_text", [m["id"] for m in first["detail"]["message_meta"]])
+        self.assertTrue(first["detail"]["fetch_complete"])
+
+        bot_only = self._message("om_self", self.me, "宪伟", "只问机器人",
+                                 "2026-07-22 16:00")
+        bot_only.update({"thread_id": "omt_bot_only", "thread_replies": [
+            self._message("om_answer", "cli_bot", "", "<card>回答</card>",
+                          "2026-07-22 16:01", sender_type="app")
+        ]})
+        mentioned_only = self._message("om_mention", "ou_other", "花生", "@宪伟 看一下",
+                                       "2026-07-22 17:00")
+        mentioned_only.update({"thread_id": "omt_mention", "thread_replies": []})
+        own_entries = feishu_bridge_col.topic_entries(
+            self.project, [bot_only, mentioned_only], self.me, "2026-07-01")
+        self.assertEqual(len(own_entries), 1)
+        self.assertEqual(own_entries[0]["id"],
+                         "codex_feishu_bridge:omt_bot_only:2026-07-22")
+        self.assertEqual(own_entries[0]["detail"]["participants"], ["宪伟"])
+        self.assertNotIn("<card>", own_entries[0]["detail"]["body"])
+
+    def test_complete_body_is_not_silently_truncated(self):
+        content = "完整正文" + "x" * 13000 + "结尾"
+        root = self._message("om_long", self.me, "宪伟", content,
+                             "2026-07-22 18:00")
+        root.update({"thread_id": "omt_long", "thread_replies": [],
+                     "_root_available": False, "_thread_complete": True})
+        entry = feishu_bridge_col.topic_entries(
+            self.project, [root], self.me, "2026-07-01")[0]
+        self.assertGreater(len(entry["detail"]["body"]), 12000)
+        self.assertTrue(entry["detail"]["body"].endswith("结尾"))
+        self.assertFalse(entry["detail"]["root_available"])
+        self.assertTrue(entry["detail"]["fetch_complete"])
+
+    def test_message_and_thread_pagination_is_exhaustive(self):
+        calls = []
+
+        def fake_run(binary, args, timeout):
+            calls.append(args)
+            token = (args[args.index("--page-token") + 1]
+                     if "--page-token" in args else "")
+            prefix = "search" if "+messages-search" in args else "thread"
+            if not token:
+                return {"data": {"messages": [{"message_id": prefix + "-1"}],
+                                 "has_more": True, "page_token": prefix + "-next"}}
+            return {"data": {"messages": [{"message_id": prefix + "-2"}],
+                             "has_more": False, "page_token": ""}}
+
+        original = feishu_bridge_col._run_lark
+        feishu_bridge_col._run_lark = fake_run
+        try:
+            found = feishu_bridge_col._search_owner_messages(
+                "lark-cli", "oc_x", self.me, "2026-07-01", "2026-07-24", 10)
+            replies, pages = feishu_bridge_col._list_thread_replies(
+                "lark-cli", "omt_x", 10)
+        finally:
+            feishu_bridge_col._run_lark = original
+        self.assertEqual([m["message_id"] for m in found], ["search-1", "search-2"])
+        self.assertEqual([m["message_id"] for m in replies], ["thread-1", "thread-2"])
+        self.assertEqual(pages, 2)
+        self.assertEqual(sum("--page-token" in c for c in calls), 2)
+        self.assertTrue(all(c[c.index("--page-size") + 1] == "50" for c in calls))
+
+    def test_pagination_stops_at_max_pages_guard(self):
+        # 服务端一直 has_more + 每次给新 token → 不能无限翻,必须在上限处报错(不静默截断)
+        calls = {"n": 0}
+
+        def runaway(binary, args, timeout):
+            calls["n"] += 1
+            return {"data": {"messages": [{"message_id": f"m{calls['n']}"}],
+                             "has_more": True, "page_token": f"tok-{calls['n']}"}}
+
+        original = feishu_bridge_col._run_lark
+        feishu_bridge_col._run_lark = runaway
+        try:
+            with self.assertRaises(RuntimeError) as ctx:
+                feishu_bridge_col._paged_messages("lark-cli", ["im", "+x"], 10)
+        finally:
+            feishu_bridge_col._run_lark = original
+        self.assertIn("上限", str(ctx.exception))
+        self.assertEqual(calls["n"], feishu_bridge_col.MAX_PAGES)   # 恰在上限处停
+
+    def test_since_filters_topic_days(self):
+        root = self._message("om_root", "ou_other", "花生", "问题", "2026-07-01 09:00")
+        root.update({"thread_id": "omt_topic", "thread_replies": [
+            self._message("om_me", self.me, "宪伟", "处理", "2026-07-02 10:00")
+        ]})
+        entries = feishu_bridge_col.topic_entries(
+            self.project, [root], self.me, "2026-07-02")
+        self.assertEqual([e["date"] for e in entries], ["2026-07-02"])
+        self.assertIn("问题", entries[0]["detail"]["opening"])
 
 
 class DocsCollectorTest(unittest.TestCase):
