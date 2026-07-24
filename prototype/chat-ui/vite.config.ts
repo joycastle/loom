@@ -13,9 +13,8 @@ export default defineConfig({
     },
   },
   build: {
-    // Build straight into the loom package so `loom serve` serves it by default
-    // (serve.py _ui_dir() looks for loom/assets/ui/index.html). browse.html is
-    // the zero-build fallback when this directory is absent.
+    // Keep the legacy React build packaged for `/app`. The zero-build
+    // browse.html console remains the default `/` surface.
     outDir: "../../loom/assets/ui",
     assetsDir: "assets",
     emptyOutDir: true,

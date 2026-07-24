@@ -2574,27 +2574,71 @@ class ServeTest(unittest.TestCase):
                       headers={"Content-Type": "application/json", "X-Loom-Token": token})
             self.assertTrue(json.loads(c.getresponse().read())["ok"])
             c.request("GET", "/")
-            page = c.getresponse().read()
-            # loom serve 默认服务 React 管理页 build;无构建时降级到零构建后备 browse.html。
-            # 两种 UI 都以 loom 标识首页;下面按实际服务的那种校验其接线。
-            self.assertIn(b"loom", page[:2000])                    # 首页出得来
+            html_response = c.getresponse()
+            page = html_response.read()
+            self.assertIn("img-src 'self' data:",
+                          html_response.getheader("Content-Security-Policy"))
+            self.assertIn(b"loom", page[:2000])                    # 默认是零构建 Vanilla 控制台
+            self.assertIn(b'id="themebtn"', page)
+            self.assertIn(b'id="hdr-search"', page)               # ⌘K 顶栏搜索不跳转
+            self.assertIn(b'function focusGlobalSearch', page)
+            self.assertIn(b'q.focus({preventScroll:true});q.select()', page)
+            self.assertIn(b'GSEARCH_SEQ++; //', page)
+            self.assertIn(b"wrap.addEventListener('focusout'", page)
+            self.assertNotIn(b'id="home-search-btn"', page)
+            self.assertIn(b'if(!nodes.length)', page)               # 空主题不生成非法 SVG
+            self.assertIn(b'class="admin-shell"', page)
+            self.assertEqual(page.count(b'class="panel privacy-metric-panel"'), 2)
+            self.assertIn(b'#admin-pane-privacy .admin-grid{align-items:stretch}', page)
+            self.assertIn(b'data-v="home"', page)
+            self.assertIn(b'data-v="ledger"', page)
+            self.assertIn(b'data-v="calendar"', page)
+            self.assertIn(b'data-topic-mode="relations"', page)    # 主题层级与结构关联两种视角
+            self.assertIn(b"api('/api/topic-relations'", page)
+            self.assertIn(b'class="drawer-related"', page)         # 详情保留主线自动关联能力
+            self.assertIn(b'data-v="report"', page)                # 主线日报能力保留在 Vanilla 页面
+            self.assertIn(b'id="report-export"', page)
+            self.assertIn(b"action:'report_material'", page)
+            self.assertIn(b'id="admin-skills"', page)              # AI skill 管理不因替换 React 而丢失
+            self.assertIn(b"api('/api/admin/skills')", page)
+            self.assertIn(b'id="home-sync-btn"', page)
+            self.assertIn(b"search:'ledger'", page)                # 旧 hash 保持兼容
+            self.assertIn(b"days:'calendar'", page)
+            self.assertIn(b'--page-track:960px;--hero-track:760px;--reading-track:760px', page)
+            self.assertIn(b'grid-template-columns:1fr;gap:var(--space-5)', page)
+            self.assertIn(b'scrollbar-gutter:stable', page)
+            self.assertIn(b'window.scrollTo(0,0)', page)
+            self.assertNotIn(b'data-v="search"', page)
+            self.assertNotIn(b'data-v="days"', page)
+            self.assertIn(b'class="source-groups"', page)
+            self.assertIn(b'data-source-category', page)
+            self.assertIn(b'id="sync-options"', page)
+            self.assertIn(b'id="sync-result"', page)
+            self.assertIn(b'id="backup-result"', page)
+            self.assertIn(b'id="drawer-backdrop"', page)
+            self.assertIn(b'drawer(false,false)', page)
+            self.assertIn(b'inset:var(--header-offset) 0 0', page)
+            self.assertIn(b'top:var(--header-offset);right:-560px', page)
+            self.assertIn(b'padding:20px;z-index:4', page)
+            self.assertIn(b'header:after', page)
+            self.assertIn(b'z-index:4;border-radius:0', page)
+            self.assertIn(b'id="f-page-size"', page)
+            self.assertIn(b'page_size:LEDGER_PAGE_SIZE', page)
+            self.assertIn(b'id="ledger-pagination"', page)
+            self.assertNotIn(b'function renderLedgerRecent', page)
+
+            # 原 React 构建不再抢占首页，但仍可从 /app 访问。
             if self.serve._ui_dir():
-                # React 管理页 build 存在 → 首页是 SPA 外壳,视图由前端渲染
-                self.assertIn(b'<div id="root">', page)            # React 挂载点
-                self.assertIn(b'type="module"', page)              # 走打包后的 ESM 入口
-                self.assertIn(b'src="./assets/', page)             # 引用构建出的 JS bundle
-                self.assertIn(b'href="./assets/', page)            # 及 CSS bundle
-                self.assertNotIn(b'id="themebtn"', page)           # 旧服务端渲染内容不再是首页
-                # 构建资源经 /assets/ 静态服务(SPA 据此加载),端到端确认拿得到
-                asset_match = re.search(rb'src="\.(/assets/[^"]+\.js)"', page)
+                c.request("GET", "/app")
+                app = c.getresponse().read()
+                self.assertIn(b'<div id="root">', app)
+                self.assertIn(b'type="module"', app)
+                asset_match = re.search(rb'src="\.(/assets/[^"]+\.js)"', app)
                 self.assertIsNotNone(asset_match)
                 c.request("GET", asset_match.group(1).decode())
                 asset_resp = c.getresponse()
                 self.assertEqual(asset_resp.status, 200)
                 asset_resp.read()
-            else:
-                # 无构建 → 零构建后备 browse.html(自带管理外壳)
-                self.assertIn(b'admin-shell', page)
             c.request("GET", "/api/nope")
             self.assertEqual(c.getresponse().status, 404)
         finally:
