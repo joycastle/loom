@@ -24,32 +24,6 @@ from . import (collectors, config, digest, render, report, search, skillsync,
                store, topics, util)
 
 _ASSET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "browse.html")
-# Optional legacy React frontend. The zero-build Vanilla console is the default;
-# a bundled or explicitly supplied React build remains available at /app.
-_UI_STATIC_TYPES = {
-    ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
-    ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp",
-    ".ico": "image/x-icon", ".json": "application/json", ".map": "application/json",
-    ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf",
-}
-
-
-def _ui_dir():
-    """Locate the optional React build exposed at ``/app``.
-
-    Build chain: ``cd prototype/chat-ui && npm run build`` writes its output to
-    ``loom/assets/ui`` (vite ``outDir``). ``LOOM_DESKTOP_UI_DIR`` can override
-    that directory for development; neither changes the default ``/`` console.
-    """
-    # 1) explicit override (source-served during development, or a custom build)
-    directory = os.environ.get("LOOM_DESKTOP_UI_DIR", "")
-    if directory and os.path.isfile(os.path.join(directory, "index.html")):
-        return os.path.realpath(directory)
-    # 2) bundled build inside the package (loom/assets/ui).
-    bundled = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui")
-    if os.path.isfile(os.path.join(bundled, "index.html")):
-        return os.path.realpath(bundled)
-    return ""
 _CLOUD_IGNORE_RULES = ["_data/", ".env", "*.xlsx", "*.pptx", "*.numbers",
                        "*.pages", "*.key", "*.parquet", "*.pdf", "*.docx"]
 _BINARY_CLOUD_EXTS = (".xlsx", ".pptx", ".numbers", ".pages", ".key", ".parquet",
@@ -328,6 +302,7 @@ def api_topic_relation_graph(cfg, by_id):
 
     aggregated = defaultdict(lambda: {
         "count": 0, "score": 0.0, "reason_counts": defaultdict(int),
+        "examples": [], "example_keys": set(),
     })
     raw_edges = relations.all_edges(by_id)
     mapped_raw_edges = 0
@@ -348,6 +323,19 @@ def api_topic_relation_graph(cfg, by_id):
             meta["score"] += edge["score"]
             for reason in edge["reasons"]:
                 meta["reason_counts"][reason] += 1
+            example_key = (edge["source"], edge["target"])
+            if example_key not in meta["example_keys"] and len(meta["examples"]) < 6:
+                left_entry = by_id.get(edge["source"], {})
+                right_entry = by_id.get(edge["target"], {})
+                meta["example_keys"].add(example_key)
+                meta["examples"].append({
+                    "source": edge["source"],
+                    "target": edge["target"],
+                    "source_summary": left_entry.get("summary", edge["source"]),
+                    "target_summary": right_entry.get("summary", edge["target"]),
+                    "score": edge["score"],
+                    "reasons": edge["reasons"],
+                })
 
     relation_edges = []
     for (source, target), meta in aggregated.items():
@@ -359,6 +347,7 @@ def api_topic_relation_graph(cfg, by_id):
             "count": meta["count"],
             "score": round(meta["score"], 3),
             "reasons": reasons,
+            "examples": meta["examples"],
         })
     relation_edges.sort(key=lambda edge: (-edge["count"], -edge["score"],
                                           edge["source"], edge["target"]))
@@ -1145,43 +1134,26 @@ def _make_handler(cfg, admin_token=None):
             self.end_headers()
             self.wfile.write(body)
 
-        def _static(self, root, path):
-            rel = path.lstrip("/")
-            full = os.path.realpath(os.path.join(root, rel))
-            if not (full == root or full.startswith(root + os.sep)) or not os.path.isfile(full):
-                self.send_response(404)
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
-            ctype = _UI_STATIC_TYPES.get(os.path.splitext(full)[1].lower(),
-                                         "application/octet-stream")
-            with open(full, "rb") as handle:
-                body = handle.read()
-            self.send_response(200)
-            self.send_header("Content-Type",
-                             ctype + ("; charset=utf-8" if ctype.startswith("text/") else ""))
+        def _redirect(self, location, code=302):
+            self.send_response(code)
+            self.send_header("Location", location)
             self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Length", "0")
             self.end_headers()
-            self.wfile.write(body)
 
         def do_GET(self):
             u = urllib.parse.urlparse(self.path)
             q = {k: _fix(v[0]) for k, v in urllib.parse.parse_qs(u.query).items()}
-            ui = _ui_dir()
             try:
                 # 所有数据端点仅限本机回环访问,挡 DNS-rebinding 跨站读取台账。
                 # 静态资源(/、/assets)不含数据,不受影响。
                 if u.path.startswith("/api/") and not self._loopback_host():
                     self._json({"error": "forbidden", "message": "仅限本机访问"}, 403)
                     return
-                if ui and (u.path.startswith("/assets/")
-                           or u.path in ("/favicon.svg", "/favicon.ico", "/vite.svg")):
-                    self._static(ui, u.path)
-                elif ui and u.path in ("/app", "/app/"):
-                    with open(os.path.join(ui, "index.html"), "rb") as handle:
-                        self._html(handle.read())
+                if u.path in ("/app", "/app/"):
+                    # One-release compatibility alias for old React bookmarks.
+                    self._redirect("/")
                 elif u.path in ("/", "/browse"):
                     with open(_ASSET, "rb") as handle:
                         self._html(handle.read())
