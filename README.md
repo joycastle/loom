@@ -61,6 +61,8 @@ git clone https://github.com/joycastle/loom.git ~/Documents/loom && cd ~/Documen
 
 装完:`loom sync` 采集,`loom serve` 浏览器看管理页。日常就一条 `loom sync`(上云加 `--push`)。
 
+可选采集 Codex Feishu Bridge 协作话题：先确保 lark-cli 用户已登录并具备 `search:message` 权限，再运行 `loom source enable codex_feishu_bridge`。配置与隐私边界见 [`docs/codex-feishu-bridge.md`](./docs/codex-feishu-bridge.md)。
+
 **让 AI 直接调用 loom(MCP)** · skill 教 AI 怎么敲命令,MCP 则把 loom 变成 AI 编码工具的**原生工具**——写代码时直接 `loom_search` 查台账、`loom_note` 归档,不用记命令:
 
 ```bash
@@ -120,12 +122,13 @@ loom report gen <日期> | set   # 日报:AI 合成 → 回库
 git · Claude/Codex ┐                        ┌ 全文检索 FTS5(中文子串)
 pi · OpenCode      ├─► loom ─► entries ────►│ 按天日记 · 主题 DAG(可上卷)
 Cursor · CodeBuddy │   (归一·打码)  一份真相  │ 日报(AI 合成)
+Codex Feishu Bridge│
 仓库文档 · 数据 · 散信息 ┘                    └ 私有云备份(git push)
 ```
 
 - **原始数据不上云** —— 只有 `vault/` 的 markdown 走 `loom sync --push` 到**你自己的**私有 git remote;`entries.jsonl` 全文、原始 `detail`、`_data/` 的 csv/xlsx、`.env` 由代码强制的 `.gitignore` 留本地。
 - **代码 / 数据物理隔离** —— 本仓 = 共享代码(可公开);你的实例在 `~/.loom/`(`init` 生成、不入代码仓:`config.json` 身份/源开关、`.env` 凭证、`data/` 归一条目+FTS 索引、`vault/` 日记+文档→独立私有仓)。`LOOM_HOME` 可覆盖 `~/.loom`。
-- **诚实的取舍** —— 检索是关键词非语义;飞书打点走[独立机器人](./docs/loom-bot-design.md)不在 loom 内读 IM;日报由外部 AI 合成,loom 只出料。
+- **诚实的取舍** —— 检索是关键词非语义；飞书需求打点走[独立机器人](./docs/loom-bot-design.md)；可选的 Codex Feishu Bridge connector 才会通过本地 lark-cli 读取本人实际参与的话题；日报由外部 AI 合成，loom 只出料。
 
 ## 许可
 

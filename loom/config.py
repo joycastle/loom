@@ -32,6 +32,12 @@ DEFAULT_CONFIG = {
         },
         "pi":        {"enabled": False, "sessions_dir": "~/.pi/agent/sessions"},
         "opencode":  {"enabled": False, "data_dir": "~/.local/share/opencode"},
+        # 通过已登录的 lark-cli 读取 Bridge 绑定群；默认关闭，避免升级后扩大采集。
+        "codex_feishu_bridge": {
+            "enabled": False,
+            "home": "~/.feishu-codex-bridge",
+            "user_open_id": "",
+        },
         "docs":      {"enabled": True},   # 索引各仓 .md(全文归档,不进日记)
         "notes":     {"enabled": True},   # 索引 vault/notes/ 手动加的文档(loom doc add 闭环)
     },
@@ -94,6 +100,12 @@ def load():
     old_sources = cfg.get("sources", {})
     old_docs = old_sources.get("docs", {}) if isinstance(old_sources, dict) else {}
     _deep_update(merged, cfg)
+    # 早期开发版使用了含糊的 feishu_bridge 名称；迁到项目全称，避免以后
+    # 接入其它 Bridge 时配置和记录来源撞名。
+    if isinstance(old_sources, dict) and "feishu_bridge" in old_sources:
+        if "codex_feishu_bridge" not in old_sources:
+            merged["sources"]["codex_feishu_bridge"] = old_sources["feishu_bridge"]
+        merged["sources"].pop("feishu_bridge", None)
     if isinstance(old_docs, dict) and "enabled" in old_docs:
         if old_docs["enabled"] is False:
             # 隐私上采取保守迁移：旧 docs=false 优先，宁可暂停组合来源，
