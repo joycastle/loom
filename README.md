@@ -13,7 +13,7 @@
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)
 ![dependencies](https://img.shields.io/badge/dependencies-0-5AA9A0)
 ![stdlib only](https://img.shields.io/badge/stdlib-only-5AA9A0)
-![tests](https://img.shields.io/badge/tests-152%20passing-3FB950)
+![tests](https://img.shields.io/badge/tests-190%20passing-3FB950)
 ![local-first](https://img.shields.io/badge/private--first-E0A84E)
 [![license](https://img.shields.io/badge/license-MIT-8A93A3)](./LICENSE)
 
@@ -75,7 +75,7 @@ claude mcp add loom -- loom mcp-serve      # Claude Code;或写进项目 .mcp.js
 
 ## 📸 界面预览(`loom serve`)
 
-> 本地零依赖浏览页,仅 127.0.0.1,纯管理无聊天。下图 `loom serve` 实拍,**虚构演示数据**。
+> 唯一前端是一份零构建 Vanilla HTML,无需 Node/npm；仅监听 127.0.0.1,纯管理无聊天。下图 `loom serve` 实拍,**虚构演示数据**。
 
 <img src="docs/shots/dashboard-overview.png" width="100%" alt="首页工作概览" />
 
@@ -87,7 +87,7 @@ claude mcp add loom -- loom mcp-serve      # Claude Code;或写进项目 .mcp.js
 |:---:|:---:|
 | <img src="docs/shots/topics-hierarchy.png" alt="主题层级树" /> | <img src="docs/shots/topics-relations.png" alt="跨主题关联总览" /> |
 
-主题页把两种视角分开呈现:「主题汇总」用树形布局展示父子层级,默认仅显示顶层、双击逐层展开;「关联总览」用聚合矩阵展示不同主题族之间的真实结构关联。
+主题页把两种视角分开呈现:「主题层级」用树形布局展示父子关系,默认仅显示顶层、双击逐层展开;「关联总览」按当前折叠层聚合不同主题族之间的真实结构关联,不固定裁剪主题或边数。点击矩阵单元可查看关联原因与对应的原始记录关系。
 
 ## 🧵 为什么是这样
 

@@ -13,7 +13,7 @@ One flat source of truth → daily journals · full-text search · topic graph �
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)
 ![dependencies](https://img.shields.io/badge/dependencies-0-5AA9A0)
 ![stdlib only](https://img.shields.io/badge/stdlib-only-5AA9A0)
-![tests](https://img.shields.io/badge/tests-152%20passing-3FB950)
+![tests](https://img.shields.io/badge/tests-190%20passing-3FB950)
 ![local-first](https://img.shields.io/badge/private--first-E0A84E)
 [![license](https://img.shields.io/badge/license-MIT-8A93A3)](./LICENSE)
 
@@ -75,7 +75,7 @@ Exposes five tools — `loom_search` / `loom_topic_ls` / `loom_topic_show` / `lo
 
 ## 📸 Screenshots (`loom serve`)
 
-> Local zero-dependency browse UI, 127.0.0.1 only, all admin — no chat. Real `loom serve` shots below, **fictional demo data**.
+> The only frontend is one zero-build Vanilla HTML file—no Node/npm required. It listens on 127.0.0.1 only and stays admin-only, with no chat. Real `loom serve` shots below use **fictional demo data**.
 
 <img src="docs/shots/dashboard-overview.en.png" width="100%" alt="home work overview" />
 
@@ -87,7 +87,7 @@ Exposes five tools — `loom_search` / `loom_topic_ls` / `loom_topic_show` / `lo
 |:---:|:---:|
 | <img src="docs/shots/topics-hierarchy.en.png" alt="topic hierarchy" /> | <img src="docs/shots/topics-relations.en.png" alt="cross-topic relation overview" /> |
 
-The Topics page keeps the two views distinct: **Topic summary** is a hierarchy tree that starts at the roots and expands on double-click; **Relation overview** is an aggregate matrix of real structural links across topic families.
+The Topics page keeps the two views distinct: **Hierarchy** starts at the roots and expands on double-click; **Relation overview** aggregates real structural links across topic families at the current folded level, without a fixed topic or edge limit. Select a matrix cell to inspect reasons and the corresponding record-level links.
 
 ## 🧵 Why it's built this way
 

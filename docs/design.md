@@ -4,6 +4,12 @@
 > 借鉴 [Apple Design skill](https://github.com/emilkowalski/skills/blob/main/skills/apple-design/SKILL.md)
 > （WWDC *Designing Fluid Interfaces* 等），落在**零依赖、单文件、系统字体**的约束里。
 
+## 前端架构契约
+
+- `loom/assets/browse.html` 是唯一前端与唯一界面真相；不保留第二套 React/Vite 实现。
+- 页面直接消费 `loom serve` 的本地 JSON API，无构建、无 CDN、无 Node/npm 运行依赖。
+- `/app` 只作为旧书签的一版兼容跳转，产品入口始终是 `/`。
+
 ## 核心立场
 
 > 对齐人如何思考与移动时，界面不再像电脑，而像身体的延伸。
@@ -91,7 +97,7 @@ Apple 用半透明材料分层，不靠厚重描边。
 
 ## 6. 色彩
 
-**单强调色**，不再金+青双主色抢视线。织物热力仍可用经纬双色，但仅限贡献图。
+**单交互强调色**，不再金+青双主色抢视线。织物热力仍可用经纬双色；主题页可用有限的家族语义色，但同一父子家族必须保持节点、层级线与矩阵标识一致。
 
 ### Dark（默认偏控制台）
 

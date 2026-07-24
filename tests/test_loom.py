@@ -2226,6 +2226,11 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(graph["total_relation_edges"], 1)
         self.assertEqual(graph["mapped_relation_edges"], 1)
         self.assertEqual(graph["relation_edges"][0]["count"], 1)
+        examples = graph["relation_edges"][0]["examples"]
+        self.assertEqual(len(examples), 1)
+        self.assertEqual({examples[0]["source"], examples[0]["target"]},
+                         {"git:p:1", "claude:s:2026-06-01"})
+        self.assertEqual(examples[0]["reasons"], ["会话产出/来自会话"])
         nodes = {node["name"]: node for node in graph["nodes"]}
         self.assertEqual(nodes["bf支付"]["kinds"], {"session": 1})
         self.assertEqual(nodes["净额"]["kinds"], {"commit": 1})
@@ -2550,7 +2555,6 @@ class ServeTest(unittest.TestCase):
 
     def test_http_end_to_end(self):
         import http.client
-        import re
         import threading
         from http.server import ThreadingHTTPServer
         token = "test-admin-token"
@@ -2595,11 +2599,18 @@ class ServeTest(unittest.TestCase):
             self.assertIn(b'data-v="calendar"', page)
             self.assertIn(b'data-topic-mode="relations"', page)    # 主题层级与结构关联两种视角
             self.assertIn(b"api('/api/topic-relations'", page)
+            self.assertIn(b'TOPIC_TREE_EXPANDED', page)             # 根节点默认 + 子树按需展开
+            self.assertIn(b'function visibleTopicRelations', page) # 折叠层代表节点重新聚合关联
+            self.assertIn(b'topic-matrix-child-count', page)        # 显式展开控件
+            self.assertIn(b'topic-relation-examples', page)         # 聚合单元可下钻原始记录边
+            self.assertNotIn(b'.slice(0,14)', page)                  # 关联矩阵不再固定裁成 14 个主题
             self.assertIn(b'class="drawer-related"', page)         # 详情保留主线自动关联能力
+            self.assertIn(b'class="drawer-relation-graph"', page)  # 同一份关联数据的一跳小图
             self.assertIn(b'data-v="report"', page)                # 主线日报能力保留在 Vanilla 页面
             self.assertIn(b'id="report-export"', page)
             self.assertIn(b"action:'report_material'", page)
-            self.assertIn(b'id="admin-skills"', page)              # AI skill 管理不因替换 React 而丢失
+            self.assertIn(b'id="admin-skills"', page)              # 单一 Vanilla 前端仍保留 AI skill 管理
+            self.assertIn(b'id="admin-onboarding"', page)          # 设置页只读首次使用清单
             self.assertIn(b"api('/api/admin/skills')", page)
             self.assertIn(b'id="home-sync-btn"', page)
             self.assertIn(b"search:'ledger'", page)                # 旧 hash 保持兼容
@@ -2627,18 +2638,12 @@ class ServeTest(unittest.TestCase):
             self.assertIn(b'id="ledger-pagination"', page)
             self.assertNotIn(b'function renderLedgerRecent', page)
 
-            # 原 React 构建不再抢占首页，但仍可从 /app 访问。
-            if self.serve._ui_dir():
-                c.request("GET", "/app")
-                app = c.getresponse().read()
-                self.assertIn(b'<div id="root">', app)
-                self.assertIn(b'type="module"', app)
-                asset_match = re.search(rb'src="\.(/assets/[^"]+\.js)"', app)
-                self.assertIsNotNone(asset_match)
-                c.request("GET", asset_match.group(1).decode())
-                asset_resp = c.getresponse()
-                self.assertEqual(asset_resp.status, 200)
-                asset_resp.read()
+            # React 已收敛为单一 Vanilla 前端；旧书签兼容一个版本。
+            c.request("GET", "/app")
+            app_response = c.getresponse()
+            self.assertEqual(app_response.status, 302)
+            self.assertEqual(app_response.getheader("Location"), "/")
+            self.assertEqual(app_response.read(), b"")
             c.request("GET", "/api/nope")
             self.assertEqual(c.getresponse().status, 404)
         finally:
