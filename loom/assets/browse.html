@@ -24,6 +24,8 @@
   --r-sm:8px;--r-md:12px;--r-lg:16px;--r-xl:20px;
   --nav-h:48px;--header-offset:56px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;
   --page-track:960px;--hero-track:760px;--reading-track:760px;
+  --topic-family-0:#6FB8AE;--topic-family-1:#D2A85F;--topic-family-2:#829DDA;--topic-family-3:#B88AC8;
+  --topic-family-4:#83B77C;--topic-family-5:#D48478;--topic-family-6:#65AFCB;--topic-family-7:#C986A7;
   /* legacy aliases used across markup */
   --ink:var(--bg);--panel:var(--surface);--panel2:var(--surface-subtle);--panel3:var(--bg-elevated);
   --line:var(--separator-light);--line2:var(--separator);
@@ -349,43 +351,61 @@ button:disabled{cursor:default;opacity:.45}
   font-size:12px;color:var(--secondary);margin:18px 0 8px;letter-spacing:.06em;text-transform:uppercase;font-weight:600
 }
 
-/* —— Topics graph / relation overview —— */
+/* —— Topics: collapsible hierarchy / aggregate relation overview —— */
 .topic-mode{display:inline-flex;gap:2px;padding:3px;margin-bottom:var(--space-3);background:var(--fill);border-radius:10px}
 .topic-mode button{height:30px;padding:0 12px;border:0;border-radius:7px;background:transparent;color:var(--secondary);font-size:12.5px;font-weight:550;cursor:pointer}
 .topic-mode button.on{background:var(--surface);color:var(--label);box-shadow:var(--shadow-soft)}
-#tgraph{
-  background:var(--surface);border:0;border-radius:var(--r-md);overflow-x:auto;margin-bottom:14px;padding:12px 8px
-}
-#tgraph svg{display:block}
-.gnode{cursor:pointer}
-.gnode rect{stroke-width:1;rx:16;transition:stroke 120ms,filter 120ms,fill-opacity 120ms}
-.gnode:hover rect{stroke:var(--accent);filter:brightness(1.08)}
-.gnode.on rect{stroke:var(--accent);stroke-width:1.8}
-.gnode text{fill:var(--label);font-size:13px;font-family:-apple-system,system-ui,sans-serif;font-weight:500}
-.gnode .cnt{fill:var(--label);font-size:10.5px;font-weight:700;font-family:ui-monospace,monospace}
-.gnode.on text{fill:var(--accent-text)}
-.gnode .cnt-root{fill:#06241c}
-html[data-theme="light"] .gnode .cnt-root{fill:#fff}
-.gedge{fill:none;stroke:var(--separator);stroke-width:1.5;opacity:.85}
-.gedge.hl{stroke:var(--accent);stroke-width:2.2;opacity:1}
+#tgraph{background:var(--surface);border:0;border-radius:var(--r-md);margin-bottom:14px;padding:var(--space-4);min-width:0}
+.topic-summary-meta,.topic-relation-meta{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-bottom:10px;color:var(--tertiary);font-size:11px}
+.topic-summary-meta span,.topic-relation-meta span{padding:4px 8px;border:1px solid var(--separator-light);border-radius:999px;background:var(--surface-subtle)}
+.topic-summary-meta strong,.topic-relation-meta strong{margin-right:3px;color:var(--label);font-family:ui-monospace,monospace;font-weight:650}
+.topic-tree-wrap{position:relative;overflow:auto;max-height:min(62vh,720px);border:1px solid var(--separator-light);border-radius:12px;background:radial-gradient(circle at 12% 10%,color-mix(in srgb,var(--accent) 5%,transparent),transparent 28%),var(--bg-elevated)}
+.topic-tree{display:block;min-width:100%;height:auto}
+.topic-tree-edge{fill:none;stroke:color-mix(in srgb,var(--topic-color) 58%,var(--separator));stroke-width:1.5;stroke-linecap:round}
+.topic-tree-node{cursor:pointer;outline:none}
+.topic-tree-card{fill:var(--surface-subtle);stroke:color-mix(in srgb,var(--topic-color) 48%,var(--separator-light));stroke-width:1;filter:drop-shadow(0 3px 7px rgba(0,0,0,.08));transition:fill .15s,stroke .15s,filter .15s}
+.topic-tree-node:hover .topic-tree-card,.topic-tree-node:focus-visible .topic-tree-card{fill:color-mix(in srgb,var(--topic-color) 8%,var(--surface-subtle));stroke:var(--topic-color)}
+.topic-tree-node.selected .topic-tree-card{fill:color-mix(in srgb,var(--topic-color) 13%,var(--surface-subtle));stroke:var(--topic-color);stroke-width:1.6}
+.topic-tree-family-mark{fill:var(--topic-color)}
+.topic-tree-name{fill:var(--label);font-size:11.5px;font-weight:650}
+.topic-tree-subline,.topic-tree-direct{fill:var(--tertiary);font-size:9px;font-weight:550}
+.topic-tree-count-bg{fill:color-mix(in srgb,var(--topic-color) 16%,var(--surface-subtle))}
+.topic-tree-count{fill:var(--secondary);font:700 9px ui-monospace,monospace}
 .loose{color:var(--tertiary);font-size:12px;margin:-4px 0 14px}
 .loose b{color:var(--secondary);font-weight:500;cursor:pointer}
 .loose b:hover{color:var(--accent-text)}
 .topic-relations{background:var(--surface);border-radius:var(--r-md);padding:var(--space-4);margin-bottom:14px;min-width:0}
-.relation-summary{display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap;margin-bottom:var(--space-3);color:var(--secondary);font-size:12px}
-.relation-summary b{color:var(--label);font-size:15px;margin-right:4px}
-.relation-matrix-wrap{overflow:auto;border-radius:9px;box-shadow:inset 0 0 0 1px var(--separator-light)}
-.relation-matrix{border-collapse:separate;border-spacing:0;min-width:100%;font-size:11px}
-.relation-matrix th,.relation-matrix td{width:46px;min-width:46px;height:38px;text-align:center;border-right:1px solid var(--separator-light);border-bottom:1px solid var(--separator-light)}
-.relation-matrix tr:last-child th,.relation-matrix tr:last-child td{border-bottom:0}.relation-matrix th:last-child,.relation-matrix td:last-child{border-right:0}
-.relation-matrix th{position:sticky;top:0;background:var(--surface);z-index:1;color:var(--secondary);font-weight:550}
-.relation-matrix th:first-child{left:0;z-index:2;width:150px;min-width:150px;text-align:left;padding:0 10px}
-.relation-matrix tbody th{top:auto;z-index:1}.relation-topic{border:0;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.relation-topic:hover{color:var(--accent-text)}
-.relation-cell{display:grid;place-items:center;width:100%;height:100%;border:0;background:rgba(90,200,168,var(--heat));color:var(--label);font:650 11px/1 ui-monospace,"SF Mono",Menlo,monospace;cursor:pointer}
-.relation-cell:hover,.relation-cell:focus-visible{box-shadow:inset 0 0 0 2px var(--accent)}
-.relation-empty-cell{color:var(--tertiary)}
-.relation-note{margin-top:10px;color:var(--tertiary);font-size:11.5px;line-height:1.45}
+#topic-relation-overview{position:relative;background:var(--bg-elevated);border:1px solid var(--separator-light);border-radius:10px;overflow:auto;max-height:min(680px,70vh)}
+.topic-association-matrix{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;color:var(--label);font-size:11px}
+.topic-association-matrix th,.topic-association-matrix td{border-right:1px solid var(--separator-light);border-bottom:1px solid var(--separator-light)}
+.topic-association-matrix thead th{position:sticky;top:0;z-index:2;background:var(--bg-elevated)}
+.topic-association-matrix tbody th{position:sticky;left:0;z-index:1;width:190px;min-width:190px;background:var(--bg-elevated)}
+.topic-matrix-corner{position:sticky!important;left:0;z-index:3!important;width:190px;min-width:190px;height:72px;padding:10px 13px;text-align:left;vertical-align:bottom;color:var(--secondary);font-weight:600}
+.topic-matrix-corner span,.topic-matrix-corner small,.topic-matrix-column small{display:block}.topic-matrix-corner small{margin-top:3px;color:var(--tertiary);font-weight:500}
+.topic-matrix-column{position:relative;width:92px;min-width:92px;height:72px;padding:9px 7px 8px;text-align:left;vertical-align:bottom;font-weight:600;line-height:1.25;overflow-wrap:anywhere}
+.topic-matrix-column small{margin-top:5px;color:var(--tertiary);font:600 9px ui-monospace,monospace}
+.topic-matrix-family-mark{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--topic-color);opacity:.82}
+.topic-matrix-column .topic-matrix-family-mark{left:7px;right:7px;top:0;bottom:auto;width:auto;height:3px;border-radius:0 0 3px 3px}
+.topic-matrix-column.focused{background:color-mix(in srgb,var(--topic-color) 11%,var(--bg-elevated))}
+.topic-matrix-row-label{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:7px;width:100%;height:48px;padding:0 10px 0 13px;background:transparent;color:var(--label);font:inherit;text-align:left}
+.topic-matrix-row-label:hover{background:color-mix(in srgb,var(--topic-color) 9%,var(--bg-elevated))}.topic-matrix-row-label.selected{background:color-mix(in srgb,var(--topic-color) 14%,var(--bg-elevated))}
+.topic-matrix-row-name{min-width:0;width:100%;padding:6px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;color:var(--label);font:600 11px system-ui,sans-serif;text-align:left;cursor:pointer}
+.topic-matrix-child-count{min-width:28px;padding:6px 4px;border:0;border-radius:5px;background:transparent;color:var(--topic-color);font:700 9px ui-monospace,monospace;cursor:pointer}
+.topic-matrix-child-count:hover{background:color-mix(in srgb,var(--topic-color) 12%,var(--surface-subtle))}
+.topic-matrix-node-count{min-width:28px;padding:2px 6px;border-radius:999px;text-align:center;grid-column:3;background:color-mix(in srgb,var(--topic-color) 16%,var(--surface-subtle));color:var(--secondary);font:700 9px ui-monospace,monospace}
+.topic-association-matrix tr.topic-matrix-family-start:not(:first-child)>*{border-top:2px solid var(--separator)}
+.topic-matrix-cell{width:92px;min-width:92px;height:48px;padding:4px;background:var(--bg-elevated);text-align:center;vertical-align:middle}
+.topic-matrix-cell.mirror{background:color-mix(in srgb,var(--surface-subtle) 32%,var(--bg-elevated))}
+.topic-matrix-cell.empty.same-family,.topic-matrix-cell.internal{background:color-mix(in srgb,var(--topic-color,var(--separator)) 4%,var(--bg-elevated))}
+.topic-matrix-relation{display:block;width:100%;height:40px;border:1px solid color-mix(in srgb,var(--relation-left) 34%,var(--separator-light));border-radius:7px;background:linear-gradient(135deg,color-mix(in srgb,var(--relation-left) var(--relation-strength),var(--bg-elevated)),color-mix(in srgb,var(--relation-right) var(--relation-strength),var(--bg-elevated)));color:var(--label);font:700 10px ui-monospace,monospace;cursor:pointer}
+.topic-matrix-relation:hover,.topic-matrix-relation:focus-visible{border-color:color-mix(in srgb,var(--relation-right) 74%,var(--label))}.topic-matrix-relation.internal{color:var(--secondary)}
+.topic-matrix-relation.mirror-mark{padding-top:12px;cursor:default;pointer-events:none;opacity:.74}.topic-matrix-relation.selected{border-color:var(--label);box-shadow:inset 0 0 0 1px var(--bg-elevated),0 0 0 1px var(--label)}
+.topic-association-legend{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:9px 2px 5px;color:var(--tertiary);font-size:10.5px}.topic-association-legend span{display:inline-flex;align-items:center;gap:5px}
+.topic-association-heat i{display:inline-block;width:12px;height:9px;border:1px solid var(--separator-light);border-radius:3px;background:var(--surface-subtle)}.topic-association-heat i.medium{background:color-mix(in srgb,var(--topic-family-0) 20%,var(--bg-elevated))}.topic-association-heat i.strong{background:linear-gradient(135deg,color-mix(in srgb,var(--topic-family-0) 38%,var(--bg-elevated)),color-mix(in srgb,var(--topic-family-2) 38%,var(--bg-elevated)))}
+.topic-association-same::before{content:"";width:14px;height:10px;border:1px solid var(--separator-light);border-radius:3px;background:color-mix(in srgb,var(--topic-family-0) 5%,var(--bg-elevated))}
+.topic-relation-detail{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-height:30px;margin:10px 2px 2px;color:var(--tertiary);font-size:11px}.topic-relation-detail strong{color:var(--label);font-weight:600}.topic-relation-detail>button{padding:4px 9px;border:1px solid var(--separator);border-radius:7px;background:var(--surface-subtle);color:var(--secondary);font:inherit;cursor:pointer}.topic-relation-detail>button:first-of-type{margin-left:auto}.topic-relation-detail>button:hover{border-color:var(--accent);color:var(--label)}
+.topic-relation-reasons{max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.topic-relation-examples{width:100%;display:grid;gap:6px;margin-top:2px}.topic-relation-example{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px;padding:8px;border-radius:8px;background:var(--surface-subtle);color:var(--secondary)}.topic-relation-example button{min-width:0;border:0;background:transparent;color:var(--label);font:inherit;font-weight:550;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}.topic-relation-example button:last-child{text-align:right}.topic-relation-example span{font:650 10px ui-monospace,monospace;color:var(--tertiary)}
+@media(max-width:800px){.topic-association-matrix tbody th,.topic-matrix-corner{width:158px;min-width:158px}.topic-matrix-column,.topic-matrix-cell{width:80px;min-width:80px}}
 
 /* —— Calendar —— */
 .cols{display:grid;grid-template-columns:320px 1fr;gap:20px}
@@ -919,8 +939,11 @@ html.is-locked{overflow:hidden;touch-action:none}
 .skill-list{display:grid;gap:0;margin-top:10px}
 .skill-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px solid var(--separator-light)}
 .skill-row:last-child{border-bottom:0}.skill-main{min-width:0;flex:1}.skill-main strong{display:block;font-size:13px;color:var(--label)}.skill-main .skill-path{display:block;margin-top:3px;font-size:11.5px;color:var(--secondary);overflow-wrap:anywhere}
+.onboarding-overview{display:flex;align-items:center;gap:16px;padding:16px;border:1px solid var(--separator-light);border-radius:10px;background:var(--surface-subtle)}
+.onboarding-progress{width:48px;height:48px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--separator);border-radius:50%;color:var(--label);font-size:13px;font-weight:650}.onboarding-overview-copy{min-width:0;flex:1}.onboarding-overview-copy strong{display:block;color:var(--label);font-size:13px;font-weight:600}.onboarding-overview-copy span{display:block;margin-top:3px;color:var(--secondary);font-size:11.5px;line-height:1.55}
+.onboarding-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.onboarding-step{display:flex;align-items:flex-start;gap:11px;min-height:92px;padding:13px;border:1px solid var(--separator-light);border-radius:10px;background:var(--surface)}.onboarding-step-mark{width:26px;height:26px;display:grid;place-items:center;flex:0 0 auto;border-radius:8px;background:var(--surface-subtle);color:var(--secondary)}.onboarding-step-mark svg{width:14px;height:14px}.onboarding-step.done .onboarding-step-mark{background:var(--accent-soft);color:var(--accent-text)}.onboarding-step-copy{min-width:0;flex:1}.onboarding-step-copy strong{display:block;color:var(--label);font-size:12.5px;font-weight:600}.onboarding-step-copy span{display:block;margin-top:3px;color:var(--secondary);font-size:11px;line-height:1.5}.onboarding-step .act{min-height:30px;margin-top:9px;padding:5px 9px;font-size:10.5px}
 
-@media(max-width:760px){.report-grid{grid-template-columns:1fr}.report-grid>.report-card+.report-card{margin-top:0}}
+@media(max-width:760px){.report-grid{grid-template-columns:1fr}.report-grid>.report-card+.report-card{margin-top:0}.onboarding-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.report-head{align-items:stretch;flex-direction:column}.report-date{flex-basis:auto;width:100%}.report-card{padding:16px}}
 @media(max-width:720px){
   .ledger-filters{display:flex;align-items:flex-start}
@@ -950,6 +973,13 @@ html.is-locked{overflow:hidden;touch-action:none}
 #drawer .section pre{background:var(--bg);border:0;border-radius:10px;padding:12px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0;max-height:min(50vh,420px);overflow:auto;box-shadow:inset 0 0 0 1px var(--separator-light)}
 .drawer-related-list{display:grid;gap:6px}.drawer-related{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;width:100%;padding:10px 11px;border:0;border-radius:9px;background:var(--bg);color:inherit;text-align:left;cursor:pointer;box-shadow:inset 0 0 0 1px var(--separator-light)}
 .drawer-related:hover{background:var(--fill)}.drawer-related strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--label)}.drawer-related-score{font:600 11px/1.4 ui-monospace,"SF Mono",Menlo,monospace;color:var(--accent-text)}.drawer-related-meta,.drawer-related-reason{grid-column:1/-1;font-size:11px;color:var(--tertiary);line-height:1.35}.drawer-related-reason{color:var(--secondary)}
+.drawer-relation-graph{position:relative;width:100%;aspect-ratio:400/230;margin:2px 0 12px;overflow:hidden;border-radius:10px;background:radial-gradient(circle at center,var(--accent-soft),transparent 42%),var(--bg)}
+.drawer-relation-graph>svg{position:absolute;inset:0;width:100%;height:100%}.drawer-relation-graph line{stroke:var(--separator);stroke-width:1.25}.drawer-relation-graph text{fill:var(--secondary);font-size:8px;font-weight:600;paint-order:stroke;stroke:var(--bg);stroke-width:3px;stroke-linejoin:round;text-anchor:middle}
+.relation-graph-center,.relation-graph-node{position:absolute;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;transform:translate(-50%,-50%)}
+.relation-graph-center{left:50%;top:50%;width:116px;min-height:48px;padding:7px 9px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--separator-light));border-radius:10px;background:var(--surface);box-shadow:0 5px 16px rgba(0,0,0,.12)}
+.relation-graph-node{width:clamp(78px,25%,104px);min-height:42px;padding:5px 7px;border:1px solid var(--separator-light);border-radius:8px;background:var(--surface);color:inherit;font:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}
+.relation-graph-node:hover{z-index:2;border-color:var(--accent);box-shadow:0 5px 14px rgba(0,0,0,.14);transform:translate(-50%,-50%) scale(1.03)}
+.relation-graph-center strong,.relation-graph-node strong{font-size:9.5px;color:var(--accent-text)}.relation-graph-center span,.relation-graph-node span{width:100%;margin-top:2px;overflow:hidden;color:var(--label);font-size:10px;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}.relation-graph-node small{width:100%;margin-top:2px;overflow:hidden;color:var(--secondary);font-size:8.5px;line-height:1.2;text-overflow:ellipsis;white-space:nowrap}.relation-graph-more{position:absolute;right:6px;bottom:5px;color:var(--secondary);font-size:9.5px}
 #drawer .drawer-empty{padding:40px 10px;text-align:center;color:var(--tertiary)}
 .empty{color:var(--tertiary);padding:40px 16px;text-align:center;font-size:14px;line-height:1.5;background:var(--surface);border-radius:var(--r-md)}
 #dbody > .day-head,#tmembers > .day-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 12px}
@@ -999,6 +1029,8 @@ html[data-theme="light"]{
   --tx:var(--label);--mut:var(--secondary);--dim:var(--tertiary);
   --warm:#A86C19;--cool:var(--accent);--blue:#007AFF;--bad:var(--danger);
   --text:var(--label);--text-secondary:var(--secondary);--border:var(--separator-light);--border-strong:var(--separator);
+  --topic-family-0:#2F8178;--topic-family-1:#9A6B1F;--topic-family-2:#526FB2;--topic-family-3:#7F5594;
+  --topic-family-4:#4F824B;--topic-family-5:#A8584D;--topic-family-6:#397D99;--topic-family-7:#965476;
   background:var(--bg);color-scheme:light
 }
 html[data-theme="light"] body{background:var(--bg)}
@@ -1221,6 +1253,7 @@ html[data-theme="light"] .checkline input[type=checkbox]{background:#fff}
   </div></div>
 
   <div class="admin-pane" id="admin-pane-settings"><div class="admin-grid">
+    <section class="panel manual-panel"><h3 data-t="开始使用|Get started"></h3><div class="sub" data-t="按当前状态完成基础设置；清单不会自动执行任何操作。|Complete the basics from the current state; the checklist never runs actions automatically."></div><div id="admin-onboarding"></div></section>
     <section class="panel manual-panel"><h3 data-t="个人信息|Profile"></h3><div class="sub" data-t="用于日报署名和飞书中的人员匹配。|Used for report attribution and Feishu matching."></div><div id="admin-owner"></div></section>
     <section class="panel manual-panel"><h3 data-t="Git 身份识别|Git identity"></h3><div class="sub" data-t="添加你在 Git 提交中使用的姓名或邮箱，只采集与你匹配的提交。|Add names or emails used in Git commits; only matching commits are collected."></div><div class="identity-add"><label class="field" for="identity-value"><span data-t="姓名或邮箱|Name or email"></span><input id="identity-value" name="identity_value" autocomplete="off" spellcheck="false" placeholder="name@example.com"></label><button class="act primary" onclick="identityAdd()" data-t="添加|Add"></button></div><div id="admin-identities"></div></section>
     <section class="panel manual-panel"><h3 data-t="AI 助手集成|AI assistant integration"></h3><div class="sub" data-t="将 Loom skill 安装到本机 AI 助手；卸载前会保留可恢复备份。|Install the Loom skill into local AI assistants; uninstall keeps a recoverable backup."></div><div id="admin-skills"><div class="empty" data-t="打开设置时载入集成状态|Integration status loads with Settings"></div></div></section>
@@ -1708,89 +1741,116 @@ function goDay(ds){showView('calendar',true);
   if(window._d)loadDay(ds);else{window._d=1;loadDays().then(()=>loadDay(ds)).catch(()=>loadDay(ds))}
 }
 
-// ---- 主题:横向层级 DAG + 自动结构关联矩阵 ----
-const NW=n=>{let w=14;for(const ch of n.name)w+=ch.charCodeAt(0)>255?14:8;
-  return w+String(n.count).length*7.5+(n.multi?16:0)+22}
+// ---- 主题:默认根节点的可折叠层级 + 随折叠层聚合的结构关联 ----
+let TOPIC_RAW=null,TOPIC_RELATIONS=null,TOPIC_SELECTED=null,TOPIC_VISIBLE_REL=null,TOPIC_FOCUSED_REL=null;
+const TOPIC_TREE_EXPANDED=new Set(),TOPIC_REL_EXPANDED=new Set();
+const TOPIC_NODE_W=196,TOPIC_NODE_H=56,TOPIC_LEVEL_GAP=78,TOPIC_ROW_GAP=18,TOPIC_ROOT_GAP=30;
 function setTopicMode(mode){
   const relationMode=mode==='relations';
   $('#topic-hierarchy').hidden=relationMode;$('#trelations').hidden=!relationMode;
   document.querySelectorAll('[data-topic-mode]').forEach(b=>{const on=b.dataset.topicMode===mode;b.classList.toggle('on',on);b.setAttribute('aria-selected',on?'true':'false')})
 }
 document.querySelectorAll('[data-topic-mode]').forEach(b=>b.onclick=()=>setTopicMode(b.dataset.topicMode));
+function topicPairKey(left,right){return [left,right].sort((a,b)=>a.localeCompare(b)).join('\u0000')}
+function compactTopicLabel(name,maxUnits=24){let units=0,out='';for(const ch of name){const width=ch.charCodeAt(0)>255?2:1;if(units+width>maxUnits)return out+'…';out+=ch;units+=width}return out}
+function compactCount(n){return n>=1000?(n/1000).toFixed(n>=10000?0:1).replace(/\.0$/,'')+'k':String(n)}
+function buildTopicModel(nodes,edges){
+  const byName=new Map(nodes.map(n=>[n.name,n])),parents=new Map();
+  for(const [parent,child] of edges||[]){if(!byName.has(parent)||!byName.has(child))continue;parents.set(child,[...(parents.get(child)||[]),parent])}
+  const primaryParent=new Map();
+  for(const [child,names] of parents){const ranked=[...names].sort((a,b)=>(byName.get(b)?.count||0)-(byName.get(a)?.count||0)||a.localeCompare(b));if(ranked[0])primaryParent.set(child,ranked[0])}
+  const children=new Map();
+  for(const [child,parent] of primaryParent)children.set(parent,[...(children.get(parent)||[]),child]);
+  for(const [parent,names] of children)children.set(parent,names.sort((a,b)=>(byName.get(b)?.count||0)-(byName.get(a)?.count||0)||a.localeCompare(b)));
+  const roots=nodes.filter(n=>!primaryParent.has(n.name)).sort((a,b)=>(b.count||0)-(a.count||0)||a.name.localeCompare(b.name)).map(n=>n.name);
+  return{byName,parents,primaryParent,children,roots}
+}
+function topicFamilyInfo(name,model,cache=new Map(),seen=new Set()){
+  if(cache.has(name))return cache.get(name);if(seen.has(name))return{familyRoot:name,depth:0};
+  const parent=model.primaryParent.get(name);if(!parent){const info={familyRoot:name,depth:0};cache.set(name,info);return info}
+  const p=topicFamilyInfo(parent,model,cache,new Set(seen).add(name)),info={familyRoot:p.familyRoot,depth:p.depth+1};cache.set(name,info);return info
+}
+function buildTopicTreeLayout(model){
+  const positions=new Map();let cursorY=18,maxDepth=0;
+  const place=(name,depth,familyIndex,ancestors)=>{
+    const node=model.byName.get(name);if(!node)return cursorY;
+    const allChildren=model.children.get(name)||[],open=allChildren.length>0&&TOPIC_TREE_EXPANDED.has(name);
+    const visibleChildren=open?allChildren.filter(child=>!ancestors.has(child)):[];let centerY;
+    if(visibleChildren.length){const next=new Set(ancestors).add(name),centers=visibleChildren.map(child=>place(child,depth+1,familyIndex,next));centerY=(centers[0]+centers[centers.length-1])/2}
+    else{centerY=cursorY+TOPIC_NODE_H/2;cursorY+=TOPIC_NODE_H+TOPIC_ROW_GAP}
+    maxDepth=Math.max(maxDepth,depth);positions.set(name,{node,name,x:18+depth*(TOPIC_NODE_W+TOPIC_LEVEL_GAP),y:centerY-TOPIC_NODE_H/2,depth,familyIndex,childCount:allChildren.length,open});return centerY
+  };
+  model.roots.forEach((root,index)=>{place(root,0,index%8,new Set());cursorY+=TOPIC_ROOT_GAP-TOPIC_ROW_GAP});
+  const links=[];for(const parent of positions.values()){if(!parent.open)continue;for(const childName of model.children.get(parent.name)||[]){const child=positions.get(childName);if(!child)continue;const x1=parent.x+TOPIC_NODE_W,y1=parent.y+TOPIC_NODE_H/2,x2=child.x,y2=child.y+TOPIC_NODE_H/2,bend=Math.max(32,(x2-x1)*.48);links.push({parent:parent.name,child:child.name,familyIndex:parent.familyIndex,d:`M${x1},${y1} C${x1+bend},${y1} ${x2-bend},${y2} ${x2},${y2}`})}}
+  return{width:Math.max(760,36+(maxDepth+1)*TOPIC_NODE_W+maxDepth*TOPIC_LEVEL_GAP),height:Math.max(260,cursorY-TOPIC_ROW_GAP+18),nodes:[...positions.values()].sort((a,b)=>a.depth-b.depth||a.y-b.y),links}
+}
+function toggleTopicTree(name){
+  if(!TOPIC_RAW)return;const model=buildTopicModel(TOPIC_RAW.nodes||[],TOPIC_RAW.edges||[]);if(!(model.children.get(name)||[]).length)return;
+  if(TOPIC_TREE_EXPANDED.has(name)){const stack=[name];while(stack.length){const topic=stack.pop();TOPIC_TREE_EXPANDED.delete(topic);stack.push(...(model.children.get(topic)||[]))}}
+  else TOPIC_TREE_EXPANDED.add(name);renderTopicHierarchy()
+}
+function renderTopicHierarchy(){
+  if(!TOPIC_RAW)return;const nodes=TOPIC_RAW.nodes||[],model=buildTopicModel(nodes,TOPIC_RAW.edges||[]),layout=buildTopicTreeLayout(model);
+  const links=layout.links.map(e=>`<path class="topic-tree-edge" style="--topic-color:var(--topic-family-${e.familyIndex})" d="${e.d}"/>`).join('');
+  const nodeSvg=layout.nodes.map(item=>{const n=item.node,direct=n.direct??n.count,parentCount=(model.parents.get(item.name)||[]).length,color=`var(--topic-family-${item.familyIndex})`;
+    return `<g class="topic-tree-node${TOPIC_SELECTED===item.name?' selected':''}" style="--topic-color:${color}" transform="translate(${item.x} ${item.y})" role="treeitem" tabindex="0" data-topic="${esc(item.name)}" ${item.childCount?`aria-expanded="${item.open?'true':'false'}"`:''} aria-label="${esc(item.name)}，${n.count} ${T('条记录','records')}"><title>${esc(item.name)} · ${T('上卷','rolled up')} ${n.count} · ${T('直挂','direct')} ${direct}</title><rect class="topic-tree-card" width="${TOPIC_NODE_W}" height="${TOPIC_NODE_H}" rx="10"/><rect class="topic-tree-family-mark" width="4" height="${TOPIC_NODE_H-14}" x="0" y="7" rx="2"/><text class="topic-tree-name" x="14" y="21">${esc(compactTopicLabel(item.name))}${parentCount>1?' ↺'+parentCount:''}</text><rect class="topic-tree-count-bg" x="${TOPIC_NODE_W-48}" y="8" width="36" height="19" rx="9.5"/><text class="topic-tree-count" x="${TOPIC_NODE_W-30}" y="21.5" text-anchor="middle">${n.count}</text><text class="topic-tree-subline" x="14" y="43">${item.childCount?(item.open?'▾ ':'▸ ')+T(item.childCount+' 个子主题',item.childCount+' children'):T('叶主题','leaf topic')}</text>${direct!==n.count?`<text class="topic-tree-direct" x="${TOPIC_NODE_W-13}" y="43" text-anchor="end">${T('直挂','direct')} ${direct}</text>`:''}</g>`}).join('');
+  $('#tgraph').innerHTML=`<div class="topic-summary-meta"><span><strong>${model.roots.length}</strong>${T('个主题族','topic families')}</span><span><strong>${layout.nodes.length}/${nodes.length}</strong>${T('个当前可见主题','visible topics')}</span><span><strong>${layout.links.length}/${(TOPIC_RAW.edges||[]).length}</strong>${T('条当前层级线','visible hierarchy links')}</span><span>${T('默认仅顶层；双击节点展开或收起子树','Roots only by default; double-click a node to expand or collapse its subtree')}</span></div><div class="topic-tree-wrap"><svg class="topic-tree" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="tree" aria-label="${T('主题层级树','Topic hierarchy tree')}"><title>${T('主题层级树','Topic hierarchy tree')}</title>${links}${nodeSvg}</svg></div>`;
+  document.querySelectorAll('.topic-tree-node').forEach(g=>{const name=g.dataset.topic;g.onclick=()=>pick(name);g.ondblclick=e=>{e.preventDefault();toggleTopicTree(name)};g.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick(name)}else if(e.key==='ArrowRight'&&g.getAttribute('aria-expanded')==='false'){e.preventDefault();toggleTopicTree(name)}else if(e.key==='ArrowLeft'&&g.getAttribute('aria-expanded')==='true'){e.preventDefault();toggleTopicTree(name)}}})
+}
+function visibleTopicRelations(r){
+  const model=buildTopicModel(r.nodes||[],r.hierarchy_edges||[]),visible=new Set(model.roots),queue=[...visible];
+  while(queue.length){const parent=queue.shift();if(!TOPIC_REL_EXPANDED.has(parent))continue;for(const child of model.children.get(parent)||[]){if(visible.has(child))continue;visible.add(child);queue.push(child)}}
+  const representative=name=>{let cur=name;const seen=new Set();while(cur&&!seen.has(cur)){if(visible.has(cur))return cur;seen.add(cur);cur=model.primaryParent.get(cur)}return null};
+  const acc=new Map();for(const edge of r.relation_edges||[]){const left=representative(edge.source),right=representative(edge.target);if(!left||!right)continue;const source=left.localeCompare(right)<=0?left:right,target=left.localeCompare(right)<=0?right:left,key=topicPairKey(source,target),current=acc.get(key);
+    if(current){current.count+=edge.count;current.score+=edge.score;current.reasons=[...new Set([...current.reasons,...(edge.reasons||[])])].slice(0,3);const known=new Set(current.examples.map(x=>topicPairKey(x.source,x.target)));for(const ex of edge.examples||[]){const k=topicPairKey(ex.source,ex.target);if(!known.has(k)&&current.examples.length<6){known.add(k);current.examples.push(ex)}}}
+    else acc.set(key,{source,target,count:edge.count,score:edge.score,reasons:[...(edge.reasons||[])],examples:[...(edge.examples||[])]})
+  }
+  const edges=[...acc.values()].map(e=>({...e,score:Math.round(e.score*1000)/1000})).sort((a,b)=>b.count-a.count||b.score-a.score||a.source.localeCompare(b.source)||a.target.localeCompare(b.target));
+  return{model,nodes:(r.nodes||[]).filter(n=>visible.has(n.name)),edges}
+}
+function matrixTopicNodes(r,visible){
+  const model=visible.model,rootOrder=new Map(model.roots.map((name,index)=>[name,index])),cache=new Map();
+  return visible.nodes.map(node=>{const info=topicFamilyInfo(node.name,model,cache);return{...node,...info,root:node.name===info.familyRoot,familyIndex:(rootOrder.get(info.familyRoot)||0)%8}}).sort((a,b)=>Number(b.root)-Number(a.root)||(a.root&&b.root?(b.count-a.count||a.name.localeCompare(b.name)):0)||(rootOrder.get(a.familyRoot)??999)-(rootOrder.get(b.familyRoot)??999)||a.depth-b.depth||b.count-a.count||a.name.localeCompare(b.name))
+}
+function toggleTopicRelation(name){if(!TOPIC_VISIBLE_REL||!(TOPIC_VISIBLE_REL.model.children.get(name)||[]).length)return;TOPIC_FOCUSED_REL=null;if(TOPIC_REL_EXPANDED.has(name))TOPIC_REL_EXPANDED.delete(name);else TOPIC_REL_EXPANDED.add(name);renderTopicRelations(TOPIC_RELATIONS)}
+function renderTopicRelationDetail(){
+  const root=$('#topic-relation-detail');if(!root||!TOPIC_VISIBLE_REL)return;const visible=TOPIC_VISIBLE_REL,edge=TOPIC_FOCUSED_REL?visible.edges.find(e=>topicPairKey(e.source,e.target)===TOPIC_FOCUSED_REL):null,node=TOPIC_SELECTED?(TOPIC_RELATIONS.nodes||[]).find(n=>n.name===TOPIC_SELECTED):null;
+  if(edge){const examples=(edge.examples||[]).map(ex=>`<div class="topic-relation-example" title="${esc((ex.reasons||[]).join(' · '))}"><button data-entry="${esc(ex.source)}">${esc(ex.source_summary||ex.source)}</button><span>↔ ${Number(ex.score||0).toFixed(1)}</span><button data-entry="${esc(ex.target)}">${esc(ex.target_summary||ex.target)}</button></div>`).join('');root.innerHTML=`<strong>${esc(edge.source===edge.target?edge.source+' · '+T('当前折叠范围内部','within current collapsed scope'):edge.source+' ↔ '+edge.target)}</strong><span>${T('主题对关联','topic-pair relations')} ${edge.count} · ${T('聚合得分','aggregate score')} ${edge.score.toFixed(1)}</span><span class="topic-relation-reasons">${esc((edge.reasons||[]).join(' · '))}</span><button data-topic="${esc(edge.source)}">${T('查看','View')} ${esc(edge.source)}</button>${edge.target!==edge.source?`<button data-topic="${esc(edge.target)}">${T('查看','View')} ${esc(edge.target)}</button>`:''}${examples?`<div class="topic-relation-examples">${examples}</div>`:''}`}
+  else if(node){const children=(visible.model.children.get(node.name)||[]).length;root.innerHTML=`<strong>${esc(node.name)}</strong><span>${T('上卷','rolled up')} ${node.count} · ${T('直挂','direct')} ${node.direct??node.count}</span>${children?`<button data-toggle="${esc(node.name)}">${TOPIC_REL_EXPANDED.has(node.name)?T('收起子主题','Collapse children'):T('展开子主题','Expand children')} (${children})</button>`:''}`}
+  else root.innerHTML=`<span>${T('当前折叠层的全部聚合关系都在矩阵中。点行首展开按钮或双击主题名，关联会同步下沉到具体子主题。','Every aggregate at the current collapsed level is shown. Use the row disclosure or double-click a topic name to move relations to specific children.')}</span>`;
+  root.querySelectorAll('[data-topic]').forEach(b=>b.onclick=()=>pick(b.dataset.topic));root.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=()=>toggleTopicRelation(b.dataset.toggle));root.querySelectorAll('[data-entry]').forEach(b=>b.onclick=()=>detail(b.dataset.entry,b))
+}
+function focusTopicRelation(left,right,button){const key=topicPairKey(left,right);TOPIC_FOCUSED_REL=TOPIC_FOCUSED_REL===key?null:key;document.querySelectorAll('.topic-matrix-relation[data-source]').forEach(b=>b.classList.toggle('selected',TOPIC_FOCUSED_REL===topicPairKey(b.dataset.source,b.dataset.target)));renderTopicRelationDetail();if(button)button.setAttribute('aria-pressed',TOPIC_FOCUSED_REL===key?'true':'false')}
 function renderTopicRelations(r){
-  const root=$('#trelations');root.dataset.ready='1';
+  const root=$('#trelations');root.dataset.ready='1';TOPIC_RELATIONS=r;
   if(!r){root.innerHTML=`<div class="empty">${T('关联总览暂时无法载入。','Relation overview could not be loaded.')}</div>`;return}
-  const edges=r.relation_edges||[],nodes=r.nodes||[];
-  if(!edges.length){root.innerHTML=`<div class="empty"><strong style="display:block;color:var(--label);margin-bottom:6px">${T('还没有跨主题关联','No cross-topic relations yet')}</strong>${T('同步更多记录并完成主题归类后，这里会展示自动派生的结构关联。','Sync and classify more records to reveal derived structural relations here.')}</div>`;return}
-  const degree={};edges.forEach(e=>{degree[e.source]=(degree[e.source]||0)+e.count;degree[e.target]=(degree[e.target]||0)+e.count});
-  const names=Object.keys(degree).sort((a,b)=>degree[b]-degree[a]||a.localeCompare(b)).slice(0,14),visible=new Set(names),edgeMap={};
-  edges.forEach(e=>{if(visible.has(e.source)&&visible.has(e.target))edgeMap[[e.source,e.target].sort().join('\u0000')]=e});
-  const max=Math.max(1,...Object.values(edgeMap).map(e=>e.count));
-  const topicButton=(name,label)=>`<button class="relation-topic" title="${esc(name)}" onclick="pick('${jsq(name)}')">${esc(label)}</button>`;
-  const head=names.map((n,i)=>`<th scope="col">${topicButton(n,String(i+1))}</th>`).join('');
-  const rows=names.map((a,ri)=>`<tr><th scope="row">${topicButton(a,`${ri+1}. ${a}`)}</th>${names.map(b=>{
-    if(a===b)return '<td class="relation-empty-cell">—</td>';
-    const e=edgeMap[[a,b].sort().join('\u0000')];if(!e)return '<td></td>';
-    const heat=(.12+.56*e.count/max).toFixed(2),reason=(e.reasons||[]).join(' · '),title=`${a} ↔ ${b}: ${e.count}${reason?' · '+reason:''}`;
-    return `<td><button class="relation-cell" style="--heat:${heat}" title="${esc(title)}" onclick="pick('${jsq(a)}')">${e.count}</button></td>`}).join('')}</tr>`).join('');
-  root.innerHTML=`<div class="relation-summary"><span><b>${nodes.length}</b>${T('主题','topics')}</span><span><b>${(r.hierarchy_edges||[]).length}</b>${T('层级边','hierarchy edges')}</span><span><b>${edges.length}</b>${T('跨主题关联','topic relations')}</span><span><b>${r.total_relation_edges||0}</b>${T('记录层结构边','record-level edges')}</span></div><div class="relation-matrix-wrap"><table class="relation-matrix"><caption class="sr-only">${T('主题结构关联矩阵','Topic structural relation matrix')}</caption><thead><tr><th>${T('主题','Topic')}</th>${head}</tr></thead><tbody>${rows}</tbody></table></div><p class="relation-note">${T('数字表示两个主题之间聚合后的结构关联数量；这里只展示关联最强的 14 个主题。点主题可查看其上卷记录。','Numbers are aggregated structural links between topics. The 14 strongest connected topics are shown; select a topic to inspect its rolled-up records.')}</p>`
+  if(!(r.nodes||[]).length){root.innerHTML=`<div class="empty">${T('还没有主题或可聚合的关系。','No topics or aggregate relations yet.')}</div>`;return}
+  const visible=visibleTopicRelations(r),nodes=matrixTopicNodes(r,visible);TOPIC_VISIBLE_REL=visible;
+  const familyByTopic=new Map(nodes.map(n=>[n.name,n.familyRoot])),edgeMap=new Map(visible.edges.map(e=>[topicPairKey(e.source,e.target),e]));
+  const cross=visible.edges.filter(e=>e.source!==e.target&&familyByTopic.get(e.source)!==familyByTopic.get(e.target)),same=visible.edges.filter(e=>familyByTopic.get(e.source)===familyByTopic.get(e.target));
+  const maxCross=Math.max(1,...cross.map(e=>e.count)),maxSame=Math.max(1,...same.map(e=>e.count)),familyCount=new Set(nodes.map(n=>n.familyRoot)).size;
+  const displayName=n=>TOPIC_REL_EXPANDED.has(n.name)?n.name+' · '+T('本级','this level'):n.name,displayCount=n=>TOPIC_REL_EXPANDED.has(n.name)?(n.direct??n.count):n.count;
+  const head=nodes.map(n=>{const children=(visible.model.children.get(n.name)||[]).length;return `<th class="topic-matrix-column${n.root?' root':''}" scope="col" style="--topic-color:var(--topic-family-${n.familyIndex})"><span class="topic-matrix-family-mark"></span><span>${esc(displayName(n))}${n.multi?' ↺':''}</span><small>${children?children+T(' 子 · ',' children · '):''}${displayCount(n)}</small></th>`}).join('');
+  const rows=nodes.map((row,ri)=>`<tr class="${row.root?'topic-matrix-family-start':''}"><th scope="row"><div class="topic-matrix-row-label${row.root?' root':''}${TOPIC_SELECTED===row.name?' selected':''}" style="--topic-color:var(--topic-family-${row.familyIndex})"><span class="topic-matrix-family-mark"></span><button class="topic-matrix-row-name" data-topic="${esc(row.name)}" aria-label="${esc(T('查看主题 ','View topic ')+row.name)}">${row.depth?'↳ ':''}${esc(displayName(row))}${row.multi?' ↺':''}</button>${(visible.model.children.get(row.name)||[]).length?`<button class="topic-matrix-child-count" data-toggle="${esc(row.name)}" aria-expanded="${TOPIC_REL_EXPANDED.has(row.name)?'true':'false'}" aria-label="${esc((TOPIC_REL_EXPANDED.has(row.name)?T('收起 ','Collapse '):T('展开 ','Expand '))+row.name+T(' 的子主题',' children'))}">${TOPIC_REL_EXPANDED.has(row.name)?'▾':'▸'}${(visible.model.children.get(row.name)||[]).length}</button>`:''}<span class="topic-matrix-node-count">${displayCount(row)}</span></div></th>${nodes.map((column,ci)=>{const edge=edgeMap.get(topicPairKey(row.name,column.name)),internal=row.name===column.name,sameFamily=row.familyRoot===column.familyRoot,mirror=ri>ci;if(!edge)return `<td class="topic-matrix-cell empty${mirror?' mirror':''}${internal?' internal':''}${sameFamily?' same-family':''}"></td>`;const max=sameFamily?maxSame:maxCross,strength=Math.round((sameFamily?8:12)+(sameFamily?16:32)*Math.log1p(edge.count)/Math.log1p(max)),style=`--relation-left:var(--topic-family-${row.familyIndex});--relation-right:var(--topic-family-${column.familyIndex});--relation-strength:${strength}%`,klass=`topic-matrix-relation${mirror?' mirror-mark':''}${internal?' internal':''}${TOPIC_FOCUSED_REL===topicPairKey(row.name,column.name)?' selected':''}`,label=internal?T(`${row.name} 当前折叠范围内部聚合关联 ${edge.count}`,`${row.name} internal aggregate relation ${edge.count}`):T(`${row.name} 与 ${column.name}：主题对关联 ${edge.count}`,`${row.name} and ${column.name}: ${edge.count} topic-pair relations`);return `<td class="topic-matrix-cell${mirror?' mirror':''}${internal?' internal':''}${sameFamily?' same-family':''}">${mirror?`<span class="${klass}" style="${style}">${compactCount(edge.count)}</span>`:`<button class="${klass}" style="${style}" data-source="${esc(row.name)}" data-target="${esc(column.name)}" aria-label="${esc(label)}" aria-pressed="${TOPIC_FOCUSED_REL===topicPairKey(row.name,column.name)?'true':'false'}">${internal?T('内·','in·'):''}${compactCount(edge.count)}</button>`}</td>`}).join('')}</tr>`).join('');
+  root.innerHTML=`<div class="topic-relation-meta"><span><strong>${nodes.length}/${r.nodes.length}</strong>${T('个当前可见主题','visible topics')}</span><span><strong>${familyCount}</strong>${T('个主题族','topic families')}</span><span><strong>${cross.length}/${visible.edges.length}</strong>${T('条跨主题族 / 当前聚合单元','cross-family / current aggregate cells')}</span><span><strong>${r.total_relation_edges||0}</strong>${T('条记录关系','record links')}</span><span><strong>${r.mapped_relation_edges||0}</strong>${T('条进入主题聚合','mapped across topics')}</span></div><div id="topic-relation-overview"><table class="topic-association-matrix"><caption class="sr-only">${T('主题聚合关联矩阵','Aggregate topic relation matrix')}</caption><thead><tr><th class="topic-matrix-corner" scope="col"><span>${T('主题','Topic')}</span><small>${T('关联到 →','relates to →')}</small></th>${head}</tr></thead><tbody>${rows}</tbody></table></div><div class="topic-association-legend"><span class="topic-association-heat"><i></i><i class="medium"></i><i class="strong"></i>${T('主题对关联由弱到强','topic-pair relation strength')}</span><span class="topic-association-same">${T('同色区块 = 同一主题族','same-color block = same topic family')}</span><span>${T('展示当前折叠层全部聚合关系；对称呈现，不按条数裁剪','all aggregates at the current collapsed level, shown symmetrically without count trimming')}</span></div><div class="topic-relation-detail" id="topic-relation-detail"></div>`;
+  root.querySelectorAll('.topic-matrix-row-name').forEach(b=>{b.onclick=()=>pick(b.dataset.topic);b.ondblclick=e=>{e.preventDefault();toggleTopicRelation(b.dataset.topic)}});root.querySelectorAll('.topic-matrix-child-count').forEach(b=>b.onclick=()=>toggleTopicRelation(b.dataset.toggle));root.querySelectorAll('.topic-matrix-relation[data-source]').forEach(b=>b.onclick=()=>focusTopicRelation(b.dataset.source,b.dataset.target,b));renderTopicRelationDetail()
 }
 async function loadTopics(){
   const [r,relations]=await Promise.all([api('/api/topics',{}),api('/api/topic-relations',{}).catch(()=>null)]);
-  const nodes=r.nodes||[],edges=r.edges||[],byN={};
+  const nodes=r.nodes||[];TOPIC_RAW=r;TOPIC_RELATIONS=relations;
   if(!nodes.length){
     $('#tgraph').innerHTML=`<div class="empty" style="background:transparent;padding:44px 16px"><strong style="display:block;color:var(--label);margin-bottom:6px">${T('还没有主题','No topics yet')}</strong>${T('先在主题层创建主题并归类记录。','Create topics and classify records first.')}</div>`;
     $('#tloose').textContent='';$('#tmembers').hidden=true;renderTopicRelations(relations);
     return;
   }
   $('#tmembers').hidden=false;
-  nodes.forEach(n=>byN[n.name]=n);
-  const parents={};edges.forEach(([p,c])=>{(parents[c]=parents[c]||[]).push(p)});
-  // 深度 = 最长父链(带环保护)
-  const depth={};const dep=(n,seen)=>{if(depth[n]!=null)return depth[n];
-    if(seen.has(n))return 0;seen.add(n);
-    const ps=(parents[n]||[]).filter(p=>byN[p]);
-    return depth[n]=ps.length?1+Math.max(...ps.map(p=>dep(p,seen))):0};
-  nodes.forEach(n=>dep(n.name,new Set()));
-  const cols=[];nodes.forEach(n=>{(cols[depth[n.name]]=cols[depth[n.name]]||[]).push(n)});
-  // 每列先按父的均值 y 排(减少交叉),父未定时按上卷数
-  const pos={};const rowH=48,padY=14;
-  const colX=[];let x=12;
-  cols.forEach((col,ci)=>{colX[ci]=x;x+=Math.max(...col.map(NW))+72});
-  cols.forEach((col,ci)=>{
-    col.sort((a,b)=>{const ay=avgY(a),by=avgY(b);return ay-by||b.count-a.count});
-    col.forEach((n,i)=>pos[n.name]={x:colX[ci],y:padY+i*rowH});
-    function avgY(n){const ps=(parents[n.name]||[]).map(p=>pos[p]&&pos[p].y).filter(v=>v!=null);
-      return ps.length?ps.reduce((a,b)=>a+b,0)/ps.length:1e9}
-  });
-  const H=Math.max(...cols.map(c=>c.length))*rowH+padY*2, W=x;
-  const maxC=Math.max(...nodes.map(n=>n.count||1));
-  let svg=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
-    <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="160%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.35"/></filter></defs>`;
-  for(const [p,c] of edges){if(!pos[p]||!pos[c])continue;
-    const x1=pos[p].x+NW(byN[p]),y1=pos[p].y+16,x2=pos[c].x,y2=pos[c].y+16,mx=(x1+x2)/2;
-    svg+=`<path class="gedge" data-e="${esc(p)}|${esc(c)}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`}
-  for(const n of nodes){const{x,y}=pos[n.name],w=NW(n);
-    const heat=Math.min(0.30,0.05+0.25*(n.count/maxC));        // 热力底色:上卷越多越暖
-    const root=depth[n.name]===0;
-    const cw=String(n.count).length*7.5+12;
-    svg+=`<g class="gnode" data-n="${esc(n.name)}" transform="translate(${x},${y})" onclick="pick('${esc(n.name).replace(/'/g,"\\'")}')">
-      <rect width="${w}" height="32" fill="rgba(90,200,168,${heat.toFixed(2)})"
-        stroke="${root?'var(--accent)':'var(--separator-light)'}" filter="url(#sh)"/>
-      <text x="13" y="21">${esc(n.name)}${n.multi?' ↺':''}</text>
-      <rect x="${w-cw-7}" y="8" width="${cw}" height="16" rx="8" fill="${root?'var(--accent)':'var(--fill-strong)'}" opacity="0.95"/>
-      <text class="cnt${root?' cnt-root':''}" x="${w-cw/2-7}" y="20" text-anchor="middle">${n.count}</text></g>`}
-  svg+='</svg>';
-  $('#tgraph').innerHTML=svg;
+  renderTopicHierarchy();
   $('#tloose').innerHTML=(r.loose.length?`${T('未建页','No page yet')}:${r.loose.map(t=>`<b onclick="pick('${esc(t)}')">${esc(t)}</b>`).join(' · ')} · `:'')
     +T(`已归类 ${r.total_tagged} 条 · ↺=多父(DAG)`,`${r.total_tagged} classified · ↺=multi-parent (DAG)`);
   renderTopicRelations(relations);
 }
 async function pick(name){
-  document.querySelectorAll('.gnode').forEach(g=>g.classList.toggle('on',g.dataset.n===name));
-  document.querySelectorAll('.gedge').forEach(e=>{const[p,c]=e.dataset.e.split('|');
-    e.classList.toggle('hl',p===name||c===name)});
+  TOPIC_SELECTED=name;TOPIC_FOCUSED_REL=null;if(TOPIC_RAW)renderTopicHierarchy();if(TOPIC_RELATIONS)renderTopicRelations(TOPIC_RELATIONS);
   $('#tmembers').innerHTML=`<div class="gh">${esc(name)}</div>`+skeletonList(4);
   try{
     const r=await api('/api/topic',{name});
@@ -1903,6 +1963,7 @@ function icon(name){const p={
   search:'<circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/>',
   settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.4.33.75.6 1 .3.28.68.42 1.1.4h.1v4h-.1c-.42-.02-.8.12-1.1.4-.27.25-.48.6-.6 1Z"/>',
   trash:'<path d="M4 7h16M9 7V4h6v3m3 0-1 14H7L6 7m4 4v6m4-6v6"/>',
+  check:'<path d="m5 12 4 4L19 6"/>',
   close:'<path d="m6 6 12 12M18 6 6 18"/>',
   chevron:'<path d="m9 18 6-6-6-6"/>',
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
@@ -1949,6 +2010,19 @@ function sourceGroups(sources){
   const grouped={};(sources||[]).forEach(s=>(grouped[s.category||'other']??=[]).push(s));
   return ['development','collaboration','knowledge','other'].filter(k=>(grouped[k]||[]).length).map(k=>{const rows=grouped[k],m=meta[k];return `<section class="source-group" data-source-category="${k}"><div class="source-group-head"><div class="source-group-title"><h4>${m[0]}</h4><p>${m[1]}</p></div><span class="source-group-count">${rows.length} ${T('个来源',rows.length===1?'source':'sources')}</span></div><div class="source-cards">${rows.map(sourceCard).join('')}</div></section>`}).join('');
 }
+function renderOnboarding(o,c){
+  const ids=o.identities||{},idCount=(ids.emails||[]).length+(ids.names||[]).length,remotes=(o.vault&&o.vault.git_remotes)||[],remoteReady=remotes.length>0||!!(o.vault&&o.vault.remote_config);
+  const items=[
+    {done:c.active_sources>0,title:T('开启数据来源','Enable data sources'),detail:T(`已开启 ${c.active_sources} / ${c.available_sources} 个来源`,`${c.active_sources} / ${c.available_sources} sources enabled`),pane:'sources'},
+    {done:idCount>0,title:T('配置 Git 身份','Configure Git identity'),detail:idCount?T(`已添加 ${idCount} 个身份`,`${idCount} identities added`):T('尚未添加姓名/邮箱','No name or email added yet'),pane:'settings'},
+    {done:(o.collected.entries||0)>0,title:T('完成首次同步','Run the first sync'),detail:T(`台账共 ${(o.collected.entries||0).toLocaleString()} 条记录`,`${(o.collected.entries||0).toLocaleString()} records in the ledger`),pane:'overview'},
+    {done:!!o.collected.index_ready,title:T('检索索引就绪','Search index ready'),detail:o.collected.index_ready?T('索引可用','Index is ready'):T('需要重建索引（同步一次即可）','Index needs a rebuild (sync once)'),pane:'overview'},
+    {done:!!(o.vault&&o.vault.git)&&remoteReady,title:T('配置知识库备份','Configure knowledge backup'),detail:o.vault&&o.vault.git?(remoteReady?T('已配置远程仓库','Remote repository configured'):T('已初始化，未配置远程','Initialized; no remote yet')):T('知识库尚未初始化 Git','Vault Git not initialized'),pane:'privacy'}
+  ];
+  const completed=items.filter(x=>x.done).length,root=$('#admin-onboarding');if(!root)return;
+  root.innerHTML=`<div class="onboarding-overview"><span class="onboarding-progress">${completed}/${items.length}</span><div class="onboarding-overview-copy"><strong>${completed===items.length?T('基础设置已经完成','Core setup is complete'):T('从任意环节继续','Continue from any area')}</strong><span>${T('清单只反映当前配置状态，不会自动执行任何操作。','The checklist reflects your current configuration; it never runs anything on its own.')}</span></div></div><div class="onboarding-grid">${items.map(item=>`<article class="onboarding-step${item.done?' done':''}"><span class="onboarding-step-mark">${icon(item.done?'check':'chevron')}</span><div class="onboarding-step-copy"><strong>${esc(item.title)}</strong><span>${esc(item.detail)}</span><button class="act" type="button" data-onboarding-pane="${item.pane}">${item.done?T('查看','Review'):T('去设置','Set up')}</button></div></article>`).join('')}</div>`;
+  root.querySelectorAll('[data-onboarding-pane]').forEach(button=>button.onclick=()=>showAdminPane(button.dataset.onboardingPane))
+}
 function renderAdmin(){
   const o=ADMIN;if(!o)return;(o.sources||[]).forEach(s=>ensureToolOption(s.name));fillSources();
   const bad=o.broken.filter(x=>x.severity==='error').length,warn=o.broken.filter(x=>x.severity!=='error').length;
@@ -1956,6 +2030,7 @@ function renderAdmin(){
   const cloudBad=o.vault.tracked_risky.length,cloudWarn=o.vault.gitignore.missing.length||!o.vault.git;
   const c=CONSOLE||{today_entries:0,active_sources:0,available_sources:o.sources.filter(s=>s.available!==false).length,local_bytes:0,recent:[],summarized:0,classified:0,feishu_bridge:{connected:false,message:''}};
   const avail=c.available_sources??o.sources.filter(s=>s.available!==false).length;
+  renderOnboarding(o,{...c,available_sources:avail});
   $('#admin-answers').innerHTML=[
     `<div class="answer"><h2>${T('今日','Today')}</h2><div class="big">${c.today_entries.toLocaleString()}</div><div class="desc">${c.today_entries?`${T('摘要','Sum.')} ${c.summarized} · ${T('归类','Cls.')} ${c.classified}`:T('今天还没有新记录','No new records today')}</div></div>`,
     `<div class="answer"><h2>${T('来源','Sources')}</h2><div class="big">${c.active_sources}<span style="font-size:16px;font-weight:600;color:var(--tertiary)"> / ${avail}</span></div><div class="desc">${T('已开启 / 可用','on / available')}${unavailableCount?` · ${unavailableCount}${T(' 暂不可用',' unavailable')}`:''}</div></div>`,
@@ -2229,6 +2304,14 @@ function sectionTitle(k){
     work:['工作','Work'],thinking:['思考','Thinking'],plan:['计划','Plan'],detail:['详情','Detail']};
   const p=map[k];return p?T(p[0],p[1]):k;
 }
+function shortNodeLabel(value,max=18){const compact=String(value||'').replace(/\s+/g,' ').trim();return compact.length>max?compact.slice(0,max)+'…':compact}
+function relatedGraph(entry,related){
+  const shown=related.slice(0,6),total=shown.length;
+  const nodes=shown.map((item,index)=>{const angle=-Math.PI/2+Math.PI*2*index/total;return{item,x:200+Math.cos(angle)*145,y:115+Math.sin(angle)*78}});
+  const lines=nodes.map(({item,x,y})=>`<g><line x1="200" y1="115" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/><text x="${(200+(x-200)*.58).toFixed(1)}" y="${(115+(y-115)*.58-4).toFixed(1)}">${Number(item.score||0).toFixed(1)}</text></g>`).join('');
+  const buttons=nodes.map(({item,x,y})=>`<button type="button" class="relation-graph-node" style="left:${(x/4).toFixed(2)}%;top:${(y/2.3).toFixed(2)}%" onclick="detail('${jsq(item.id)}',this)" title="${esc(item.summary||item.id)}${(item.reasons||[]).length?' · '+esc(item.reasons.join(' · ')):''}"><strong>${esc(kindLabel(item.kind))}</strong><span>${esc(shortNodeLabel(item.summary||item.id))}</span><small>${esc(shortNodeLabel((item.reasons||[])[0]||T('关联','Related'),15))}</small></button>`).join('');
+  return `<div class="drawer-relation-graph" role="group" aria-label="${T(`当前记录与 ${related.length} 条记录的一跳关联图`,`One-hop graph from this record to ${related.length} related records`)}"><svg viewBox="0 0 400 230" aria-hidden="true">${lines}</svg><div class="relation-graph-center"><strong>${esc(kindLabel(entry.kind))}</strong><span>${esc(shortNodeLabel(entry.summary||T('当前记录','Current record'),16))}</span></div>${buttons}${related.length>shown.length?`<span class="relation-graph-more">+${related.length-shown.length}</span>`:''}</div>`
+}
 async function detail(id,returnFocus=null){
   const seq=++DETAIL_SEQ;
   $('#dctn').innerHTML=`<div class="drawer-head"><h3>${T('载入中…','Loading…')}</h3><button class="x" onclick="drawer(false)" aria-label="${T('关闭','Close')}">${icon('close')}</button></div><div class="drawer-body"><div class="sk sk-line" style="width:40%;height:10px"></div><div class="sk sk-line" style="width:90%;height:10px;margin-top:10px"></div><div class="sk sk-line" style="width:75%;height:10px;margin-top:10px"></div><div class="sk sk-line" style="width:100%;height:140px;margin-top:18px"></div></div>`;
@@ -2255,7 +2338,7 @@ async function detail(id,returnFocus=null){
     const rest=Object.fromEntries(Object.entries(d).filter(([k])=>!['digest','body','opening','content','work','thinking','plan'].includes(k)));
     if(Object.keys(rest).length)body+=`<section class="section"><div class="gh">${esc(sectionTitle('detail'))}</div><pre>${esc(JSON.stringify(rest,null,2))}</pre></section>`;
     const related=e.related||[];
-    if(related.length)body+=`<section class="section"><div class="gh">${T(`关联记录 · ${related.length}`,`Related records · ${related.length}`)}</div><div class="drawer-related-list">${related.map(r=>`<button class="drawer-related" onclick="detail('${jsq(r.id)}')"><strong>${esc(r.summary||r.id)}</strong><span class="drawer-related-score">${Number(r.score||0).toFixed(1)}</span><span class="drawer-related-meta">${esc(r.date||'')} · ${esc(sourceLabel(r.tool))} · ${esc(kindLabel(r.kind))}</span>${(r.reasons||[]).length?`<span class="drawer-related-reason">${esc(r.reasons.join(' · '))}</span>`:''}</button>`).join('')}</div></section>`;
+    if(related.length)body+=`<section class="section"><div class="gh">${T(`关联图 · ${related.length}`,`Relation map · ${related.length}`)}</div>${relatedGraph(e,related)}<div class="gh">${T('关联记录','Related records')}</div><div class="drawer-related-list">${related.map(r=>`<button class="drawer-related" onclick="detail('${jsq(r.id)}',this)"><strong>${esc(r.summary||r.id)}</strong><span class="drawer-related-score">${Number(r.score||0).toFixed(1)}</span><span class="drawer-related-meta">${esc(r.date||'')} · ${esc(sourceLabel(r.tool))} · ${esc(kindLabel(r.kind))}</span>${(r.reasons||[]).length?`<span class="drawer-related-reason">${esc(r.reasons.join(' · '))}</span>`:''}</button>`).join('')}</div></section>`;
     if(!body)body=`<div class="drawer-empty">${T('没有更多详情','No further detail')}</div>`;
     $('#dctn').innerHTML=`<div class="drawer-head"><h3>${esc(e.summary||T('无标题','Untitled'))}</h3><button class="x" onclick="drawer(false)" aria-label="${T('关闭','Close')}">${icon('close')}</button></div>
       <div class="meta-row">${chips}</div>
