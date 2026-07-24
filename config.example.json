@@ -15,7 +15,12 @@
     "cursor":    {"enabled": true, "app_support": "~/Library/Application Support/Cursor"},
     "codebuddy": {"enabled": true, "app_support": "~/Library/Application Support/CodeBuddy"},
     "pi":        {"enabled": false, "sessions_dir": "~/.pi/agent/sessions"},
-    "opencode":  {"enabled": false, "data_dir": "~/.local/share/opencode"}
+    "opencode":  {"enabled": false, "data_dir": "~/.local/share/opencode"},
+    "codex_feishu_bridge": {
+      "enabled": false,
+      "home": "~/.feishu-codex-bridge",
+      "user_open_id": ""
+    }
   },
   "feishu": {
     "enabled": false,
