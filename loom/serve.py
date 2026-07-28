@@ -611,6 +611,22 @@ def _source_diagnostics(cfg, repos=None):
                 {"label": "元数据库", "ok": probe["session_db_exists"],
                  "value": probe["session_db"]},
             ]
+        elif name == "codex":
+            homes = config.codex_homes(cfg)
+            existing = [path for path in homes if os.path.isdir(path)]
+            if not enabled:
+                status, msg = "off", f"已关闭 · 已配置 {len(homes)} 个 Codex 环境"
+            elif not homes:
+                status, msg = "warn", "未配置 Codex 主目录"
+            elif not existing:
+                status, msg = "warn", "已配置的 Codex 主目录均不存在"
+            elif len(existing) != len(homes):
+                status, msg = ("warn",
+                               f"{len(homes)} 个 Codex 环境中 {len(existing)} 个可读取")
+            else:
+                status, msg = "ok", f"{len(homes)} 个 Codex 环境可读取"
+            checks = [{"label": f"home {i}", "ok": os.path.isdir(path), "value": path}
+                      for i, path in enumerate(homes, 1)]
         elif name == "feishu":
             fs = cfg.get("feishu", {})
             bits = fs.get("bitables", [])
@@ -632,9 +648,9 @@ def _source_diagnostics(cfg, repos=None):
                       {"label": "表配置", "ok": bool(bits) and not broken_bits, "value": len(bits)}]
         else:
             src = cfg.get("sources", {}).get(name, {})
-            if name in ("claude", "codex", "cursor", "pi", "opencode",
+            if name in ("claude", "cursor", "pi", "opencode",
                         "codex_feishu_bridge"):
-                key = {"claude": "projects_dir", "codex": "home",
+                key = {"claude": "projects_dir",
                        "cursor": "app_support", "pi": "sessions_dir",
                        "opencode": "data_dir", "codex_feishu_bridge": "home"}[name]
                 path = util.expand(src.get(key, ""))
@@ -1003,7 +1019,28 @@ def _api_admin_action(cfg, payload):
             return _finish_action(cfg, True, f"{name} -> {'enable' if enabled else 'disable'}")
         if action == "source_path_set":
             name = str(payload.get("name", ""))
-            keys = {"claude": "projects_dir", "codex": "home",
+            if name == "codex":
+                raw_paths = payload.get("paths")
+                if not isinstance(raw_paths, list):
+                    raw_paths = [payload.get("path", "")]
+                paths = []
+                for raw in raw_paths:
+                    value = str(raw).strip()
+                    if value:
+                        paths.append(os.path.abspath(util.expand(value)))
+                if not paths:
+                    return _finish_action(cfg, False, "至少配置一个 Codex 主目录")
+                paths = config.codex_homes(
+                    {"sources": {"codex": {"homes": paths}}})
+                missing = [path for path in paths if not os.path.isdir(path)]
+                if missing:
+                    return _finish_action(cfg, False, f"目录不存在:{missing[0]}")
+                src = cfg.setdefault("sources", {}).setdefault("codex", {})
+                src["homes"] = list(dict.fromkeys(paths))
+                src.pop("home", None)
+                config.save(cfg)
+                return _finish_action(cfg, True, f"已更新 {len(src['homes'])} 个 Codex 扫描目录")
+            keys = {"claude": "projects_dir",
                     "cursor": "app_support", "codebuddy": "extension_data",
                     "pi": "sessions_dir", "opencode": "data_dir",
                     "codex_feishu_bridge": "home", "notes": "dir"}
