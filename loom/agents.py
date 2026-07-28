@@ -43,7 +43,7 @@ Findings encoded below (the 3 unknowns from the design):
 """
 import os
 
-from . import util
+from . import config, util
 
 
 # Rendered-content formats (see loom/skillsync.py for the renderers).
@@ -103,9 +103,9 @@ def _claude_home(cfg):
 
 
 def _codex_home(cfg):
-    # Codex keeps sessions, AGENTS.md and skills all under the same $CODEX_HOME.
-    src = cfg.get("sources", {}).get("codex", {})
-    return util.expand(src.get("home", "~/.codex"))
+    # 多 CODEX_HOME 都参与采集；列表首项是安装 AGENTS.md / skills 的主环境。
+    homes = config.codex_homes(cfg)
+    return homes[0] if homes else util.expand("~/.codex")
 
 
 def _cursor_home(cfg):
