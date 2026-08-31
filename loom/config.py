@@ -26,7 +26,9 @@ DEFAULT_CONFIG = {
         "git":       {"enabled": True},
         "claude":    {"enabled": True, "projects_dir": "~/.claude/projects"},
         "codex":     {"enabled": True, "homes": ["~/.codex"]},
-        "cursor":    {"enabled": True, "app_support": "~/Library/Application Support/Cursor"},
+        "cursor":    {"enabled": True, "app_support": "~/Library/Application Support/Cursor",
+                      # 临时/worktree 目录不算项目名(路径含这些片段就跳过);可覆盖。
+                      "scratch_path_patterns": ["/private/tmp/", "/scratchpad/", "/wt-"]},
         "codebuddy": {
             "enabled": False,
             "app_support": "~/Library/Application Support/CodeBuddy",
@@ -67,6 +69,7 @@ DEFAULT_CONFIG = {
                     "mention_all": -20, "bot_sender": -10, "noise_penalty": -15,
                 },
                 "cross_source": {"enabled": True, "min_count": 2},
+                "stop_words": [],    # 追加到内置英文停用词表(领域通用词,不必复制默认)
             },
         },
     },
@@ -74,6 +77,56 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "base_url": "https://open.feishu.cn/open-apis",
         "bitables": [],
+        # 多维表格默认列名(不同团队叫法不同,可覆盖);add_bitable 只读这里、不写死。
+        "bitable_field_defaults": {
+            "person_field": "需求负责人", "date_field": "预计完成时间",
+            "title_field": "需求描述", "status_field": "需求状态",
+        },
+    },
+    # relations:结构边权重(会话产出/共改文件/改文档/同会话续接)。源码只留机制。
+    "relations": {"weights": {
+        "session_commit": 3.0, "shared_file_base": 1.0, "shared_file_per": 0.3,
+        "commit_doc": 2.0, "session_continue": 2.5,
+    }},
+    # report:日报出料 + 跨源聚类的**全部策略**(词表/权重/阈值),源码只留机制。
+    "report": {
+        "importance_tiers": {"high": 8, "mid": 4},   # 决定簇展开/一句带过
+        "section_keywords": {                        # 把 AI 日报按标题切段的关键词
+            "work": ["工作", "进度", "完成", "做了"],
+            "thinking": ["思考", "心得", "问题", "复盘"],
+            "plan": ["明日", "明天", "计划", "下一步", "next", "todo"],
+        },
+        "column_keywords": {                         # 导入飞书日报 xlsx 的列名匹配
+            "date": ["提交时间", "日期"],
+            "work": ["今日工作", "工作与进度", "今日进度"],
+            "thinking": ["今日思考", "思考", "问题与心得"],
+            "plan": ["明日", "明天", "计划"],
+        },
+        "cluster": {                                 # 跨源聚类策略(全可调)
+            "jaccard_min": 0.35, "edge_min": 3.0, "id_owners_max": 3,
+            "topic_owners_max": 6, "big_cluster": 8,
+            "weights": {
+                "strong": 4.0, "weak": 1.5, "topic_rare": 3.5, "topic_common": 2.0,
+                "rel_continue": 4.0, "rel_touch": 3.0, "rel_shared_file": 2.5,
+                "rel_time": 1.0,
+            },
+            "score_weights": {
+                "degree": 1.0, "member_count": 0.5, "kind_diversity": 2.0,
+                "span_days": 1.0, "file_changes": 0.02, "keyword_hit": 1.5,
+            },
+            # 泛化 id:出现在一堆条目里但不代表"同一件事",不作聚类标识符。
+            # 用户在私有 config 的 generic_ids_extra 追加自己项目特有的噪音词。
+            "generic_ids": ["agents", "readme", "onboarding", "handoff", "changelog",
+                            "license", "contributing", "index", "main", "roadmap",
+                            "todo", "notes", "agents.md", "readme.md", "readme.en.md",
+                            "onboarding.md", "handoff.md", "claude.md", "documents",
+                            "desktop", "github", "gitlab", "http", "https", "private",
+                            "public", "prototype", "source", "apps", "assets", "build",
+                            "dist", "node_modules", "package", "config", "jsonl",
+                            "json", "sqlite", "since", "until", "month", "week",
+                            "journal", "vault", "local", "loom"],
+            "generic_ids_extra": [],
+        },
     },
     # 从 util.HOME(尊重 LOOM_HOME)派生,而非硬编码 ~/.loom/vault——否则临时
     # LOOM_HOME 下 ~ 仍解析到真实家目录,测试会误写真实 vault(曾导致真配置被污染)。
@@ -336,14 +389,17 @@ def parse_bitable_url(url):
 
 
 def add_bitable(cfg, name, app_token, table_id, **fields):
+    # 列名默认走配置(不同团队叫法不同),源码不写死具体业务列名。
+    fd = dict(DEFAULT_CONFIG["feishu"]["bitable_field_defaults"])
+    fd.update(cfg.get("feishu", {}).get("bitable_field_defaults", {}) or {})
     b = {
         "name": name,
         "app_token": app_token,
         "table_id": table_id,
-        "person_field": fields.get("person_field", "需求负责人"),
-        "date_field": fields.get("date_field", "预计完成时间"),
-        "title_field": fields.get("title_field", "需求描述"),
-        "status_field": fields.get("status_field", "需求状态"),
+        "person_field": fields.get("person_field", fd["person_field"]),
+        "date_field": fields.get("date_field", fd["date_field"]),
+        "title_field": fields.get("title_field", fd["title_field"]),
+        "status_field": fields.get("status_field", fd["status_field"]),
     }
     cfg["feishu"]["enabled"] = True
     cfg["feishu"]["bitables"] = [x for x in cfg["feishu"]["bitables"] if x["name"] != name]

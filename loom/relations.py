@@ -16,6 +16,13 @@ beachhead 边(用现有字段就能推,不新增采集):
 from collections import defaultdict
 from itertools import combinations
 
+from . import config as _config
+
+
+def _weights():
+    """结构边权重(会话产出/共改文件/改文档/同会话续接)从配置读,源码不写死。"""
+    return _config.DEFAULT_CONFIG["relations"]["weights"]
+
 
 def _files(e):
     return [f.get("path", "") for f in (e.get("detail") or {}).get("file_list") or []
@@ -46,6 +53,7 @@ def neighbors(by_id, eid, limit=30):
     project = e.get("project")
     detail = e.get("detail") or {}
     kind = e.get("kind")
+    w = _weights()
     acc = defaultdict(lambda: {"reasons": set(), "score": 0.0})
 
     def add(other_id, reason, weight):
@@ -75,27 +83,27 @@ def neighbors(by_id, eid, limit=30):
                 start, end = sd.get("start"), sd.get("end")
                 cts = commit.get("ts")
                 if start and end and cts and start <= cts <= end:
-                    add(oid, "会话产出/来自会话", 3.0)
+                    add(oid, "会话产出/来自会话", w["session_commit"])
 
         # 提交 ↔ 提交:共改文件
         if kind == "commit" and okind == "commit" and my_files:
             shared = my_files & set(_files(o))
             if shared:
                 sample = sorted(shared)[0]
-                add(oid, f"共改 {len(shared)} 文件(如 {sample})", 1.0 + 0.3 * len(shared))
+                add(oid, f"共改 {len(shared)} 文件(如 {sample})", w["shared_file_base"] + w["shared_file_per"] * len(shared))
 
         # 提交 ↔ 文档/资料:doc/note 的 path 在提交的改动文件里
         opath = od.get("path")
         if kind == "commit" and opath and opath in my_files:
-            add(oid, f"改动了 {opath}", 2.0)
+            add(oid, f"改动了 {opath}", w["commit_doc"])
         if okind == "commit" and detail.get("path") and detail["path"] in set(_files(o)):
-            add(oid, f"被提交改动 {o.get('ref','')}", 2.0)
+            add(oid, f"被提交改动 {o.get('ref','')}", w["commit_doc"])
 
         # 同一对话跨天续接
         if kind == "session" and okind == "session" and my_sid:
             osid, _ = _sid_day(oid)
             if osid and osid == my_sid:
-                add(oid, "同一对话续接", 2.5)
+                add(oid, "同一对话续接", w["session_continue"])
 
     ranked = sorted(acc.items(), key=lambda kv: (-kv[1]["score"], kv[0]))
     out = []
@@ -106,6 +114,7 @@ def neighbors(by_id, eid, limit=30):
 
 def all_edges(by_id):
     """一次性派生完整结构边,供记录邻域和主题聚合视图复用。"""
+    w = _weights()
     acc = defaultdict(lambda: {"reasons": set(), "score": 0.0})
 
     def add(left, right, reason, weight):
@@ -149,7 +158,7 @@ def all_edges(by_id):
             for cid, commit in commits:
                 cts = commit.get("ts")
                 if cts and start <= cts <= end:
-                    add(sid, cid, "会话产出/来自会话", 3.0)
+                    add(sid, cid, "会话产出/来自会话", w["session_commit"])
 
     # 提交 ↔ 提交:同一 pair 先聚合所有共改文件,再按 neighbors 的公式计分。
     shared_files = defaultdict(set)
@@ -158,18 +167,18 @@ def all_edges(by_id):
             shared_files[(left, right)].add(path)
     for (left, right), paths in shared_files.items():
         sample = sorted(paths)[0]
-        add(left, right, f"共改 {len(paths)} 文件(如 {sample})", 1.0 + 0.3 * len(paths))
+        add(left, right, f"共改 {len(paths)} 文件(如 {sample})", w["shared_file_base"] + w["shared_file_per"] * len(paths))
 
     # 提交 ↔ 文档/笔记:提交改到了对应路径。
     for path, commit_ids in commits_by_file.items():
         for cid in commit_ids:
             for did in docs_by_path.get(path, ()):
-                add(cid, did, f"改动了 {path}", 2.0)
+                add(cid, did, f"改动了 {path}", w["commit_doc"])
 
     # 同一工具里的同一会话跨天续接。
     for session_ids in sessions_by_sid.values():
         for left, right in combinations(sorted(set(session_ids)), 2):
-            add(left, right, "同一对话续接", 2.5)
+            add(left, right, "同一对话续接", w["session_continue"])
 
     return [{
         "source": source,

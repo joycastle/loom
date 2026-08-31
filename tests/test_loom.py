@@ -2350,6 +2350,73 @@ class VaultGitResultTest(unittest.TestCase):
         self.assertIn("推送失败", result["message"])
 
 
+class ClusterTest(unittest.TestCase):
+    def _e(self, eid, kind, tool, project, summary, ts="2026-08-31T10:00",
+           body="", files=None, ref=None):
+        d = {"body": body, "opening": body}
+        if files:
+            d["files"] = len(files)
+            d["file_list"] = [{"path": p, "ins": 1, "del": 0} for p in files]
+        return {"id": eid, "kind": kind, "tool": tool, "project": project,
+                "date": ts[:10], "ts": ts, "summary": summary,
+                "detail": d, "ref": ref or eid}
+
+    def test_shared_identifier_clusters_across_sources(self):
+        from loom import cluster
+        items = {
+            "git:a": self._e("git:a", "commit", "git", "dw",
+                             "重写 orders_daily_v2 写入逻辑", files=["etl/orders_daily_v2.sql"]),
+            "claude:s": self._e("claude:s", "session", "claude", "dw",
+                                "调 orders_daily_v2 空窗期", body="orders_daily_v2 读到旧数据"),
+            "feishu:o": self._e("feishu:o", "chat", "feishu_user", "群",
+                                "orders_daily_v2 上线验收了吗", body="orders_daily_v2 验收"),
+            "git:z": self._e("git:z", "commit", "git", "web", "改个样式", files=["a.css"]),
+        }
+        cs = cluster.cluster(items)
+        # 三条跨源(commit+session+chat)因共享 orders_daily_v2 聚成一簇
+        big = max(cs, key=lambda c: len(c["members"]))
+        self.assertEqual(len(big["members"]), 3)
+        self.assertEqual({m["kind"] for m in big["members"]},
+                         {"commit", "session", "chat"})
+        # 无关的 css 提交自成一簇
+        self.assertTrue(any(c["singleton"] and c["members"][0]["id"] == "git:z"
+                            for c in cs))
+        # 跨源簇重要度高于单条
+        self.assertGreater(big["importance"]["score"],
+                           next(c for c in cs if c["members"][0]["id"] == "git:z"
+                                )["importance"]["score"])
+
+    def test_promiscuous_token_does_not_over_merge(self):
+        from loom import cluster
+        # 8 条都提到通用词 "readme"(在 _GENERIC_IDS)+ 各自独有词 → 不应并成一大簇
+        items = {}
+        for i in range(8):
+            items[f"g{i}"] = self._e(f"g{i}", "commit", "git", "p",
+                                     f"更新 readme 顺带改 feature_{i}")
+        cs = cluster.cluster(items)
+        cap = config.DEFAULT_CONFIG["report"]["cluster"]["big_cluster"]
+        self.assertLessEqual(max(len(c["members"]) for c in cs), cap)
+
+    def test_gen_material_has_importance_table_and_includes_feishu(self):
+        from loom import cluster, report
+        items = [
+            self._e("git:a", "commit", "git", "dw", "重写 nova_daily 写入",
+                    files=["nova_daily.sql"]),
+            self._e("feishu:o", "chat", "feishu_user", "群", "nova_daily 上线了吗",
+                    body="nova_daily 上线了吗"),
+        ]
+        orig = report._day_items
+        report._day_items = lambda date: items
+        try:
+            mat = report.gen_material({"owner": {}}, "2026-08-31")
+        finally:
+            report._day_items = orig
+        self.assertIn("重要度表", mat)
+        self.assertIn("nova_daily", mat)            # 簇标签
+        self.assertIn("feishu_user", mat)            # 飞书聊天被纳入(旧版会漏)
+        self.assertIn("BLUF", mat)                     # 新 SOP 指引
+
+
 class DoctorTest(unittest.TestCase):
     def setUp(self):
         from loom.collectors import feishu_user as fu

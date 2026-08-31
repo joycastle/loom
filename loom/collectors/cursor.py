@@ -8,31 +8,39 @@ import json
 import os
 from collections import defaultdict
 
-from .. import util
+from .. import config, util
 
 INTENT_CAP  = 180
 OPENING_CAP = 1200
 BODY_CAP    = 8000
 
 
-def _is_scratch(p):
-    return "/private/tmp/" in p or "/scratchpad/" in p or "/wt-" in p
+def _scratch_patterns(cfg):
+    """临时/worktree 路径片段(不算项目名)从配置读,源码不写死个人命名习惯。"""
+    src = (cfg or {}).get("sources", {}).get("cursor", {}) if cfg else {}
+    return src.get("scratch_path_patterns") or \
+        config.DEFAULT_CONFIG["sources"]["cursor"]["scratch_path_patterns"]
+
+
+def _is_scratch(p, patterns=None):
+    pats = patterns or config.DEFAULT_CONFIG["sources"]["cursor"]["scratch_path_patterns"]
+    return any(x in p for x in pats)
 
 
 def _basename(p):
     return os.path.basename(str(p).rstrip("/"))
 
 
-def _project(c):
+def _project(c, patterns=None):
     wi = c.get("workspaceIdentifier")
     uri = wi.get("uri") if isinstance(wi, dict) else None
     if isinstance(uri, dict):
         p = uri.get("fsPath") or uri.get("path")
-        if p and not _is_scratch(str(p)):
+        if p and not _is_scratch(str(p), patterns):
             return _basename(p)
     for r in (c.get("trackedGitRepos") or []):
         p = r.get("repoPath") if isinstance(r, dict) else None
-        if p and not _is_scratch(str(p)):
+        if p and not _is_scratch(str(p), patterns):
             return _basename(p)
     return "cursor"
 
@@ -112,6 +120,7 @@ def collect(cfg, since):
 
     composers = _load_composers(db)
     bubbles   = _load_bubbles(db)
+    patterns = _scratch_patterns(cfg)
 
     entries = []
     for cid, c in composers.items():
@@ -120,7 +129,7 @@ def collect(cfg, since):
         if not end:
             continue
         start = start or end
-        project = _project(c)
+        project = _project(c, patterns)
         title   = " ".join((c.get("name") or "").split())[:INTENT_CAP]
 
         # 从 bubbles 提取消息内容

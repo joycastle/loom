@@ -71,8 +71,11 @@ _IDENT_STOP = {
 
 
 def _term_stop(cfg):
-    """停用词 = 通用表 + 用户自己的名字/用户名(避免把 owner 名当业务词荐出来)。"""
+    """停用词 = 内置通用表 + 用户配置追加(relevance.stop_words) + owner 名字/用户名。"""
     stop = set(_IDENT_STOP)
+    for w in (_cfg(cfg).get("relevance", {}) or {}).get("stop_words", []) or []:
+        if isinstance(w, str) and w.strip():
+            stop.add(w.strip().lower())
     ow = cfg.get("owner", {}) if isinstance(cfg.get("owner"), dict) else {}
     for v in (ow.get("name"), ow.get("feishu_name"), os.environ.get("USER")):
         if v:

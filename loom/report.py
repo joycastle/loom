@@ -7,16 +7,19 @@
 """
 import re
 
-from . import dataset, store, util
-
-# 列名模糊匹配(含关键词即可,容忍表头措辞变化)
-_COL_KW = {"date": ("提交时间", "日期"), "work": ("今日工作", "工作与进度", "今日进度"),
-           "thinking": ("今日思考", "思考", "问题与心得"), "plan": ("明日", "明天", "计划")}
+from . import cluster, config, dataset, store, util
 
 
-def _find_cols(header):
+def _rcfg(cfg):
+    """report 策略:用户 config 覆盖内置默认(词表/阈值全走这里,源码不写死)。"""
+    default = config.DEFAULT_CONFIG["report"]
+    rc = (cfg or {}).get("report", {}) if isinstance((cfg or {}).get("report"), dict) else {}
+    return {k: rc.get(k, default[k]) for k in default}
+
+
+def _find_cols(header, col_kw):
     idx = {}
-    for key, kws in _COL_KW.items():
+    for key, kws in col_kw.items():
         for i, h in enumerate(header):
             if any(kw in (h or "") for kw in kws):
                 idx[key] = i
@@ -29,7 +32,7 @@ def import_xlsx(cfg, path):
     rows, _ = dataset._xlsx_rows(util.expand(path))
     if not rows:
         return []
-    idx = _find_cols(rows[0])
+    idx = _find_cols(rows[0], _rcfg(cfg)["column_keywords"])
     if "date" not in idx:
         raise ValueError("日报 xlsx 找不到「提交时间/日期」列")
 
@@ -81,56 +84,102 @@ def _day_items(date):
             if e.get("date") == date and e.get("kind") not in ("doc", "report")]
 
 
+def _tier(score, tiers):
+    return "高" if score >= tiers["high"] else ("中" if score >= tiers["mid"] else "低")
+
+
+def _member_detail(m, by_id):
+    """一条簇成员的证据行(带 ref 回链;ref 跟着 member 走,AI 只表达不编造)。"""
+    e = by_id.get(m["id"], {})
+    d = e.get("detail") or {}
+    tag = {"commit": "提交", "session": "会话", "chat": "聊天", "note": "笔记"}.get(
+        m["kind"], m["kind"])         # 来源由 m['tool'] 展示,不把 kind 绑死某产品
+    line = f"  - [{tag}/{m['tool']}] {m['summary']}  (ref: {m['ref']})"
+    extra = ""
+    if m["kind"] == "commit":
+        extra = f"{d.get('files',0)}文件 +{d.get('ins',0)}/-{d.get('del',0)}"
+    elif m["kind"] == "session":
+        op = " ".join((d.get("opening") or "").split())[:200]
+        extra = f"开场:{op}" if op and not op.startswith(m["summary"][:20]) else ""
+    elif m["kind"] == "chat":
+        extra = " ".join((d.get("body") or "").split())[:200]
+    if extra:
+        line += f"\n      {extra}"
+    return line
+
+
 def gen_material(cfg, date):
-    """聚合某天原材料(提交+body、AI会话+开场、数据/代码),交给 AI 写日报。"""
+    """聚合某天原材料 → **先跨源聚类成「一件事」的簇**、按重要度排序,再交给 AI 写。
+
+    对比旧版按信息源类型平铺:这里把 git/会话/飞书/笔记里"同一件事"的条目聚成一簇
+    (共享标识符/结构边/关键词),让 AI 只做表达、不用自己现场做聚类+取舍。
+    """
     items = _day_items(date)
     if not items:
         return f"({date} 无可汇总的活动;先 loom sync)"
-    commits = [e for e in items if e["tool"] == "git"]
-    sessions = [e for e in items if e["kind"] == "session"]
-    assets = [e for e in items if e["kind"] == "note" and e["tool"] == "notes"]
-    L = [f"# {date} 原材料(供 AI 写日报)", ""]
-    if commits:
-        L.append(f"## 提交 ({len(commits)})")
-        for e in sorted(commits, key=lambda x: x["ts"]):
-            d = e.get("detail", {})
-            L.append(f"- {e['summary']}  ({d.get('files',0)}文件 +{d.get('ins',0)}/-{d.get('del',0)})")
-            for bl in (d.get("body") or "").strip().splitlines():
-                if bl.strip():
-                    L.append(f"  {bl}")
+    tiers = _rcfg(cfg)["importance_tiers"]
+    by_id = {e["id"]: e for e in items}
+    clusters = cluster.cluster(by_id, cfg)               # 聚类策略走 cfg
+    clusters.sort(key=lambda c: -c["importance"]["score"])
+    multi = [c for c in clusters if not c["singleton"]]
+    singles = [c for c in clusters if c["singleton"]]
+
+    L = [f"# {date} 原材料(已跨源聚类,供 AI 写日报)", ""]
+    L.append("## 重要度表(决定详略:高=展开,低=一句带过)")
+    for c in multi:
+        f = c["importance"]
+        clue = c["members"][0]["summary"]
+        L.append(f"- **{c['label_hint']}** · {_tier(f['score'], tiers)}(分{f['score']}) · "
+                 f"{' '.join(clue.split())[:40]}"
+                 f"  〔跨{f['features']['kind_diversity']}源/{f['features']['member_count']}条〕")
+    if not multi:
+        L.append("- (今天没有跨源聚到一起的'一件事',多为独立单条,见下)")
+    L.append("")
+
+    for c in multi:
+        f = c["importance"]
+        L.append(f"## 【{c['label_hint']}】重要度 {f['score']}({_tier(f['score'], tiers)}) "
+                 f"· 跨{f['features']['kind_diversity']}源 {f['features']['member_count']}条")
+        reasons = sorted({r for ed in c["edges"] for r in ed["reasons"]})
+        if reasons:
+            L.append(f"  关联依据:{' / '.join(reasons[:4])}")
+        shown = c["members"][:6]                          # 超大簇只列前几条,防刷屏
+        for m in shown:
+            L.append(_member_detail(m, by_id))
+        if len(c["members"]) > len(shown):
+            L.append(f"  …及其余 {len(c['members']) - len(shown)} 条(同一件事)")
         L.append("")
-    if sessions:
-        L.append(f"## AI 会话 ({len(sessions)})")
-        for e in sorted(sessions, key=lambda x: x["ts"]):
-            L.append(f"- [{e['tool']}] {e['summary']}")
-            op = (e.get("detail", {}).get("opening") or "").strip()
-            if op and not op.startswith(e["summary"][:20]):
-                L.append(f"  开场:{' '.join(op.split())[:300]}")
+
+    if singles:
+        L.append(f"## 其他独立单条 ({len(singles)},次要,建议一句话打包)")
+        for c in sorted(singles, key=lambda x: x["members"][0]["ts"]):
+            m = c["members"][0]
+            L.append(f"- [{m['kind']}/{m['tool']}] {m['summary']}  (ref: {m['ref']})")
         L.append("")
-    if assets:
-        L.append(f"## 数据/代码 ({len(assets)})")
-        for e in sorted(assets, key=lambda x: x["ts"]):
-            L.append(f"- {e['summary']}  ({(e.get('detail') or {}).get('path','')})")
-        L.append("")
-    L += ["---", "请基于以上真实痕迹,以第一人称写这天的日报,分三段(无内容可省):",
-          "## 今日工作与进度", "## 今日思考", "## 明日计划",
+
+    L += ["---",
+          "请基于以上**已聚类**的真实痕迹,以第一人称写这天的日报。写法(稳定 SOP):",
+          "1. 开头一句话总线(BLUF):今天最重要的一件事/结论。",
+          "2. 「今日工作与进度」:**按上面的簇、每簇写成一条**——先给结论(加粗),"
+          "再跟 2~4 条带 ref 的证据(把同一件事的多源信号合并成一条,别拆开)。"
+          "高优先簇≤5 个;没有 ref 证据支撑的结论要降级或标注「未见明确证据」。",
+          "3. 次要的独立单条:合并成「其他事项:A、B、C」一句话带过,不逐条展开。",
+          "4. 「今日思考」「明日计划」:只写材料里有依据的,不虚构。",
           f"写好存回:loom report set {date} --file <日报.md>(或管道 stdin)"]
     return "\n".join(L)
 
 
-_SEC = [("work", re.compile(r"工作|进度|完成|做了")),
-        ("thinking", re.compile(r"思考|心得|问题|复盘")),
-        ("plan", re.compile(r"明日|明天|计划|下一步|next|todo", re.I))]
-
-
-def _split_sections(text):
+def _split_sections(text, section_kw):
+    """按标题关键词把日报切成 work/thinking/plan 段;关键词表由配置给,源码不写死。"""
+    order = ["work", "thinking", "plan"]
     cur, buf = "work", {"work": [], "thinking": [], "plan": []}
     for line in text.splitlines():
         m = re.match(r"#{1,6}\s*(.+)|\*\*(.+?)\*\*\s*$", line.strip())
         head = (m.group(1) or m.group(2)) if m else None
         if head:
-            for k, pat in _SEC:
-                if pat.search(head):
+            low = head.lower()
+            for k in order:
+                if any(kw.lower() in low for kw in section_kw.get(k, [])):
                     cur = k
                     break
             continue
@@ -140,7 +189,7 @@ def _split_sections(text):
 
 def set_from_text(cfg, date, text):
     """把 AI 写好的日报文本存成 report 条目(按 ## 工作/思考/计划 切段;切不出就整段作工作)。"""
-    secs = _split_sections(text)
+    secs = _split_sections(text, _rcfg(cfg)["section_keywords"])
     work = secs.get("work") or text.strip()
     thinking, plan = secs.get("thinking", ""), secs.get("plan", "")
     content = "\n".join(x for x in (work, thinking, plan) if x)
