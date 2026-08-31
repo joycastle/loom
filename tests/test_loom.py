@@ -806,30 +806,71 @@ class FeishuUserCollectorTest(unittest.TestCase):
         self.assertEqual(feishu_user_col._valid_access_token(self._enabled_cfg()),
                          "new-acc")
 
-    def test_collect_maps_chats_and_messages(self):
+    def _stub_env(self, chats, msgs):
+        """打桩 user_info / 群详情 / 群列表 / 消息。群详情 path 含群列表 path,
+        故必须把更具体的 /chats/oc_1 排在 /chats 之前。"""
+        self._stub([
+            (("GET", "/authen/v1/user_info"),
+             {"code": 0, "data": {"open_id": "ou_me"}}),
+            (("GET", "/im/v1/chats/oc_1"),
+             {"code": 0, "data": {"chat_mode": "group", "user_count": "50"}}),
+            (("GET", "/im/v1/chats"), chats),
+            (("GET", "/im/v1/messages"), msgs),
+        ])
+
+    def test_collect_keeps_relevant_drops_noise(self):
         feishu_user_col._save_token({
             "access_token": "u-acc", "refresh_token": "r0",
             "access_expires_at": 9999999999, "refresh_expires_at": 9999999999})
         chats = {"code": 0, "data": {"has_more": False, "items": [
             {"chat_id": "oc_1", "name": "数据中台群"}]}}
         msgs = {"code": 0, "data": {"has_more": False, "items": [
+            # @我 → 强相关,留
             {"message_id": "m1", "msg_type": "text", "create_time": "1721400000000",
-             "body": {"content": json.dumps({"text": "今天跑通了归因链路"})}},
+             "sender": {"id": "ou_other", "sender_type": "user"},
+             "mentions": [{"id": "ou_me", "name": "我"}],
+             "body": {"content": json.dumps({"text": "宪伟哥帮看下归因链路"})}},
+            # 我发的 → 始终留
             {"message_id": "m2", "msg_type": "text", "create_time": "1721400600000",
+             "sender": {"id": "ou_me", "sender_type": "user"},
              "body": {"content": json.dumps({"text": "明天对齐口径"})}},
-            {"message_id": "m3", "msg_type": "image", "create_time": "1721400700000",
+            # 大群里他人闲聊,没@我没回我 → 丢(只计数)
+            {"message_id": "m3", "msg_type": "text", "create_time": "1721400700000",
+             "sender": {"id": "ou_other", "sender_type": "user"},
+             "body": {"content": json.dumps({"text": "周末谁去打球随便聊聊"})}},
+            # 图片无正文 → 忽略
+            {"message_id": "m4", "msg_type": "image", "create_time": "1721400800000",
+             "sender": {"id": "ou_other", "sender_type": "user"},
              "body": {"content": json.dumps({"image_key": "img_x"})}}]}}
-        self._stub([(("GET", "/im/v1/chats"), chats),
-                    (("GET", "/im/v1/messages"), msgs)])
+        self._stub_env(chats, msgs)
         out = feishu_user_col.collect(self._enabled_cfg(), "2000-01-01")
         self.assertEqual(len(out), 1)
         e = out[0]
-        self.assertEqual(e["tool"], "feishu_user")
         self.assertEqual(e["project"], "数据中台群")
-        self.assertEqual(e["detail"]["msgs"], 3)         # 计入图片(有时间戳)
-        self.assertIn("今天跑通了归因链路", e["detail"]["body"])
-        self.assertIn("明天对齐口径", e["detail"]["body"])  # 文本入正文
-        self.assertNotIn("img_x", e["detail"]["body"])     # 图片不入正文
+        self.assertIn("宪伟哥帮看下归因链路", e["detail"]["body"])   # @我,留
+        self.assertIn("明天对齐口径", e["detail"]["body"])          # 我发的,留
+        self.assertNotIn("周末谁去打球", e["detail"]["body"])        # 他人闲聊,丢
+        self.assertEqual(e["detail"]["kept"], 2)
+        self.assertEqual(e["detail"]["dropped"], 1)                 # m3
+        self.assertEqual(e["detail"]["msgs"], 4)                    # 计入图片
+
+    def test_irrelevant_group_produces_no_entry(self):
+        # 大群里只有他人闲聊,既没@我也没我发言 → 整个群这天不入台账。
+        feishu_user_col._save_token({
+            "access_token": "u-acc", "refresh_token": "r0",
+            "access_expires_at": 9999999999, "refresh_expires_at": 9999999999})
+        chats = {"code": 0, "data": {"has_more": False, "items": [
+            {"chat_id": "oc_1", "name": "公司大群"}]}}
+        msgs = {"code": 0, "data": {"has_more": False, "items": [
+            {"message_id": "n1", "msg_type": "text", "create_time": "1721400000000",
+             "sender": {"id": "ou_a", "sender_type": "user"},
+             "body": {"content": json.dumps({"text": "谁的耳机落在会议室了"})}},
+            {"message_id": "n2", "msg_type": "text", "create_time": "1721400600000",
+             "sender": {"id": "ou_b", "sender_type": "user"},
+             "mentions": [{"id": "all", "name": "所有人"}],
+             "body": {"content": json.dumps({"text": "@所有人 欢迎新同学入职"})}}]}}
+        self._stub_env(chats, msgs)
+        self.assertEqual(feishu_user_col.collect(self._enabled_cfg(), "2000-01-01"), [])
 
     def test_authorize_url_carries_params(self):
         url = feishu_user_col.authorize_url(
