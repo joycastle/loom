@@ -40,6 +40,16 @@ DEFAULT_CONFIG = {
         },
         "docs":      {"enabled": True},   # 索引各仓 .md(全文归档,不进日记)
         "notes":     {"enabled": True},   # 索引 vault/notes/ 手动加的文档(loom doc add 闭环)
+        # 飞书主动采集(user OAuth,以我身份拉我可见的群/私聊)。默认关闭:自带飞书
+        # 应用(BYO),申请 user scope 发版 + `loom feishu login` 后才生效。
+        "feishu_user": {
+            "enabled": False,
+            "base_url": "https://open.feishu.cn",           # token / IM 端点
+            "authorize_base": "https://accounts.feishu.cn",  # 授权页(第一步拿 code)
+            "redirect_port": 8788,
+            "scopes": ["im:chat:readonly", "im:message:readonly",
+                       "offline_access"],
+        },
     },
     "feishu": {
         "enabled": False,
