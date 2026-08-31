@@ -22,6 +22,7 @@ from loom.collectors import claude as claude_col                # noqa: E402
 from loom.collectors import codebuddy as codebuddy_col          # noqa: E402
 from loom.collectors import pi as pi_col                          # noqa: E402
 from loom.collectors import opencode as opencode_col              # noqa: E402
+from loom.collectors import codex as codex_col                    # noqa: E402
 from loom.collectors import codex_feishu_bridge as feishu_bridge_col  # noqa: E402
 from loom.collectors import docs as docs_col                    # noqa: E402
 from loom.collectors import notes as notes_col                  # noqa: E402
@@ -273,6 +274,27 @@ class ConfigTest(unittest.TestCase):
                              "/tmp/bridge")
         finally:
             os.remove(util.CONFIG_PATH)
+
+    def test_load_converts_legacy_codex_home_to_homes(self):
+        legacy = {"sources": {"codex": {"enabled": True, "home": "~/.codex-work"}}}
+        with open(util.CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(legacy, f)
+        try:
+            cfg = config.load()
+            self.assertNotIn("home", cfg["sources"]["codex"])
+            self.assertEqual(cfg["sources"]["codex"]["homes"], ["~/.codex-work"])
+            self.assertEqual(config.codex_homes(cfg),
+                             [os.path.expanduser("~/.codex-work")])
+        finally:
+            os.remove(util.CONFIG_PATH)
+
+    def test_codex_homes_accepts_legacy_config_and_deduplicates(self):
+        legacy = {"sources": {"codex": {"home": "~/.codex-work"}}}
+        self.assertEqual(config.codex_homes(legacy),
+                         [os.path.expanduser("~/.codex-work")])
+        cfg = {"sources": {"codex": {
+            "homes": ["~/.codex", os.path.expanduser("~/.codex"), "", None]}}}
+        self.assertEqual(config.codex_homes(cfg), [os.path.expanduser("~/.codex")])
 
     def test_load_preserves_legacy_docs_opt_out(self):
         legacy = {"sources": {"git": {"enabled": True}, "docs": {"enabled": False}}}
@@ -591,6 +613,121 @@ class ClaudeCollectorTest(unittest.TestCase):
         e = claude_col.collect(self.cfg, "2000-01-01")[0]
         self.assertNotIn("branch", e["detail"])
         self.assertNotIn("pr", e["detail"])
+
+
+class CodexCollectorTest(unittest.TestCase):
+    def setUp(self):
+        self.default_home = tempfile.mkdtemp(prefix="loom-codex-default-")
+        self.work_home = tempfile.mkdtemp(prefix="loom-codex-work-")
+
+    @staticmethod
+    def _write_jsonl(home, sid, opening, cwd="/Users/x/project",
+                     source=None, subdir="sessions"):
+        session_dir = os.path.join(home, subdir, "2026", "06", "01")
+        os.makedirs(session_dir, exist_ok=True)
+        path = os.path.join(session_dir, f"rollout-2026-06-01-{sid}.jsonl")
+        meta = {"id": sid, "cwd": cwd}
+        if source is not None:
+            meta["source"] = source
+        rows = [
+            {"timestamp": "2026-06-01T09:00:00Z", "type": "session_meta",
+             "payload": meta},
+            {"timestamp": "2026-06-01T09:01:00Z", "type": "response_item",
+             "payload": {"role": "user", "content": [
+                 {"type": "input_text", "text": opening}]}},
+            {"timestamp": "2026-06-01T09:02:00Z", "type": "response_item",
+             "payload": {"role": "assistant", "content": [
+                 {"type": "output_text", "text": "完成"}]}},
+        ]
+        with open(path, "w", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        return path
+
+    @staticmethod
+    def _write_sqlite(home, sid):
+        db = os.path.join(home, "state_5.sqlite")
+        conn = sqlite3.connect(db)
+        try:
+            conn.execute("CREATE TABLE threads (id TEXT, created_at_ms INTEGER, "
+                         "updated_at_ms INTEGER, cwd TEXT, title TEXT, "
+                         "first_user_message TEXT, git_branch TEXT)")
+            conn.execute("INSERT INTO threads VALUES (?,?,?,?,?,?,?)",
+                         (sid, 1780304400000, 1780308000000, "/Users/x/work-project",
+                          "工作环境旧会话", "从 sqlite 读取", "main"))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_collects_each_codex_home_with_per_home_sqlite_fallback(self):
+        self._write_jsonl(self.default_home, "sid-default", "默认环境会话")
+        self._write_sqlite(self.work_home, "sid-work")
+        cfg = {"sources": {"codex": {"enabled": True, "homes": [
+            self.default_home, self.work_home]}}}
+
+        out = codex_col.collect(cfg, "2000-01-01")
+
+        self.assertEqual(len(out), 2)
+        self.assertEqual({entry["summary"] for entry in out},
+                         {"默认环境会话", "工作环境旧会话"})
+        self.assertTrue(any(entry["ref"] == os.path.join(
+            self.default_home, "sessions") for entry in out))
+        self.assertTrue(any(entry["ref"] == "threads:sid-work" for entry in out))
+
+    def test_duplicate_session_copied_between_homes_is_collected_once(self):
+        self._write_jsonl(self.default_home, "sid-shared", "默认目录版本")
+        self._write_jsonl(self.work_home, "sid-shared", "工作目录副本")
+        cfg = {"sources": {"codex": {"enabled": True, "homes": [
+            self.default_home, self.work_home]}}}
+
+        out = codex_col.collect(cfg, "2000-01-01")
+
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["summary"], "默认目录版本")
+        self.assertEqual(out[0]["ref"], os.path.join(self.default_home, "sessions"))
+
+    def test_duplicate_session_across_jsonl_and_sqlite_is_collected_once(self):
+        self._write_jsonl(self.default_home, "sid-shared", "JSONL 完整会话")
+        self._write_sqlite(self.work_home, "sid-shared")
+        cfg = {"sources": {"codex": {"enabled": True, "homes": [
+            self.default_home, self.work_home]}}}
+
+        out = codex_col.collect(cfg, "2000-01-01")
+
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["summary"], "JSONL 完整会话")
+
+    def test_legacy_single_home_config_still_collects(self):
+        self._write_jsonl(self.work_home, "sid-legacy", "旧配置仍可采集")
+        cfg = {"sources": {"codex": {"enabled": True, "home": self.work_home}}}
+        self.assertEqual(codex_col.collect(cfg, "2000-01-01")[0]["summary"],
+                         "旧配置仍可采集")
+
+    def test_subagent_sessions_are_excluded(self):
+        # guardian 等内部子会话 source 为 {"subagent": ...},不入台账;
+        # 真实用户会话 source 为字符串,正常采集。
+        self._write_jsonl(self.default_home, "sid-user", "真实用户会话",
+                          source="vscode")
+        self._write_jsonl(self.default_home, "sid-sub", "内部风险审查",
+                          source={"subagent": {"other": "guardian"}})
+        cfg = {"sources": {"codex": {"enabled": True,
+                                     "homes": [self.default_home]}}}
+
+        out = codex_col.collect(cfg, "2000-01-01")
+
+        self.assertEqual([e["summary"] for e in out], ["真实用户会话"])
+
+    def test_archived_sessions_are_collected(self):
+        # 归档目录里的会话过去完全没扫到 = 数据丢失,现应一并采集。
+        self._write_jsonl(self.default_home, "sid-live", "活跃会话")
+        self._write_jsonl(self.default_home, "sid-archived", "归档会话",
+                          subdir="archived_sessions")
+        cfg = {"sources": {"codex": {"enabled": True,
+                                     "homes": [self.default_home]}}}
+
+        out = codex_col.collect(cfg, "2000-01-01")
+
+        self.assertEqual({e["summary"] for e in out}, {"活跃会话", "归档会话"})
 
 
 class PiCollectorTest(unittest.TestCase):
@@ -2448,6 +2585,19 @@ class ServeTest(unittest.TestCase):
                                                    "name": "codebuddy", "path": source_dir})
         self.assertTrue(r["ok"])
         self.assertEqual(self.cfg["sources"]["codebuddy"]["extension_data"], source_dir)
+        second_codex_dir = tempfile.mkdtemp(prefix="loom-source-codex-")
+        r = self.serve.api_admin_action(
+            self.cfg, {"action": "source_path_set", "name": "codex",
+                       "paths": [source_dir, second_codex_dir, source_dir]})
+        self.assertTrue(r["ok"])
+        self.assertEqual(self.cfg["sources"]["codex"]["homes"],
+                         [source_dir, second_codex_dir])
+        self.cfg["sources"]["codex"]["enabled"] = True
+        codex_row = next(x for x in self.serve._source_diagnostics(self.cfg)
+                         if x["name"] == "codex")
+        self.assertEqual(codex_row["status"], "ok")
+        self.assertEqual([x["value"] for x in codex_row["checks"]],
+                         [source_dir, second_codex_dir])
         for name, key in (("pi", "sessions_dir"), ("opencode", "data_dir")):
             r = self.serve.api_admin_action(self.cfg, {"action": "source_path_set",
                                                        "name": name, "path": source_dir})

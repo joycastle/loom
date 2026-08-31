@@ -13,7 +13,7 @@
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)
 ![dependencies](https://img.shields.io/badge/dependencies-0-5AA9A0)
 ![stdlib only](https://img.shields.io/badge/stdlib-only-5AA9A0)
-![tests](https://img.shields.io/badge/tests-190%20passing-3FB950)
+![tests](https://img.shields.io/badge/tests-196%20passing-3FB950)
 ![local-first](https://img.shields.io/badge/private--first-E0A84E)
 [![license](https://img.shields.io/badge/license-MIT-8A93A3)](./LICENSE)
 
@@ -62,6 +62,14 @@ git clone https://github.com/joycastle/loom.git ~/Documents/loom && cd ~/Documen
 装完:`loom sync` 采集,`loom serve` 浏览器看管理页。日常就一条 `loom sync`(上云加 `--push`)。
 
 可选采集 Codex Feishu Bridge 协作话题：先确保 lark-cli 用户已登录并具备 `search:message` 权限，再运行 `loom source enable codex_feishu_bridge`。配置与隐私边界见 [`docs/codex-feishu-bridge.md`](./docs/codex-feishu-bridge.md)。
+
+**多个 Codex 环境** · 如果你用 `CODEX_HOME` 隔离了默认/工作环境，可在 `loom serve` 的 Codex 来源设置中逐行添加，或编辑 `~/.loom/config.json`：
+
+```json
+"codex": {"enabled": true, "homes": ["~/.codex", "~/.codex-work"]}
+```
+
+Loom 会合并采集所有目录，并按会话 ID 去重；不会自动扫描 `.codex*`。列表首项是安装 Loom skill 时使用的主 Codex 环境。旧版单数 `home` 配置继续兼容，原始会话不会被移动。每个环境的 `sessions/` 与 `archived_sessions/`(你归档过的会话)都会采集；Codex 内部子会话(guardian 风险审查等 `source` 为 `subagent` 的自动调用)会被自动剔除，不污染台账。
 
 **让 AI 直接调用 loom(MCP)** · skill 教 AI 怎么敲命令,MCP 则把 loom 变成 AI 编码工具的**原生工具**——写代码时直接 `loom_search` 查台账、`loom_note` 归档,不用记命令:
 

@@ -2105,7 +2105,12 @@ function renderGenericSourceConfig(name){
     body.innerHTML=`<section class="config-section"><div class="config-section-title">${T('仓库范围','Repository scope')}</div><div class="config-section-copy">${T('项目文档从已配置的 Git 仓库中读取 Markdown 文件。','Project documents read Markdown files from configured Git repositories.')}</div><div class="credential-note"><i class="status-dot ${s.status==='ok'?'':'warn'}"></i><span>${esc(s.message)}</span></div><div class="inline-actions"><button class="act primary" onclick="openSourceConfig('git')">${icon('settings')}${T('配置 Git 仓库','Configure Git repositories')}</button></div></section>`;
     return;
   }
-  const labels={claude:T('Claude 项目目录','Claude projects directory'),codex:T('Codex 主目录','Codex home directory'),cursor:T('Cursor 数据目录','Cursor data directory'),codebuddy:T('CodeBuddy 数据目录','CodeBuddy data directory'),pi:T('pi 会话目录','pi sessions directory'),opencode:T('OpenCode 数据目录','OpenCode data directory'),notes:T('个人笔记目录','Notes directory')};
+  if(name==='codex'){
+    const paths=(s.checks||[]).map(x=>x.value).filter(Boolean).join('\n');
+    body.innerHTML=`<section class="config-section"><div class="config-section-title">${T('Codex 主目录','Codex home directories')}</div><div class="config-section-copy">${T('每行一个 CODEX_HOME；所有目录都参与会话采集，首行是 Loom skill 的安装目标。','Enter one CODEX_HOME per line. All homes are collected; the first is the Loom skill install target.')}</div><div class="config-add-row"><label class="field" for="generic-source-paths"><span>${T('目录路径（每行一个）','Directory paths (one per line)')}</span><textarea class="path" id="generic-source-paths" name="source_paths" rows="4" autocomplete="off" spellcheck="false">${esc(paths)}</textarea></label><button class="act primary" onclick="sourcePathSet('codex')">${T('保存','Save')}</button></div></section><section class="config-section"><div class="credential-note"><i class="status-dot ${s.status==='ok'?'':'warn'}"></i><span>${esc(s.message)}</span></div></section>`;
+    return;
+  }
+  const labels={claude:T('Claude 项目目录','Claude projects directory'),cursor:T('Cursor 数据目录','Cursor data directory'),codebuddy:T('CodeBuddy 数据目录','CodeBuddy data directory'),pi:T('pi 会话目录','pi sessions directory'),opencode:T('OpenCode 数据目录','OpenCode data directory'),notes:T('个人笔记目录','Notes directory')};
   const copy=T('Loom 会从这个本地目录读取记录。','Loom reads records from this local directory.');
   body.innerHTML=`<section class="config-section"><div class="config-section-title">${labels[name]||T('扫描目录','Scan directory')}</div><div class="config-section-copy">${copy}</div><div class="config-add-row"><label class="field" for="generic-source-path"><span>${T('目录路径','Directory path')}</span><input class="path" id="generic-source-path" name="source_path" autocomplete="off" spellcheck="false" value="${esc(path)}"></label><button class="act primary" onclick="sourcePathSet('${jsq(name)}')">${T('保存','Save')}</button></div></section><section class="config-section"><div class="credential-note"><i class="status-dot ${s.status==='ok'?'':'warn'}"></i><span>${esc(s.message)}</span></div></section>`;
 }
@@ -2273,7 +2278,14 @@ function repoRemove(path){adminAction({action:'repo_remove',path},'remove')}
 function identityAdd(){adminAction({action:'identity_add',value:$('#identity-value').value})}
 function identityRemove(value){adminAction({action:'identity_remove',value},'remove')}
 function sourceSet(name,enabled){adminAction({action:'source_set',name,enabled})}
-function sourcePathSet(name){adminAction({action:'source_path_set',name,path:$('#generic-source-path').value})}
+function sourcePathSet(name){
+  if(name==='codex'){
+    const paths=$('#generic-source-paths').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    adminAction({action:'source_path_set',name,paths});
+    return
+  }
+  adminAction({action:'source_path_set',name,path:$('#generic-source-path').value})
+}
 function ownerSet(){adminAction({action:'owner_set',name:$('#owner-name').value,feishu_name:$('#owner-feishu').value})}
 function feishuAdd(){adminAction({action:'feishu_add',name:$('#fs-name').value,url:$('#fs-url').value,table_id:$('#fs-table').value})}
 function feishuRemove(name){adminAction({action:'feishu_remove',name},'remove')}
