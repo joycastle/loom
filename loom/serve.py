@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import (collectors, config, digest, render, report, search, skillsync,
                store, topics, util)
+from .collectors import feishu_user
 
 _ASSET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "browse.html")
 _CLOUD_IGNORE_RULES = ["_data/", ".env", "*.xlsx", "*.pptx", "*.numbers",
@@ -646,6 +647,21 @@ def _source_diagnostics(cfg, repos=None):
             checks = [{"label": "凭证在 .env", "ok": not missing_secret,
                        "value": "齐全" if not missing_secret else ",".join(missing_secret)},
                       {"label": "表配置", "ok": bool(bits) and not broken_bits, "value": len(bits)}]
+        elif name == "feishu_user":
+            # OAuth 来源:配置的是"登录状态"而非目录。登录走 CLI(loom feishu
+            # login,需本地浏览器回环授权),这里只做状态展示。
+            st = feishu_user.token_status()
+            if not enabled:
+                status, msg = "off", "已关闭 · " + ("已登录" if st["logged_in"] else "未登录")
+            elif not st["logged_in"]:
+                status, msg = "warn", "未登录 · 终端运行 loom feishu login"
+            else:
+                status, msg = "ok", f"已登录 · access 剩 {st['access_expires_in'] // 60} 分钟"
+            checks = [{"label": "登录", "ok": st["logged_in"],
+                       "value": "已登录" if st["logged_in"] else "未登录"}]
+            if st["logged_in"]:
+                checks.append({"label": "refresh 有效期", "ok": st["refresh_expires_in"] > 0,
+                               "value": f"{st['refresh_expires_in'] // 86400} 天"})
         else:
             src = cfg.get("sources", {}).get(name, {})
             if name in ("claude", "cursor", "pi", "opencode",

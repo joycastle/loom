@@ -26,6 +26,7 @@ from loom.collectors import codex as codex_col                    # noqa: E402
 from loom.collectors import codex_feishu_bridge as feishu_bridge_col  # noqa: E402
 from loom.collectors import docs as docs_col                    # noqa: E402
 from loom.collectors import notes as notes_col                  # noqa: E402
+from loom.collectors import feishu_user as feishu_user_col        # noqa: E402
 import subprocess                                              # noqa: E402
 
 
@@ -728,6 +729,116 @@ class CodexCollectorTest(unittest.TestCase):
         out = codex_col.collect(cfg, "2000-01-01")
 
         self.assertEqual({e["summary"] for e in out}, {"活跃会话", "归档会话"})
+
+
+class FeishuUserCollectorTest(unittest.TestCase):
+    """飞书 user OAuth 采集器:全程打桩 _request,不触网。"""
+
+    def setUp(self):
+        feishu_user_col.clear_token()
+        self._env = {k: os.environ.get(k)
+                     for k in ("FEISHU_APP_ID", "FEISHU_APP_SECRET")}
+        os.environ["FEISHU_APP_ID"] = "cli_test"
+        os.environ["FEISHU_APP_SECRET"] = "secret_test"
+        self._orig_request = feishu_user_col._request
+
+    def tearDown(self):
+        feishu_user_col._request = self._orig_request
+        feishu_user_col.clear_token()
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    @staticmethod
+    def _enabled_cfg():
+        return {"sources": {"feishu_user": {
+            "enabled": True, "base_url": "https://open.feishu.cn",
+            "scopes": ["im:chat:readonly", "offline_access"]}}}
+
+    def _stub(self, responses):
+        """responses: (method, path substring) -> dict。按顺序匹配第一个命中。"""
+        def fake(cfg, method, path, token=None, params=None, body=None):
+            for (m, frag), resp in responses:
+                if m == method and frag in path:
+                    return resp
+            raise AssertionError(f"未打桩的请求 {method} {path}")
+        feishu_user_col._request = fake
+
+    def test_disabled_returns_empty(self):
+        self.assertEqual(feishu_user_col.collect({"sources": {}}, "2000-01-01"), [])
+
+    def test_missing_credentials_reported(self):
+        os.environ.pop("FEISHU_APP_ID", None)
+        os.environ.pop("FEISHU_APP_SECRET", None)
+        out = feishu_user_col.collect_diagnostic(self._enabled_cfg(), "2000-01-01")
+        self.assertEqual(out["entries"], [])
+        self.assertTrue(any("FEISHU_APP_ID" in e for e in out["errors"]))
+
+    def test_not_logged_in_reported(self):
+        out = feishu_user_col.collect_diagnostic(self._enabled_cfg(), "2000-01-01")
+        self.assertEqual(out["entries"], [])
+        self.assertTrue(any("login" in e for e in out["errors"]))
+
+    def test_exchange_code_saves_token_and_status(self):
+        self._stub([(("POST", "/authen/v2/oauth/token"),
+                     {"code": 0, "access_token": "u-acc", "refresh_token": "u-ref",
+                      "expires_in": 7200, "refresh_token_expires_in": 604800,
+                      "scope": "im:chat:readonly"})])
+        tok = feishu_user_col.exchange_code(self._enabled_cfg(), "the-code",
+                                            "http://localhost:8788/callback")
+        self.assertEqual(tok["access_token"], "u-acc")
+        st = feishu_user_col.token_status()
+        self.assertTrue(st["logged_in"])
+        self.assertGreater(st["access_expires_in"], 0)
+        # 落盘权限必须是 600(等同凭证)。
+        mode = os.stat(feishu_user_col._TOKEN_PATH).st_mode & 0o777
+        self.assertEqual(mode, 0o600)
+
+    def test_expired_access_token_is_refreshed(self):
+        feishu_user_col._save_token({
+            "access_token": "old", "refresh_token": "r0",
+            "access_expires_at": 0, "refresh_expires_at": 9999999999})
+        self._stub([(("POST", "/authen/v2/oauth/token"),
+                     {"code": 0, "access_token": "new-acc", "refresh_token": "r1",
+                      "expires_in": 7200, "refresh_token_expires_in": 604800})])
+        self.assertEqual(feishu_user_col._valid_access_token(self._enabled_cfg()),
+                         "new-acc")
+
+    def test_collect_maps_chats_and_messages(self):
+        feishu_user_col._save_token({
+            "access_token": "u-acc", "refresh_token": "r0",
+            "access_expires_at": 9999999999, "refresh_expires_at": 9999999999})
+        chats = {"code": 0, "data": {"has_more": False, "items": [
+            {"chat_id": "oc_1", "name": "数据中台群"}]}}
+        msgs = {"code": 0, "data": {"has_more": False, "items": [
+            {"message_id": "m1", "msg_type": "text", "create_time": "1721400000000",
+             "body": {"content": json.dumps({"text": "今天跑通了归因链路"})}},
+            {"message_id": "m2", "msg_type": "text", "create_time": "1721400600000",
+             "body": {"content": json.dumps({"text": "明天对齐口径"})}},
+            {"message_id": "m3", "msg_type": "image", "create_time": "1721400700000",
+             "body": {"content": json.dumps({"image_key": "img_x"})}}]}}
+        self._stub([(("GET", "/im/v1/chats"), chats),
+                    (("GET", "/im/v1/messages"), msgs)])
+        out = feishu_user_col.collect(self._enabled_cfg(), "2000-01-01")
+        self.assertEqual(len(out), 1)
+        e = out[0]
+        self.assertEqual(e["tool"], "feishu_user")
+        self.assertEqual(e["project"], "数据中台群")
+        self.assertEqual(e["detail"]["msgs"], 3)         # 计入图片(有时间戳)
+        self.assertIn("今天跑通了归因链路", e["detail"]["body"])
+        self.assertIn("明天对齐口径", e["detail"]["body"])  # 文本入正文
+        self.assertNotIn("img_x", e["detail"]["body"])     # 图片不入正文
+
+    def test_authorize_url_carries_params(self):
+        url = feishu_user_col.authorize_url(
+            self._enabled_cfg(), "http://localhost:8788/callback", state="loom")
+        # 授权页必须走 accounts.feishu.cn(不是 open.feishu.cn)。
+        self.assertTrue(url.startswith("https://accounts.feishu.cn/open-apis/authen/v1/authorize?"))
+        self.assertIn("client_id=cli_test", url)
+        self.assertIn("response_type=code", url)
+        self.assertIn("im%3Achat%3Areadonly", url)   # scope urlencoded
 
 
 class PiCollectorTest(unittest.TestCase):
