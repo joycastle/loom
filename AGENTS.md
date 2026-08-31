@@ -31,6 +31,18 @@
 - 飞书关注词候选在 `detail.candidates` 里(据用户近期编码/笔记数据抽的),挑完用
   `loom feishu watch <词>` 写入——**这些个性化只进本地 `~/.loom/config.json`,绝不进仓库**。
 
+## ⚙️ 读懂 & 修改配置 → `loom config`
+loom **零配置即插即用**:核心源(git/claude/codex/cursor/docs/notes)默认开启,
+`config.load()` 自动补齐所有默认,非开发者装好直接 `loom sync` 就能用,不必碰任何配置。
+想帮用户**精调**时,用 `loom config` 内省和修改(不要手编 `~/.loom/config.json`):
+- `loom config defaults`(JSON)= **全部可配旋钮 + 默认值 + 就地注释**,agent 一看就知道有哪些能调、含义是什么(权重/阈值/词表都带说明)。
+- `loom config show`(JSON)= 当前**生效**配置(合并后)。`loom config get <点分路径>` 读单个键。
+- `loom config set <点分路径> <值>` 改单个键,值按 JSON 解析(`3.5`/`true`/`["a","b"]` 都行),自动落到本地 `~/.loom`。例:`loom config set report.cluster.edge_min 3.5`。
+- **源码里没有写死的策略**——词表/权重/阈值全在 `report.*` / `relations.weights` /
+  `sources.*.relevance` 等配置节,默认能跑、想调改配置即可。个性化词表用带 `_extra`
+  后缀的键**追加**(如 `report.cluster.generic_ids_extra`),不必复制整份默认。
+- 改配置属"写入",涉及个性化偏好时**先跟用户确认**(对齐下方铁律 1)。
+
 ## 全程铁律(任何操作都遵守)
 1. **不可逆 / 外发操作先向用户确认**:删除、移动、`git push`、对外分享。
 2. **凭证只进 `~/.loom/.env`(chmod 600),绝不写入任何仓**;采集内容入库前已自动打码。
