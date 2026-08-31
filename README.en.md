@@ -13,7 +13,7 @@ One flat source of truth → daily journals · full-text search · topic graph �
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)
 ![dependencies](https://img.shields.io/badge/dependencies-0-5AA9A0)
 ![stdlib only](https://img.shields.io/badge/stdlib-only-5AA9A0)
-![tests](https://img.shields.io/badge/tests-190%20passing-3FB950)
+![tests](https://img.shields.io/badge/tests-196%20passing-3FB950)
 ![local-first](https://img.shields.io/badge/private--first-E0A84E)
 [![license](https://img.shields.io/badge/license-MIT-8A93A3)](./LICENSE)
 
@@ -62,6 +62,14 @@ git clone https://github.com/joycastle/loom.git ~/Documents/loom && cd ~/Documen
 Then: `loom sync` to collect, `loom serve` to open the admin page. Daily use is a single `loom sync` (add `--push` to back up to the cloud).
 
 Codex Feishu Bridge topics are opt-in. Sign in with lark-cli, grant `search:message`, then run `loom source enable codex_feishu_bridge`. See [`docs/codex-feishu-bridge.md`](./docs/codex-feishu-bridge.md) for configuration and privacy boundaries.
+
+**Multiple Codex environments** · If you isolate personal/work profiles with `CODEX_HOME`, add one directory per line in the Codex source settings under `loom serve`, or edit `~/.loom/config.json`:
+
+```json
+"codex": {"enabled": true, "homes": ["~/.codex", "~/.codex-work"]}
+```
+
+Loom collects every configured home and deduplicates by session ID; it never scans `.codex*` automatically. The first item is the primary Codex environment used when installing the Loom skill. Legacy singular `home` settings remain compatible, and no source sessions are moved. Both `sessions/` and `archived_sessions/` (sessions you archived) are collected per home; Codex internal subagent sessions (automatic calls whose `source` is `subagent`, e.g. guardian risk reviews) are filtered out so they never pollute the ledger.
 
 **Let AI call loom directly (MCP)** · the skill teaches an AI *how to type* loom commands; MCP makes loom a **native tool** inside AI coding clients — `loom_search` your ledger and `loom_note` while coding, no commands to remember:
 

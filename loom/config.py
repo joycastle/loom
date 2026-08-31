@@ -23,7 +23,7 @@ DEFAULT_CONFIG = {
     "sources": {
         "git":       {"enabled": True},
         "claude":    {"enabled": True, "projects_dir": "~/.claude/projects"},
-        "codex":     {"enabled": True, "home": "~/.codex"},
+        "codex":     {"enabled": True, "homes": ["~/.codex"]},
         "cursor":    {"enabled": True, "app_support": "~/Library/Application Support/Cursor"},
         "codebuddy": {
             "enabled": False,
@@ -100,6 +100,12 @@ def load():
     old_sources = cfg.get("sources", {})
     old_docs = old_sources.get("docs", {}) if isinstance(old_sources, dict) else {}
     _deep_update(merged, cfg)
+    # Codex 支持用 CODEX_HOME 隔离多套环境。早期 Loom 只允许单个 home；
+    # 载入时兼容转换为 homes 列表，不移动任何 Codex 原始会话。
+    old_codex = old_sources.get("codex", {}) if isinstance(old_sources, dict) else {}
+    if isinstance(old_codex, dict) and "homes" not in old_codex and old_codex.get("home"):
+        merged["sources"]["codex"]["homes"] = [old_codex["home"]]
+    merged["sources"]["codex"].pop("home", None)
     # 早期开发版使用了含糊的 feishu_bridge 名称；迁到项目全称，避免以后
     # 接入其它 Bridge 时配置和记录来源撞名。
     if isinstance(old_sources, dict) and "feishu_bridge" in old_sources:
@@ -170,6 +176,28 @@ def source_enabled(cfg, name):
     if name == "feishu":
         return bool(cfg.get("feishu", {}).get("enabled"))
     return bool(cfg.get("sources", {}).get(name, {}).get("enabled"))
+
+
+def codex_homes(cfg):
+    """返回去重后的 Codex home 列表；兼容旧版单数 ``home`` 配置。"""
+    src = cfg.get("sources", {}).get("codex", {})
+    raw = src.get("homes")
+    if isinstance(raw, str):
+        raw = [raw]
+    elif not isinstance(raw, (list, tuple)):
+        legacy = src.get("home")
+        raw = [legacy] if legacy else ["~/.codex"]
+
+    homes, seen = [], set()
+    for value in raw:
+        if not isinstance(value, str) or not value.strip():
+            continue
+        path = os.path.abspath(util.expand(value.strip()))
+        key = os.path.normcase(path)
+        if key not in seen:
+            seen.add(key)
+            homes.append(path)
+    return homes
 
 
 def vault_dir(cfg):
