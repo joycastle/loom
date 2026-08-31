@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Codex 采集器:~/.codex/sessions/**/*.jsonl(完整对话) + state_5.sqlite(元数据兜底)。
+"""Codex 采集器:多个 CODEX_HOME 下的 JSONL(完整对话) + sqlite(元数据兜底)。
 
 真相在 JSONL:每行一个事件,response_item 里有完整 user/assistant 消息。
 sqlite 的 threads 表只是可重建的索引,用来补 JSONL 里缺失的 cwd/title 信息。
@@ -9,7 +9,7 @@ import json
 import os
 from collections import defaultdict
 
-from .. import util
+from .. import config, util
 
 INTENT_CAP  = 180
 OPENING_CAP = 1200
@@ -54,7 +54,7 @@ def _iter_text(item):
 
 
 def _load_jsonl_sessions(home, since):
-    """扫描 ~/.codex/sessions/**/*.jsonl,按 session_id + 日期分桶,返回条目列表。"""
+    """扫描 CODEX_HOME/sessions/**/*.jsonl,按 session_id + 日期分桶。"""
     session_dir = os.path.join(home, "sessions")
     if not os.path.isdir(session_dir):
         return []
@@ -177,14 +177,29 @@ def _load_sqlite_sessions(home, since):
     return entries
 
 
+def _session_day_key(entry):
+    """统一 JSONL/sqlite 的 ID 形态，避免同一会话的两种索引重复入库。"""
+    value = entry.get("id", "")
+    if value.startswith("codex:jsonl:"):
+        value = value[len("codex:jsonl:"):]
+    elif value.startswith("codex:"):
+        value = value[len("codex:"):]
+    sid, sep, day = value.rpartition(":")
+    return (sid, day) if sep else (value, "")
+
+
 def collect(cfg, since):
     src = cfg["sources"].get("codex", {})
     if not src.get("enabled"):
         return []
-    home = util.expand(src.get("home", "~/.codex"))
-
-    jsonl_entries = _load_jsonl_sessions(home, since)
-    if jsonl_entries:
-        return jsonl_entries
-    # JSONL 不存在(旧版 Codex)→ 退回 sqlite 元数据
-    return _load_sqlite_sessions(home, since)
+    merged = {}
+    for home in config.codex_homes(cfg):
+        entries = _load_jsonl_sessions(home, since)
+        if not entries:
+            # 该环境没有 JSONL(旧版 Codex)→ 单独退回 sqlite 元数据。
+            entries = _load_sqlite_sessions(home, since)
+        # 同一会话可能被复制到另一套 CODEX_HOME，或一边来自 JSONL、一边来自
+        # sqlite 索引；统一按 session ID + 日期去重，列表前项优先。
+        for entry in entries:
+            merged.setdefault(_session_day_key(entry), entry)
+    return list(merged.values())
