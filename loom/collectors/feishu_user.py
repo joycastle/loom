@@ -46,6 +46,11 @@ BODY_CAP = 8000
 # ——既做高信噪比,也顺带减少他人发言的沉淀(隐私)。信号权重见 _score()。
 KEEP_SCORE = 8
 _NOISE_PREFIX = ("欢迎", "入职", "收到", "好的", "谢谢", "辛苦", "哈哈", "赞")
+# 跨源信号:从我近期编码/笔记里抽 ASCII 标识符(表名/字段/repo,如 ml_pltv_d1_feature),
+# 群里提到即"我正在忙的东西"。只认长标识符,避开泛化英文停用词。
+_IDENT_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{4,}")
+_IDENT_STOP = {"https", "http", "select", "where", "false", "true", "null",
+               "value", "content", "message", "please", "readonly", "token"}
 
 
 # ------------------------------------------------------------------ 凭证 / 配置
@@ -299,6 +304,36 @@ def _is_noise(text):
     return any(t.startswith(p) for p in _NOISE_PREFIX) and len(t) < 12
 
 
+def _watchlist(cfg):
+    """owner.watchlist:我负责的项目/表名/领域词(子串匹配,小写归一)。"""
+    ow = cfg.get("owner", {}) if isinstance(cfg.get("owner"), dict) else {}
+    return {w.strip().lower() for w in (ow.get("watchlist") or [])
+            if isinstance(w, str) and w.strip()}
+
+
+def _cross_source_terms(cfg, since):
+    """从我近期(since 后)的编码/笔记记录里抽高频 ASCII 标识符,作为"我在忙什么"
+    的代理;群消息命中即加分。纯字符串统计,不需要 LLM/分词。"""
+    from collections import Counter
+    from .. import store
+    try:
+        by_id = store.load()
+    except Exception:
+        return set()
+    c = Counter()
+    for e in by_id.values():
+        if e.get("tool") == "feishu_user" or e.get("date", "") < since:
+            continue
+        d = e.get("detail") or {}
+        text = " ".join([e.get("summary", ""), str(d.get("body", "")),
+                         str(d.get("opening", ""))])
+        for tok in set(_IDENT_RE.findall(text)):
+            low = tok.lower()
+            if low not in _IDENT_STOP:
+                c[low] += 1
+    return {t for t, n in c.items() if n >= 2}
+
+
 def _score(rec, ctx):
     """算一条消息和「我」的相关性。我自己发的返回 None(始终保留,不打分)。"""
     me = ctx["me"]
@@ -318,6 +353,13 @@ def _score(rec, ctx):
         s += 8; sig.append("小群")
     elif uc and uc <= 15:
         s += 4
+    low = rec["text"].lower()
+    # 用户手配的 watchlist 可信 → 命中即 +8(能单独过线,捞回没点名我但话题相关的);
+    # 自动抽的跨源词较噪 → +5,只当助推、不单独过线。
+    if ctx["watch"] and any(w in low for w in ctx["watch"]):
+        s += 8; sig.append("关键词")
+    if ctx["cross"] and any(t in low for t in ctx["cross"]):
+        s += 5; sig.append("我在忙的")
     if rec["mention_all"]:
         s -= 20; sig.append("@all公告")
     if rec["sender_type"] == "app":
@@ -327,12 +369,13 @@ def _score(rec, ctx):
     return s, sig
 
 
-def _to_entries(cfg, chats, messages_by_chat, me, chat_meta):
+def _to_entries(cfg, chats, messages_by_chat, me, chat_meta, watch=None, cross=None):
     """按 群+本地日 汇成 entry,但只留「和我相关的消息 + 我自己的发言」原文。
 
     某群某天若没有任何达标消息、我也没发过言 → 不生成 entry(周报里就不会出现
     这个与我无关的群)。他人未达标发言只计入 dropped 计数,不落原文。
     """
+    watch, cross = watch or set(), cross or set()
     names = {c.get("chat_id"): (c.get("name") or c.get("chat_id")) for c in chats}
     entries = []
     for chat_id, msgs in messages_by_chat.items():
@@ -343,7 +386,8 @@ def _to_entries(cfg, chats, messages_by_chat, me, chat_meta):
                     if me and r["sender_id"] == me and r["root_id"]}
         meta = chat_meta.get(chat_id, {})
         ctx = {"me": me, "my_msg_ids": my_msg_ids, "my_roots": my_roots,
-               "chat_mode": meta.get("chat_mode"), "user_count": meta.get("user_count")}
+               "chat_mode": meta.get("chat_mode"), "user_count": meta.get("user_count"),
+               "watch": watch, "cross": cross}
         byday = {}
         for r in recs:
             lts = util.iso_utc_to_local(_ms_to_iso(r["ts_ms"]))
@@ -422,6 +466,8 @@ def collect_diagnostic(cfg, since):
     me = _my_open_id(cfg, token)            # 用于判定 @我 / 我发的 / 我在的话题
     if not me:
         errors.append("拿不到本人 open_id,相关性过滤降级(仅按群大小)")
+    watch = _watchlist(cfg)                  # 我的关注词表
+    cross = _cross_source_terms(cfg, since)  # 我近期编码/笔记里在忙的标识符
 
     messages_by_chat, chat_meta = {}, {}
     for c in chats:
@@ -433,7 +479,7 @@ def collect_diagnostic(cfg, since):
             chat_detail(cfg, token, cid, chat_meta)   # 补群大小/类型,供打分用
         except (urllib.error.HTTPError, urllib.error.URLError, RuntimeError) as e:
             errors.append(f"群 {c.get('name') or cid} 消息拉取失败:{e}")
-    entries = _to_entries(cfg, chats, messages_by_chat, me, chat_meta)
+    entries = _to_entries(cfg, chats, messages_by_chat, me, chat_meta, watch, cross)
     return {"entries": [e for e in entries if e["date"] >= since], "errors": errors}
 
 
