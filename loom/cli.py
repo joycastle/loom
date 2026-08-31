@@ -318,6 +318,32 @@ def cmd_feishu(cfg, a):
     elif a.action == "logout":
         feishu_user.clear_token()
         print("已清除本地飞书用户 token")
+    elif a.action in ("mute", "unmute", "vip", "unvip", "watch", "unwatch"):
+        _feishu_relevance_edit(cfg, a)
+
+
+def _feishu_relevance_edit(cfg, a):
+    """维护相关性过滤名单(只进本地私有 config,绝不入库):
+    mute/unmute 群 · vip/unvip 重要的人 · watch/unwatch 关注词。"""
+    val = (a.value or "").strip()
+    if not val:
+        print("用法:loom feishu {mute|vip|watch|unmute|unvip|unwatch} <值>"); return
+    if a.action in ("watch", "unwatch"):
+        holder = cfg.setdefault("owner", {}); key, label = "watchlist", "关注词"
+    elif a.action in ("vip", "unvip"):
+        holder = cfg.setdefault("sources", {}).setdefault("feishu_user", {})\
+            .setdefault("relevance", {}); key, label = "vip_senders", "重要的人"
+    else:
+        holder = cfg.setdefault("sources", {}).setdefault("feishu_user", {})\
+            .setdefault("relevance", {}); key, label = "mute_chats", "静音群"
+    lst = holder.setdefault(key, [])
+    if a.action in ("unmute", "unvip", "unwatch"):
+        holder[key] = [x for x in lst if x != val]
+        config.save(cfg); print(f"已从{label}移除:{val}")
+    else:
+        if val not in lst:
+            lst.append(val)
+        config.save(cfg); print(f"已加入{label}:{val}(只存本地 ~/.loom)")
 
 
 def _feishu_login(cfg, a):
@@ -768,7 +794,8 @@ def build_parser():
         sp.add_argument("value", nargs="?", default="")
     # feishu 单列:除 bitable 的 add/rm/ls,还有 user OAuth 的 login/status/logout。
     sp = sub.add_parser("feishu")
-    sp.add_argument("action", choices=("add", "rm", "ls", "login", "status", "logout"))
+    sp.add_argument("action", choices=("add", "rm", "ls", "login", "status", "logout",
+                                       "mute", "unmute", "vip", "unvip", "watch", "unwatch"))
     sp.add_argument("value", nargs="?", default="")
     sp.add_argument("--port", type=int, help="login 本地回调端口(默认取配置 redirect_port)")
     sp.add_argument("--no-browser", action="store_true",

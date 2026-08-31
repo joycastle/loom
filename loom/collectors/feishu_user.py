@@ -42,15 +42,46 @@ DEFAULT_SCOPES = [
 TEXT_CAP = 1200
 BODY_CAP = 8000
 
-# 相关性打分:达标或"我自己发的"才把原文留进台账,其余群内他人闲聊只计数不留原文
-# ——既做高信噪比,也顺带减少他人发言的沉淀(隐私)。信号权重见 _score()。
-KEEP_SCORE = 8
-_NOISE_PREFIX = ("欢迎", "入职", "收到", "好的", "谢谢", "辛苦", "哈哈", "赞")
+# 相关性打分:达标或"我发的"/VIP 才把原文留进台账,其余他人闲聊只计数不留原文
+# ——高信噪比 + 减少他人发言沉淀(隐私)。**源码只留机制**,阈值/权重/噪音词全部
+# 走配置(sources.feishu_user.relevance),下面这些只是零配置时的内置默认 fallback。
+_DEFAULT_KEEP_SCORE = 8
+_DEFAULT_NOISE_PREFIX = ("欢迎", "入职", "收到", "好的", "谢谢", "辛苦", "哈哈", "赞")
+_DEFAULT_WEIGHTS = {
+    "mentioned_me": 30, "reply_to_me": 25, "my_thread": 15,
+    "p2p": 10, "small_group_5": 8, "small_group_15": 4,
+    "watchlist_hit": 8, "cross_source_hit": 5,
+    "mention_all": -20, "bot_sender": -10, "noise_penalty": -15,
+}
 # 跨源信号:从我近期编码/笔记里抽 ASCII 标识符(表名/字段/repo,如 orders_daily_v2),
 # 群里提到即"我正在忙的东西"。只认长标识符,避开泛化英文停用词。
 _IDENT_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{4,}")
 _IDENT_STOP = {"https", "http", "select", "where", "false", "true", "null",
                "value", "content", "message", "please", "readonly", "token"}
+
+
+def _relevance(cfg):
+    """解析相关性策略:用户 config 覆盖内置默认。源码只读这里,不写死任何数值/词表。"""
+    rel = _cfg(cfg).get("relevance") or {}
+    weights = dict(_DEFAULT_WEIGHTS)
+    if isinstance(rel.get("weights"), dict):
+        weights.update({k: v for k, v in rel["weights"].items()
+                        if isinstance(v, (int, float))})
+    cs = rel.get("cross_source") or {}
+
+    def _lowlist(key):
+        return [x.strip().lower() for x in (rel.get(key) or [])
+                if isinstance(x, str) and x.strip()]
+
+    return {
+        "keep_score": rel.get("keep_score", _DEFAULT_KEEP_SCORE),
+        "noise": tuple(rel.get("noise_prefixes", _DEFAULT_NOISE_PREFIX)),
+        "weights": weights,
+        "mute": _lowlist("mute_chats"),
+        "vip": set(_lowlist("vip_senders")),
+        "cross_enabled": cs.get("enabled", True),
+        "cross_min": cs.get("min_count", 2),
+    }
 
 
 # ------------------------------------------------------------------ 凭证 / 配置
@@ -292,8 +323,8 @@ def _msg_record(m):
     }
 
 
-def _is_noise(text):
-    """模板噪音:极短应答、纯表情接龙、欢迎/收到类客套。"""
+def _is_noise(text, prefixes):
+    """模板噪音:极短应答、纯表情接龙、客套(前缀词表由配置给)。"""
     t = (text or "").strip()
     if len(t) <= 2:
         return True
@@ -301,7 +332,7 @@ def _is_noise(text):
     stripped = re.sub(r"[\s，。！？、~…!?.]+", "", stripped)
     if len(stripped) <= 2:
         return True
-    return any(t.startswith(p) for p in _NOISE_PREFIX) and len(t) < 12
+    return any(t.startswith(p) for p in prefixes) and len(t) < 12
 
 
 def _watchlist(cfg):
@@ -311,7 +342,7 @@ def _watchlist(cfg):
             if isinstance(w, str) and w.strip()}
 
 
-def _cross_source_terms(cfg, since):
+def _cross_source_terms(cfg, since, min_count=2):
     """从我近期(since 后)的编码/笔记记录里抽高频 ASCII 标识符,作为"我在忙什么"
     的代理;群消息命中即加分。纯字符串统计,不需要 LLM/分词。"""
     from collections import Counter
@@ -331,54 +362,68 @@ def _cross_source_terms(cfg, since):
             low = tok.lower()
             if low not in _IDENT_STOP:
                 c[low] += 1
-    return {t for t, n in c.items() if n >= 2}
+    return {t for t, n in c.items() if n >= min_count}
 
 
 def _score(rec, ctx):
-    """算一条消息和「我」的相关性。我自己发的返回 None(始终保留,不打分)。"""
-    me = ctx["me"]
+    """算一条消息和「我」的相关性。我发的/VIP 返回 None(永久保留,不打分)。
+
+    权重/噪音词全部来自 ctx(源头是配置),本函数不含任何写死的数值/词表。
+    """
+    me, w = ctx["me"], ctx["w"]
     if me and rec["sender_id"] == me:
         return None, ["我发的"]
+    if ctx["vip"] and rec["sender_id"] and rec["sender_id"].lower() in ctx["vip"]:
+        return None, ["VIP"]
     s, sig = 0, []
     if me and me in rec["mention_ids"] and not rec["mention_all"]:
-        s += 30; sig.append("@我")
+        s += w["mentioned_me"]; sig.append("@我")
     if rec["parent_id"] and rec["parent_id"] in ctx["my_msg_ids"]:
-        s += 25; sig.append("回复我")
+        s += w["reply_to_me"]; sig.append("回复我")
     if rec["root_id"] and rec["root_id"] in ctx["my_roots"]:
-        s += 15; sig.append("我在此话题")
+        s += w["my_thread"]; sig.append("我在此话题")
     mode, uc = ctx["chat_mode"], ctx["user_count"]
     if mode == "p2p":
-        s += 10; sig.append("单聊")
+        s += w["p2p"]; sig.append("单聊")
     elif uc and uc <= 5:
-        s += 8; sig.append("小群")
+        s += w["small_group_5"]; sig.append("小群")
     elif uc and uc <= 15:
-        s += 4
+        s += w["small_group_15"]
     low = rec["text"].lower()
-    # 用户手配的 watchlist 可信 → 命中即 +8(能单独过线,捞回没点名我但话题相关的);
-    # 自动抽的跨源词较噪 → +5,只当助推、不单独过线。
-    if ctx["watch"] and any(w in low for w in ctx["watch"]):
-        s += 8; sig.append("关键词")
+    if ctx["watch"] and any(x in low for x in ctx["watch"]):
+        s += w["watchlist_hit"]; sig.append("关键词")
     if ctx["cross"] and any(t in low for t in ctx["cross"]):
-        s += 5; sig.append("我在忙的")
+        s += w["cross_source_hit"]; sig.append("我在忙的")
     if rec["mention_all"]:
-        s -= 20; sig.append("@all公告")
+        s += w["mention_all"]; sig.append("@all公告")
     if rec["sender_type"] == "app":
-        s -= 10; sig.append("机器人")
-    if _is_noise(rec["text"]):
-        s -= 15
+        s += w["bot_sender"]; sig.append("机器人")
+    if _is_noise(rec["text"], ctx["noise"]):
+        s += w["noise_penalty"]
     return s, sig
 
 
-def _to_entries(cfg, chats, messages_by_chat, me, chat_meta, watch=None, cross=None):
+def _chat_muted(name, chat_id, mute):
+    """群名子串命中 或 chat_id 精确命中 → 静音(整群短路,不产 entry)。"""
+    low = (name or "").lower()
+    cid = (chat_id or "").lower()
+    return any(m in low or m == cid for m in mute)
+
+
+def _to_entries(cfg, chats, messages_by_chat, me, chat_meta, watch, cross, pol):
     """按 群+本地日 汇成 entry,但只留「和我相关的消息 + 我自己的发言」原文。
 
-    某群某天若没有任何达标消息、我也没发过言 → 不生成 entry(周报里就不会出现
-    这个与我无关的群)。他人未达标发言只计入 dropped 计数,不落原文。
+    静音的群整群跳过;某群某天若没有任何达标消息、我也没发过言 → 不生成 entry
+    (周报里就不会出现这个与我无关的群)。他人未达标发言只计入 dropped 计数。
     """
     watch, cross = watch or set(), cross or set()
+    keep_score, weights, noise = pol["keep_score"], pol["weights"], pol["noise"]
+    mute, vip = pol["mute"], pol["vip"]
     names = {c.get("chat_id"): (c.get("name") or c.get("chat_id")) for c in chats}
     entries = []
     for chat_id, msgs in messages_by_chat.items():
+        if _chat_muted(names.get(chat_id, chat_id), chat_id, mute):
+            continue                                      # 用户静音的群,直接不看
         recs = [r for r in (_msg_record(m) for m in msgs) if r["ts_ms"]]
         # 先算"我在这个群发过的消息 id / 话题根",供回复/话题信号判定用
         my_msg_ids = {r["id"] for r in recs if me and r["sender_id"] == me}
@@ -387,7 +432,7 @@ def _to_entries(cfg, chats, messages_by_chat, me, chat_meta, watch=None, cross=N
         meta = chat_meta.get(chat_id, {})
         ctx = {"me": me, "my_msg_ids": my_msg_ids, "my_roots": my_roots,
                "chat_mode": meta.get("chat_mode"), "user_count": meta.get("user_count"),
-               "watch": watch, "cross": cross}
+               "watch": watch, "cross": cross, "w": weights, "noise": noise, "vip": vip}
         byday = {}
         for r in recs:
             lts = util.iso_utc_to_local(_ms_to_iso(r["ts_ms"]))
@@ -398,11 +443,11 @@ def _to_entries(cfg, chats, messages_by_chat, me, chat_meta, watch=None, cross=N
             kept, dropped, best = [], 0, 0
             for lts, r in items:
                 score, sig = _score(r, ctx)
-                if score is None:                         # 我发的
+                if score is None:                         # 我发的 / VIP
                     if r["text"]:
                         kept.append((lts, r["text"]))
-                    best = max(best, KEEP_SCORE)
-                elif score >= KEEP_SCORE:
+                    best = max(best, keep_score)
+                elif score >= keep_score:
                     if r["text"]:
                         kept.append((lts, r["text"]))
                     best = max(best, score)
@@ -466,8 +511,10 @@ def collect_diagnostic(cfg, since):
     me = _my_open_id(cfg, token)            # 用于判定 @我 / 我发的 / 我在的话题
     if not me:
         errors.append("拿不到本人 open_id,相关性过滤降级(仅按群大小)")
-    watch = _watchlist(cfg)                  # 我的关注词表
-    cross = _cross_source_terms(cfg, since)  # 我近期编码/笔记里在忙的标识符
+    pol = _relevance(cfg)                    # 相关性策略(配置驱动)
+    watch = _watchlist(cfg)                  # 我的关注词表(owner.watchlist)
+    cross = _cross_source_terms(cfg, since, pol["cross_min"]) \
+        if pol["cross_enabled"] else set()   # 我近期编码/笔记里在忙的标识符
 
     messages_by_chat, chat_meta = {}, {}
     for c in chats:
@@ -479,7 +526,7 @@ def collect_diagnostic(cfg, since):
             chat_detail(cfg, token, cid, chat_meta)   # 补群大小/类型,供打分用
         except (urllib.error.HTTPError, urllib.error.URLError, RuntimeError) as e:
             errors.append(f"群 {c.get('name') or cid} 消息拉取失败:{e}")
-    entries = _to_entries(cfg, chats, messages_by_chat, me, chat_meta, watch, cross)
+    entries = _to_entries(cfg, chats, messages_by_chat, me, chat_meta, watch, cross, pol)
     return {"entries": [e for e in entries if e["date"] >= since], "errors": errors}
 
 
