@@ -51,6 +51,23 @@ DEFAULT_CONFIG = {
             "redirect_port": 8788,
             "scopes": ["im:chat:readonly", "im:message:readonly",
                        "offline_access"],
+            # 相关性过滤:只留和我有关的群消息。源码只留机制,这里是全部策略,零配置
+            # 即可跑;简单项(静音群/重要人)默认空、自己填,高级项(阈值/权重/噪音词)
+            # 给通用默认、想调再改。关注词表复用顶层 owner.watchlist。
+            "relevance": {
+                "mute_chats": [],    # 静音的群(群名子串或 chat_id),命中直接丢
+                "vip_senders": [],   # 重要的人(open_id),命中永久保留
+                "keep_score": 8,     # 达标线:分数≥它,或我发的/VIP,才留原文
+                "noise_prefixes": ["欢迎", "入职", "收到", "好的", "谢谢",
+                                    "辛苦", "哈哈", "赞"],
+                "weights": {
+                    "mentioned_me": 30, "reply_to_me": 25, "my_thread": 15,
+                    "p2p": 10, "small_group_5": 8, "small_group_15": 4,
+                    "watchlist_hit": 8, "cross_source_hit": 5,
+                    "mention_all": -20, "bot_sender": -10, "noise_penalty": -15,
+                },
+                "cross_source": {"enabled": True, "min_count": 2},
+            },
         },
     },
     "feishu": {

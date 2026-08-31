@@ -707,11 +707,18 @@ def _source_diagnostics(cfg, repos=None):
                 ok = os.path.isdir(path)
                 status, msg = ("ok", path) if ok else ("warn", f"目录不存在:{path}")
                 checks = [{"label": "notes 目录", "ok": ok, "value": path}]
+        relevance = None
+        if name == "feishu_user":
+            ow = cfg.get("owner", {}) if isinstance(cfg.get("owner"), dict) else {}
+            rel = (cfg.get("sources", {}).get("feishu_user", {}) or {}).get("relevance", {}) or {}
+            relevance = {"watchlist": ow.get("watchlist", []),
+                         "mute_chats": rel.get("mute_chats", []),
+                         "vip_senders": rel.get("vip_senders", [])}
         rows.append({"name": name, "category": collectors.source_category(name),
                      "enabled": enabled, "configured_enabled": _source_enabled(cfg, name),
                      "available": available,
                      "status": status,
-                     "message": msg, "checks": checks})
+                     "message": msg, "checks": checks, "relevance": relevance})
     return rows
 
 
@@ -1068,6 +1075,20 @@ def _api_admin_action(cfg, payload):
             cfg.setdefault("sources", {}).setdefault(name, {})[keys[name]] = path
             config.save(cfg)
             return _finish_action(cfg, True, f"已更新 {name} 扫描目录")
+        if action == "feishu_relevance_set":
+            # 保存飞书相关性名单(关注词/静音群/重要的人)。只进本地私有 config。
+            def _lines(key):
+                raw = payload.get(key)
+                if not isinstance(raw, list):
+                    raw = str(raw or "").splitlines()
+                return list(dict.fromkeys(x.strip() for x in raw if str(x).strip()))
+            cfg.setdefault("owner", {})["watchlist"] = _lines("watchlist")
+            rel = cfg.setdefault("sources", {}).setdefault("feishu_user", {})\
+                .setdefault("relevance", {})
+            rel["mute_chats"] = _lines("mute_chats")
+            rel["vip_senders"] = _lines("vip_senders")
+            config.save(cfg)
+            return _finish_action(cfg, True, "已更新飞书相关性过滤名单")
         if action == "feishu_add":
             url = str(payload.get("url", "")).strip()
             app_token = str(payload.get("app_token", "")).strip()

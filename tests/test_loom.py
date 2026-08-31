@@ -877,6 +877,41 @@ class FeishuUserCollectorTest(unittest.TestCase):
         self.assertIn("falcon 项目指标", out[0]["detail"]["body"])   # 关键词命中,捞回
         self.assertNotIn("周末去哪玩", out[0]["detail"]["body"])      # 无关,仍丢
 
+    def test_mute_chat_is_skipped(self):
+        # relevance.mute_chats 命中的群整群短路,即使有@我也不入台账。
+        feishu_user_col._save_token({
+            "access_token": "u-acc", "refresh_token": "r0",
+            "access_expires_at": 9999999999, "refresh_expires_at": 9999999999})
+        chats = {"code": 0, "data": {"has_more": False, "items": [
+            {"chat_id": "oc_1", "name": "数据中台群"}]}}
+        msgs = {"code": 0, "data": {"has_more": False, "items": [
+            {"message_id": "m1", "msg_type": "text", "create_time": "1721400000000",
+             "sender": {"id": "ou_other", "sender_type": "user"},
+             "mentions": [{"id": "ou_me", "name": "我"}],
+             "body": {"content": json.dumps({"text": "帮看下这条数据链路"})}}]}}
+        self._stub_env(chats, msgs)
+        cfg = self._enabled_cfg()
+        cfg["sources"]["feishu_user"]["relevance"] = {"mute_chats": ["数据中台"]}
+        self.assertEqual(feishu_user_col.collect(cfg, "2000-01-01"), [])
+
+    def test_vip_sender_always_kept(self):
+        # relevance.vip_senders 命中的人,消息永久保留(等同"我发的"),无视其它信号。
+        feishu_user_col._save_token({
+            "access_token": "u-acc", "refresh_token": "r0",
+            "access_expires_at": 9999999999, "refresh_expires_at": 9999999999})
+        chats = {"code": 0, "data": {"has_more": False, "items": [
+            {"chat_id": "oc_1", "name": "大群"}]}}
+        msgs = {"code": 0, "data": {"has_more": False, "items": [
+            {"message_id": "v1", "msg_type": "text", "create_time": "1721400000000",
+             "sender": {"id": "ou_boss", "sender_type": "user"},
+             "body": {"content": json.dumps({"text": "这个方向我们下周对齐一下"})}}]}}
+        self._stub_env(chats, msgs)
+        cfg = self._enabled_cfg()
+        cfg["sources"]["feishu_user"]["relevance"] = {"vip_senders": ["ou_boss"]}
+        out = feishu_user_col.collect(cfg, "2000-01-01")
+        self.assertEqual(len(out), 1)
+        self.assertIn("下周对齐", out[0]["detail"]["body"])
+
     def test_irrelevant_group_produces_no_entry(self):
         # 大群里只有他人闲聊,既没@我也没我发言 → 整个群这天不入台账。
         feishu_user_col._save_token({
@@ -2781,6 +2816,21 @@ class ServeTest(unittest.TestCase):
         r = self.serve.api_admin_action(self.cfg, {"action": "source_path_set",
                                                    "name": "docs", "path": source_dir})
         self.assertFalse(r["ok"])
+
+    def test_feishu_relevance_set_writes_private_config(self):
+        r = self.serve.api_admin_action(self.cfg, {
+            "action": "feishu_relevance_set",
+            "watchlist": ["orders_daily_v2", "  ", "orders_daily_v2"],  # 去空+去重
+            "mute_chats": ["某闲聊群"], "vip_senders": ["ou_boss"]})
+        self.assertTrue(r["ok"])
+        self.assertEqual(self.cfg["owner"]["watchlist"], ["orders_daily_v2"])
+        rel = self.cfg["sources"]["feishu_user"]["relevance"]
+        self.assertEqual(rel["mute_chats"], ["某闲聊群"])
+        self.assertEqual(rel["vip_senders"], ["ou_boss"])
+        # 诊断行把当前名单回传给控制台预填
+        row = next(x for x in self.serve._source_diagnostics(self.cfg)
+                   if x["name"] == "feishu_user")
+        self.assertEqual(row["relevance"]["mute_chats"], ["某闲聊群"])
 
     def test_manual_sync_reports_success_partial_and_error(self):
         from loom import collectors
