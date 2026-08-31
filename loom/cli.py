@@ -288,6 +288,45 @@ def cmd_repo(cfg, a):
             print(" +", r)
 
 
+def cmd_config(cfg, a):
+    """读/写配置的统一口——给 agent 内省"有哪些旋钮、当前值、怎么改",也给用户
+    安全改单个键(不用手编 JSON)。个性化只进本地 ~/.loom,绝不进仓库。"""
+    import json as _json
+    action = getattr(a, "action", None) or "show"
+    if action == "defaults":                     # 全部可配项 + 默认(= schema)
+        print(_json.dumps(config.DEFAULT_CONFIG, ensure_ascii=False, indent=2)); return
+    if action == "show":                         # 当前生效配置(合并后)
+        print(_json.dumps(cfg, ensure_ascii=False, indent=2)); return
+    if not a.path:
+        print("用法:loom config [show|defaults] | get <点分路径> | set <点分路径> <值>")
+        return
+    keys = a.path.split(".")
+    if action == "get":
+        cur = cfg
+        for k in keys:
+            if not isinstance(cur, dict) or k not in cur:
+                print(f"(无此配置:{a.path})"); return
+            cur = cur[k]
+        print(_json.dumps(cur, ensure_ascii=False)); return
+    if action == "set":
+        if a.value is None:
+            print("用法:loom config set <点分路径> <值>(值尽量按 JSON 解析)"); return
+        try:
+            val = _json.loads(a.value)           # 数字/布尔/列表/对象自动识别
+        except Exception:
+            val = a.value                        # 否则当字符串
+        cur = cfg
+        for k in keys[:-1]:
+            nxt = cur.get(k)
+            if not isinstance(nxt, dict):
+                nxt = {}
+                cur[k] = nxt
+            cur = nxt
+        cur[keys[-1]] = val
+        config.save(cfg)
+        print(f"已设置 {a.path} = {_json.dumps(val, ensure_ascii=False)}(存本地 ~/.loom,不入库)")
+
+
 def cmd_doctor(cfg, a):
     import json as _json
     from . import doctor
@@ -815,6 +854,11 @@ def build_parser():
             sp.add_argument("--push", action="store_true")
     sub.add_parser("build")
     sub.add_parser("today")
+    sp = sub.add_parser("config")
+    sp.add_argument("action", nargs="?", choices=("show", "defaults", "get", "set"),
+                    default="show")
+    sp.add_argument("path", nargs="?")
+    sp.add_argument("value", nargs="?")
     sp = sub.add_parser("doctor")
     sp.add_argument("--json", action="store_true")
     sp.add_argument("--apply", action="store_true", help="落地零风险项(开启探测到的源)")
@@ -919,7 +963,7 @@ def main(argv=None):
     handlers = {
         "sync": cmd_sync, "collect": cmd_collect, "build": cmd_build,
         "today": cmd_today, "search": cmd_search, "related": cmd_related, "init": cmd_init,
-        "doctor": cmd_doctor,
+        "doctor": cmd_doctor, "config": cmd_config,
         "repo": cmd_repo, "feishu": cmd_feishu, "identity": cmd_identity,
         "source": cmd_source, "doc": cmd_doc, "data": cmd_data, "report": cmd_report,
         "deprecate": cmd_deprecate, "topic": cmd_topic, "note": cmd_note,

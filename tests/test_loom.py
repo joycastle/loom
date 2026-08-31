@@ -2417,6 +2417,30 @@ class ClusterTest(unittest.TestCase):
         self.assertIn("BLUF", mat)                     # 新 SOP 指引
 
 
+class ConfigCliTest(unittest.TestCase):
+    def _a(self, action=None, path=None, value=None):
+        import types
+        return types.SimpleNamespace(action=action, path=path, value=value)
+
+    def test_set_parses_json_and_persists(self):
+        from loom import cli, config
+        cfg = config.load()
+        cli.cmd_config(cfg, self._a("set", "report.cluster.edge_min", "3.5"))
+        cli.cmd_config(cfg, self._a("set", "owner.watchlist", '["applovin","x"]'))
+        cli.cmd_config(cfg, self._a("set", "sources.pi.enabled", "true"))
+        reloaded = config.load()
+        self.assertEqual(reloaded["report"]["cluster"]["edge_min"], 3.5)
+        self.assertEqual(reloaded["owner"]["watchlist"], ["applovin", "x"])
+        self.assertIs(reloaded["sources"]["pi"]["enabled"], True)
+
+    def test_defaults_exposes_all_knobs(self):
+        # defaults 必须含聚类/report 全部旋钮,agent 靠它内省有哪些能配
+        d = config.DEFAULT_CONFIG
+        self.assertIn("cluster", d["report"])
+        self.assertIn("weights", d["report"]["cluster"])
+        self.assertIn("generic_ids_extra", d["report"]["cluster"])
+
+
 class DoctorTest(unittest.TestCase):
     def setUp(self):
         from loom.collectors import feishu_user as fu
