@@ -125,3 +125,9 @@ def collect(cfg, since):
                            "opening": opening[:OPENING_CAP], "body": body},
             })
     return entries
+
+
+def suggest(cfg):
+    """自荐配置:探测 pi 目录。"""
+    from .. import suggest as _s
+    return _s.path_source(cfg, "pi", "sessions_dir", "~/.pi/agent/sessions")

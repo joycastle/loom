@@ -365,6 +365,30 @@ def _cross_source_terms(cfg, since, min_count=2):
     return {t for t, n in c.items() if n >= min_count}
 
 
+def watchlist_candidates(cfg, since_days=30, limit=20):
+    """给 `loom doctor`/AI 用:从我近期编码/笔记里抽高频标识符,当 watchlist 候选。
+    只是「建议」,不写配置——用户/AI 挑完再 `loom feishu watch`。"""
+    from collections import Counter
+    from .. import store
+    since = util.since_date(since_days)
+    try:
+        by_id = store.load()
+    except Exception:
+        return []
+    c = Counter()
+    for e in by_id.values():
+        if e.get("tool") == "feishu_user" or e.get("date", "") < since:
+            continue
+        d = e.get("detail") or {}
+        text = " ".join([e.get("summary", ""), str(d.get("body", "")),
+                         str(d.get("opening", ""))])
+        for tok in set(_IDENT_RE.findall(text)):
+            low = tok.lower()
+            if low not in _IDENT_STOP:
+                c[low] += 1
+    return [t for t, n in c.most_common(limit) if n >= 3]
+
+
 def _score(rec, ctx):
     """算一条消息和「我」的相关性。我发的/VIP 返回 None(永久保留,不打分)。
 
@@ -532,3 +556,25 @@ def collect_diagnostic(cfg, since):
 
 def collect(cfg, since):
     return collect_diagnostic(cfg, since)["entries"]
+
+
+def suggest(cfg):
+    """自荐配置:未登录→登录;已登录未启用→启用;已登录没关注词→给候选。"""
+    from .. import suggest as _s
+    out = []
+    fu = _cfg(cfg)
+    st = token_status()
+    if not st.get("logged_in"):
+        return [_s.finding("feishu_user", "needs_auth", "needs_confirmation",
+                           "飞书主动采集未登录(可选功能;需自建应用+申请 scope)",
+                           "loom feishu login")]
+    if not fu.get("enabled"):
+        out.append(_s.finding("feishu_user", "detected_disabled", "needs_confirmation",
+                              "飞书已登录但该源未启用", "loom source enable feishu_user"))
+    ow = cfg.get("owner", {}) if isinstance(cfg.get("owner"), dict) else {}
+    if not ow.get("watchlist"):
+        out.append(_s.finding("feishu_user", "needs_input", "needs_confirmation",
+                              "已登录但没配关注词(周报会漏掉没@你但话题相关的内容)",
+                              "loom feishu watch <词>",
+                              {"candidates": watchlist_candidates(cfg)}))
+    return out

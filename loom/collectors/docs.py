@@ -96,3 +96,7 @@ def collect(cfg, since):
                                "dated": dated, "content": content},
                 })
     return entries
+
+
+def suggest(cfg):
+    return []   # docs 自动配置,无需用户操作

@@ -167,3 +167,9 @@ def collect(cfg, since):
                 "summary": intent, "ref": f"composer:{cid}", "detail": detail,
             })
     return entries
+
+
+def suggest(cfg):
+    """自荐配置:探测 cursor 目录。"""
+    from .. import suggest as _s
+    return _s.path_source(cfg, "cursor", "app_support", "~/Library/Application Support/Cursor")

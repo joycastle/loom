@@ -240,3 +240,24 @@ def collect(cfg, since):
         for entry in entries:
             merged.setdefault(_session_day_key(entry), entry)
     return list(merged.values())
+
+
+def suggest(cfg):
+    """自荐配置:探测多个 CODEX_HOME + 环境变量 CODEX_HOME。"""
+    from .. import config, suggest as _s, util
+    out = []
+    homes = config.codex_homes(cfg)
+    existing = [h for h in homes if os.path.isdir(h)]
+    csrc = cfg.get("sources", {}).get("codex", {})
+    if existing and not csrc.get("enabled"):
+        out.append(_s.finding("codex", "detected_disabled", "zero",
+                              f"检测到 {len(existing)} 个 Codex 环境有数据,但该源关闭",
+                              "loom source enable codex", {"homes": existing}))
+    env_home = os.environ.get("CODEX_HOME")
+    if env_home:
+        ap = os.path.abspath(util.expand(env_home))
+        if ap not in homes and os.path.isdir(ap):
+            out.append(_s.finding("codex", "needs_input", "needs_confirmation",
+                                  f"环境变量 CODEX_HOME={env_home} 未纳入采集",
+                                  None, {"home": ap}))
+    return out

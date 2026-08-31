@@ -136,3 +136,9 @@ def collect(cfg, since):
                 "detail": detail,
             })
     return entries
+
+
+def suggest(cfg):
+    """自荐配置:探测 claude 目录。"""
+    from .. import suggest as _s
+    return _s.path_source(cfg, "claude", "projects_dir", "~/.claude/projects")

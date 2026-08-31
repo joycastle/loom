@@ -16,6 +16,7 @@ os.environ["LOOM_HOME"] = _TMP_HOME
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from loom import config, render, search, store, util          # noqa: E402
+from loom import doctor as doctor_mod                          # noqa: E402
 from loom.collectors import cursor as cursor_col               # noqa: E402
 from loom.collectors import git as git_col                     # noqa: E402
 from loom.collectors import claude as claude_col                # noqa: E402
@@ -2347,6 +2348,43 @@ class VaultGitResultTest(unittest.TestCase):
         self.assertEqual(result["stage"], "push")
         self.assertEqual(result["push"], "failed")
         self.assertIn("推送失败", result["message"])
+
+
+class DoctorTest(unittest.TestCase):
+    def setUp(self):
+        from loom.collectors import feishu_user as fu
+        fu.clear_token()
+        self.pi_dir = tempfile.mkdtemp(prefix="loom-doctor-pi-")
+
+    def _cfg(self):
+        # pi 目录存在但源关闭 → 应给 detected_disabled/zero;git 无仓 → needs_confirmation
+        return {"sources": {"pi": {"enabled": False, "sessions_dir": self.pi_dir},
+                            "feishu_user": {"enabled": False}},
+                "repos": [], "owner": {}}
+
+    def test_diagnose_flags_detected_disabled_and_needs(self):
+        out = doctor_mod.diagnose(self._cfg())
+        by = {f["source"]: f for f in out}
+        self.assertEqual(by["pi"]["status"], "detected_disabled")
+        self.assertEqual(by["pi"]["risk"], "zero")
+        self.assertEqual(by["pi"]["fix_command"], "loom source enable pi")
+        self.assertEqual(by["git"]["risk"], "needs_confirmation")     # 无仓
+        self.assertEqual(by["feishu_user"]["status"], "needs_auth")   # 未登录
+
+    def test_apply_only_touches_zero_risk(self):
+        cfg = self._cfg()
+        findings = doctor_mod.diagnose(cfg)
+        done = doctor_mod.apply(cfg, findings, dry_run=True)     # 预览不落地
+        self.assertIn("loom source enable pi", done)
+        self.assertFalse(cfg["sources"]["pi"]["enabled"])       # dry-run 没改
+        doctor_mod.apply(cfg, findings)                         # 真落地
+        self.assertTrue(cfg["sources"]["pi"]["enabled"])        # pi 被开启
+        # git/feishu 是 needs_confirmation,apply 绝不碰
+        self.assertFalse(cfg["sources"]["feishu_user"]["enabled"])
+
+    def test_source_filter(self):
+        out = doctor_mod.diagnose(self._cfg(), only="git")
+        self.assertEqual([f["source"] for f in out], ["git"])
 
 
 class DoCollectTest(unittest.TestCase):
