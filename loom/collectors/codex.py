@@ -36,6 +36,21 @@ def _is_real(t):
     return True
 
 
+def _is_subagent(payload):
+    """判断 session_meta 是否属于内部子会话(guardian 风险审查等)。
+
+    真实用户会话 source 是字符串(如 "vscode");子会话 source 是
+    {"subagent": {...}},或 thread_source == "subagent"。这些自动调用
+    体量大、和用户实际工作无关,不入台账,否则严重污染搜索与日报。
+    """
+    src = payload.get("source")
+    if isinstance(src, dict) and "subagent" in src:
+        return True
+    if payload.get("thread_source") == "subagent":
+        return True
+    return False
+
+
 def _iter_text(item):
     """从 response_item payload 的 content 列表里提取纯文本。"""
     content = item.get("content") or []
@@ -53,20 +68,38 @@ def _iter_text(item):
                     break
 
 
+def _jsonl_files(home):
+    """收集 sessions/ 与 archived_sessions/ 下的全部 JSONL(去重、稳定排序)。
+
+    archived_sessions/ 是用户在 Codex 里归档过的会话,和 sessions/ 不重叠,
+    过去完全没扫到 = 纯数据丢失,这里一并纳入。
+    """
+    seen, files = set(), []
+    for sub in ("sessions", "archived_sessions"):
+        d = os.path.join(home, sub)
+        if not os.path.isdir(d):
+            continue
+        for fp in glob.glob(os.path.join(d, "**", "*.jsonl"), recursive=True):
+            rp = os.path.realpath(fp)
+            if rp not in seen:
+                seen.add(rp)
+                files.append(fp)
+    return sorted(files)
+
+
 def _load_jsonl_sessions(home, since):
-    """扫描 CODEX_HOME/sessions/**/*.jsonl,按 session_id + 日期分桶。"""
-    session_dir = os.path.join(home, "sessions")
-    if not os.path.isdir(session_dir):
+    """扫描 CODEX_HOME/{sessions,archived_sessions}/**/*.jsonl,按 session_id + 日期分桶。"""
+    files = _jsonl_files(home)
+    if not files:
         return []
 
     # session_id → {day → {ts, users, n_user, n_asst, cwd}}
     sessions = defaultdict(lambda: defaultdict(
         lambda: {"ts": [], "users": [], "asst": [], "n_user": 0, "n_asst": 0, "cwd": ""}
     ))
-    session_meta = {}  # session_id → {title, cwd}
+    session_meta = {}  # session_id → {title, cwd, subagent}
 
-    pattern = os.path.join(session_dir, "**", "*.jsonl")
-    for fp in glob.glob(pattern, recursive=True):
+    for fp in files:
         sid = None
         # 从文件名提取 session_id(格式: rollout-<date>-<uuid>.jsonl)
         fname = os.path.splitext(os.path.basename(fp))[0]
@@ -90,6 +123,8 @@ def _load_jsonl_sessions(home, since):
                             meta["cwd"] = payload["cwd"]
                         if payload.get("title"):
                             meta["title"] = payload["title"]
+                        if _is_subagent(payload):
+                            meta["subagent"] = True
 
                     if not sid:
                         sid = file_sid   # 兜底用文件名里的 uuid
@@ -120,6 +155,8 @@ def _load_jsonl_sessions(home, since):
     entries = []
     for sid, days in sessions.items():
         meta = session_meta.get(sid, {})
+        if meta.get("subagent"):
+            continue   # 内部子会话(guardian 等)不入台账
         cwd = meta.get("cwd", "")
         project = os.path.basename(cwd.rstrip("/")) if cwd else "codex"
         title = meta.get("title", "")

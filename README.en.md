@@ -69,7 +69,7 @@ Codex Feishu Bridge topics are opt-in. Sign in with lark-cli, grant `search:mess
 "codex": {"enabled": true, "homes": ["~/.codex", "~/.codex-work"]}
 ```
 
-Loom collects every configured home and deduplicates by session ID; it never scans `.codex*` automatically. The first item is the primary Codex environment used when installing the Loom skill. Legacy singular `home` settings remain compatible, and no source sessions are moved.
+Loom collects every configured home and deduplicates by session ID; it never scans `.codex*` automatically. The first item is the primary Codex environment used when installing the Loom skill. Legacy singular `home` settings remain compatible, and no source sessions are moved. Both `sessions/` and `archived_sessions/` (sessions you archived) are collected per home; Codex internal subagent sessions (automatic calls whose `source` is `subagent`, e.g. guardian risk reviews) are filtered out so they never pollute the ledger.
 
 **Let AI call loom directly (MCP)** · the skill teaches an AI *how to type* loom commands; MCP makes loom a **native tool** inside AI coding clients — `loom_search` your ledger and `loom_note` while coding, no commands to remember:
 

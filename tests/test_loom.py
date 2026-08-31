@@ -621,13 +621,17 @@ class CodexCollectorTest(unittest.TestCase):
         self.work_home = tempfile.mkdtemp(prefix="loom-codex-work-")
 
     @staticmethod
-    def _write_jsonl(home, sid, opening, cwd="/Users/x/project"):
-        session_dir = os.path.join(home, "sessions", "2026", "06", "01")
+    def _write_jsonl(home, sid, opening, cwd="/Users/x/project",
+                     source=None, subdir="sessions"):
+        session_dir = os.path.join(home, subdir, "2026", "06", "01")
         os.makedirs(session_dir, exist_ok=True)
         path = os.path.join(session_dir, f"rollout-2026-06-01-{sid}.jsonl")
+        meta = {"id": sid, "cwd": cwd}
+        if source is not None:
+            meta["source"] = source
         rows = [
             {"timestamp": "2026-06-01T09:00:00Z", "type": "session_meta",
-             "payload": {"id": sid, "cwd": cwd}},
+             "payload": meta},
             {"timestamp": "2026-06-01T09:01:00Z", "type": "response_item",
              "payload": {"role": "user", "content": [
                  {"type": "input_text", "text": opening}]}},
@@ -698,6 +702,32 @@ class CodexCollectorTest(unittest.TestCase):
         cfg = {"sources": {"codex": {"enabled": True, "home": self.work_home}}}
         self.assertEqual(codex_col.collect(cfg, "2000-01-01")[0]["summary"],
                          "旧配置仍可采集")
+
+    def test_subagent_sessions_are_excluded(self):
+        # guardian 等内部子会话 source 为 {"subagent": ...},不入台账;
+        # 真实用户会话 source 为字符串,正常采集。
+        self._write_jsonl(self.default_home, "sid-user", "真实用户会话",
+                          source="vscode")
+        self._write_jsonl(self.default_home, "sid-sub", "内部风险审查",
+                          source={"subagent": {"other": "guardian"}})
+        cfg = {"sources": {"codex": {"enabled": True,
+                                     "homes": [self.default_home]}}}
+
+        out = codex_col.collect(cfg, "2000-01-01")
+
+        self.assertEqual([e["summary"] for e in out], ["真实用户会话"])
+
+    def test_archived_sessions_are_collected(self):
+        # 归档目录里的会话过去完全没扫到 = 数据丢失,现应一并采集。
+        self._write_jsonl(self.default_home, "sid-live", "活跃会话")
+        self._write_jsonl(self.default_home, "sid-archived", "归档会话",
+                          subdir="archived_sessions")
+        cfg = {"sources": {"codex": {"enabled": True,
+                                     "homes": [self.default_home]}}}
+
+        out = codex_col.collect(cfg, "2000-01-01")
+
+        self.assertEqual({e["summary"] for e in out}, {"活跃会话", "归档会话"})
 
 
 class PiCollectorTest(unittest.TestCase):
