@@ -77,3 +77,7 @@ def collect(cfg, since):
                            "dated": dated, "content": text[body_at:]},
             })
     return entries
+
+
+def suggest(cfg):
+    return []   # notes 自动配置,无需用户操作

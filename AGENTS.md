@@ -19,6 +19,18 @@
 **打开 [ONBOARDING.md](./ONBOARDING.md) 并逐步执行**——那是一份面向 AI 的执行剧本
 (环境配置 → 首次采集 → 收编散落资料 → 私有云备份 → 主题层完整分类 → 日常)。
 
+## 🩺 帮用户配置 → 跑 `loom doctor`
+用户说"帮我配 loom / 配一下信息源 / 看看还缺什么"时,**跑 `loom doctor --json`**,
+它只读、可反复跑、每条建议自带一条 `fix_command`。按 `risk` 分流处理:
+- **`risk: "zero"`**(探测到的路径、可开启的源):可以 `loom doctor --apply --dry-run`
+  给用户看一眼要做什么,点头后 `loom doctor --apply` 批量落地(或逐条跑各自 `fix_command`)。
+- **`risk: "needs_confirmation"`**(飞书登录、关注词/静音/VIP 个性化、任何写 `.env` 的):
+  **必须逐条读给用户、拿到明确同意才执行**对应 `fix_command`,不能因为在批处理里就一起过
+  (对齐铁律 1「外发/写入先确认」)。
+- `fix_command` 原样执行,别自己拼命令行。`loom doctor --source <名>` 可只体检某一个源。
+- 飞书关注词候选在 `detail.candidates` 里(据用户近期编码/笔记数据抽的),挑完用
+  `loom feishu watch <词>` 写入——**这些个性化只进本地 `~/.loom/config.json`,绝不进仓库**。
+
 ## 全程铁律(任何操作都遵守)
 1. **不可逆 / 外发操作先向用户确认**:删除、移动、`git push`、对外分享。
 2. **凭证只进 `~/.loom/.env`(chmod 600),绝不写入任何仓**;采集内容入库前已自动打码。

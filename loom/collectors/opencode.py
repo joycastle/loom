@@ -221,3 +221,9 @@ def collect(cfg, since):
     merged = {entry["id"]: entry for entry in _load_legacy_json(data_dir, since)}
     merged.update({entry["id"]: entry for entry in _load_sqlite(data_dir, since)})
     return sorted(merged.values(), key=lambda entry: (entry["ts"], entry["id"]))
+
+
+def suggest(cfg):
+    """自荐配置:探测 opencode 目录。"""
+    from .. import suggest as _s
+    return _s.path_source(cfg, "opencode", "data_dir", "~/.local/share/opencode")

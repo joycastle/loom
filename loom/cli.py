@@ -288,6 +288,42 @@ def cmd_repo(cfg, a):
             print(" +", r)
 
 
+def cmd_doctor(cfg, a):
+    import json as _json
+    from . import doctor
+    findings = doctor.diagnose(cfg, only=getattr(a, "source", None))
+    if a.json:
+        print(_json.dumps({"findings": findings}, ensure_ascii=False, indent=2))
+        return
+    if a.apply:
+        done = doctor.apply(cfg, findings, dry_run=a.dry_run)
+        if not done:
+            print("没有可自动落地的零风险项")
+        else:
+            print(f"{'将执行(dry-run)' if a.dry_run else '已执行'} {len(done)} 条零风险修复:")
+            for c in done:
+                print("  ", c)
+        rest = [f for f in findings if f["risk"] != "zero"]
+        if rest:
+            print(f"\n另有 {len(rest)} 条需你确认(不会自动做):")
+            for f in rest:
+                tail = f"  → {f['fix_command']}" if f["fix_command"] else ""
+                print(f"  [{f['source']}] {f['message']}{tail}")
+        return
+    if not findings:
+        print("✅ 一切就绪,没有要配置的。"); return
+    print(f"loom doctor:{len(findings)} 条建议\n")
+    for f in findings:
+        tag = "○可自动" if f["risk"] == "zero" else "●需确认"
+        print(f"[{f['source']}] {tag}  {f['message']}")
+        if f["fix_command"]:
+            print(f"    → {f['fix_command']}")
+        cand = (f.get("detail") or {}).get("candidates")
+        if cand:
+            print(f"    候选:{', '.join(cand[:12])}")
+    print("\n零风险项可 `loom doctor --apply`(先加 --dry-run 预览);需确认项请自己跑对应命令。")
+
+
 def cmd_feishu(cfg, a):
     if a.action == "ls":
         for b in cfg["feishu"]["bitables"]:
@@ -773,6 +809,11 @@ def build_parser():
             sp.add_argument("--push", action="store_true")
     sub.add_parser("build")
     sub.add_parser("today")
+    sp = sub.add_parser("doctor")
+    sp.add_argument("--json", action="store_true")
+    sp.add_argument("--apply", action="store_true", help="落地零风险项(开启探测到的源)")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true", help="配 --apply:只预览不落地")
+    sp.add_argument("--source", choices=collectors.sync_names(), help="只体检某一个源")
     sp = sub.add_parser("serve")
     sp.add_argument("--port", type=int, default=8787)
     sub.add_parser("mcp-serve")
@@ -872,6 +913,7 @@ def main(argv=None):
     handlers = {
         "sync": cmd_sync, "collect": cmd_collect, "build": cmd_build,
         "today": cmd_today, "search": cmd_search, "related": cmd_related, "init": cmd_init,
+        "doctor": cmd_doctor,
         "repo": cmd_repo, "feishu": cmd_feishu, "identity": cmd_identity,
         "source": cmd_source, "doc": cmd_doc, "data": cmd_data, "report": cmd_report,
         "deprecate": cmd_deprecate, "topic": cmd_topic, "note": cmd_note,

@@ -28,6 +28,20 @@ DIAGNOSTIC_REGISTRY = {
     "codex_feishu_bridge": codex_feishu_bridge.collect_diagnostic,
 }
 
+# 每个源可选暴露 suggest(cfg)->[finding],供 `loom doctor` 统一检测+调用。
+# 加新源自带 suggest 就会被 doctor 自动发现,不用改 doctor。
+SUGGEST_REGISTRY = {
+    "git": git.suggest,
+    "claude": claude.suggest,
+    "codex": codex.suggest,
+    "cursor": cursor.suggest,
+    "pi": pi.suggest,
+    "opencode": opencode.suggest,
+    "feishu_user": feishu_user.suggest,
+    "docs": docs.suggest,
+    "notes": notes.suggest,
+}
+
 SOURCE_CATEGORIES = {
     "git": "development", "claude": "development", "codex": "development",
     "cursor": "development", "codebuddy": "development",

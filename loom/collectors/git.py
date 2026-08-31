@@ -123,3 +123,21 @@ def collect_diagnostic(cfg, since):
 
 def collect(cfg, since):
     return collect_diagnostic(cfg, since)["entries"]
+
+
+def suggest(cfg):
+    """自荐配置:没纳入仓库时,探测常见代码目录里有没有 git 仓,给出扫描建议。"""
+    import glob
+    import os
+    from .. import suggest as _s, util
+    if cfg.get("repos"):
+        return []
+    cands = []
+    for d in ("~/code", "~/dev", "~/src", "~/projects", "~/work", "~/repos"):
+        p = util.expand(d)
+        if os.path.isdir(p) and (os.path.isdir(os.path.join(p, ".git"))
+                                 or glob.glob(os.path.join(p, "*", ".git"))):
+            cands.append(p)
+    fix = f"loom repo scan {cands[0]}" if cands else "loom repo scan <你的代码目录>"
+    return [_s.finding("git", "needs_input", "needs_confirmation",
+                       "还没纳入任何 git 仓库", fix, {"candidates": cands})]
