@@ -479,6 +479,10 @@ def cmd_doc(cfg, a):
         print(("  ✓ " if dest else "  · ") + msg)
         ok += 1 if dest else 0
     print(f"入库 {ok}/{len(results)} 个 → {config.notes_dir(cfg)}/{a.to or 'inbox'}")
+    if ok:
+        # loom 自己的显式记录 → 当场入库建索引,不用等 sync。
+        do_collect(cfg, ["notes"], util.since_date(cfg.get("default_since_days", 100)))
+        print("  (已进检索)")
     if a.push and ok:
         _vault_git_checked(cfg, True)
 
@@ -603,7 +607,9 @@ def cmd_note(cfg, a):
     dest, msg = intake.note(cfg, a.text, to=a.to, tags=tags, title=a.title)
     print(("  ✓ " if dest else "  · ") + msg)
     if dest:
-        print("  (下次 loom sync 后进检索 / 可被 loom topic 打标)")
+        # loom 自己的显式记录 → 当场入库建索引,不用等 sync(与 --update / data add 一致)。
+        do_collect(cfg, ["notes"], util.since_date(cfg.get("default_since_days", 100)))
+        print("  (已进检索,可被 loom topic 打标)")
         if a.push:
             _vault_git_checked(cfg, True)
 
