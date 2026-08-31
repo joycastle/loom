@@ -56,8 +56,28 @@ _DEFAULT_WEIGHTS = {
 # 跨源信号:从我近期编码/笔记里抽 ASCII 标识符(表名/字段/repo,如 orders_daily_v2),
 # 群里提到即"我正在忙的东西"。只认长标识符,避开泛化英文停用词。
 _IDENT_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{4,}")
-_IDENT_STOP = {"https", "http", "select", "where", "false", "true", "null",
-               "value", "content", "message", "please", "readonly", "token"}
+# 泛化的工具/会话/英文常用词:它们在 codex/claude 会话记录里高频但不是"我的业务词"。
+_IDENT_STOP = {
+    "https", "http", "select", "where", "false", "true", "null", "value",
+    "content", "message", "please", "readonly", "token", "instructions",
+    "shell", "transcript", "session", "sessions", "request", "response",
+    "codex", "claude", "cursor", "users", "user", "files", "file", "error",
+    "config", "python", "github", "gitlab", "output", "input", "command",
+    "result", "return", "function", "import", "export", "update", "create",
+    "delete", "system", "assistant", "context", "window", "prompt", "model",
+    "should", "would", "could", "about", "there", "which", "these", "those",
+    "loom", "sandbox", "workspace", "project", "directory", "folder",
+}
+
+
+def _term_stop(cfg):
+    """停用词 = 通用表 + 用户自己的名字/用户名(避免把 owner 名当业务词荐出来)。"""
+    stop = set(_IDENT_STOP)
+    ow = cfg.get("owner", {}) if isinstance(cfg.get("owner"), dict) else {}
+    for v in (ow.get("name"), ow.get("feishu_name"), os.environ.get("USER")):
+        if v:
+            stop.add(str(v).strip().lower())
+    return stop
 
 
 def _relevance(cfg):
@@ -351,6 +371,7 @@ def _cross_source_terms(cfg, since, min_count=2):
         by_id = store.load()
     except Exception:
         return set()
+    stop = _term_stop(cfg)
     c = Counter()
     for e in by_id.values():
         if e.get("tool") == "feishu_user" or e.get("date", "") < since:
@@ -360,7 +381,7 @@ def _cross_source_terms(cfg, since, min_count=2):
                          str(d.get("opening", ""))])
         for tok in set(_IDENT_RE.findall(text)):
             low = tok.lower()
-            if low not in _IDENT_STOP:
+            if low not in stop:
                 c[low] += 1
     return {t for t, n in c.items() if n >= min_count}
 
@@ -375,6 +396,7 @@ def watchlist_candidates(cfg, since_days=30, limit=20):
         by_id = store.load()
     except Exception:
         return []
+    stop = _term_stop(cfg)
     c = Counter()
     for e in by_id.values():
         if e.get("tool") == "feishu_user" or e.get("date", "") < since:
@@ -384,7 +406,7 @@ def watchlist_candidates(cfg, since_days=30, limit=20):
                          str(d.get("opening", ""))])
         for tok in set(_IDENT_RE.findall(text)):
             low = tok.lower()
-            if low not in _IDENT_STOP:
+            if low not in stop:
                 c[low] += 1
     return [t for t, n in c.most_common(limit) if n >= 3]
 
