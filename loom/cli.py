@@ -8,6 +8,7 @@ from datetime import datetime
 
 from . import agents, config, dataset, digest, intake, render, report, search, serve, skillsync, store, topics, util
 from . import collectors
+from .collectors import feishu_user
 
 
 # ---------------------------------------------------------------- 采集/渲染
@@ -303,6 +304,75 @@ def cmd_feishu(cfg, a):
         cfg["feishu"]["bitables"] = [b for b in cfg["feishu"]["bitables"]
                                      if b["name"] != a.value]
         config.save(cfg); print("已删")
+    elif a.action == "login":
+        _feishu_login(cfg, a)
+    elif a.action == "status":
+        st = feishu_user.token_status()
+        if not st["logged_in"]:
+            print("飞书用户身份:未登录 · 运行 loom feishu login")
+        else:
+            print(f"飞书用户身份:已登录 · access 剩 {st['access_expires_in']}s · "
+                  f"refresh 剩 {st['refresh_expires_in']}s")
+            if st.get("scopes"):
+                print("  scope:", st["scopes"])
+    elif a.action == "logout":
+        feishu_user.clear_token()
+        print("已清除本地飞书用户 token")
+
+
+def _feishu_login(cfg, a):
+    """跑一次授权码流程:开本地回调服务 → 浏览器授权 → 拿 code 换 token 存盘。"""
+    import http.server
+    import urllib.parse
+    import webbrowser
+
+    app_id, secret = feishu_user._app_creds()
+    if not (app_id and secret):
+        print("缺 FEISHU_APP_ID/FEISHU_APP_SECRET(自建飞书应用,写入 ~/.loom/.env,绝不入库)")
+        return
+    port = a.port or cfg["sources"]["feishu_user"].get("redirect_port", 8788)
+    redirect_uri = f"http://localhost:{port}/callback"
+    url = feishu_user.authorize_url(cfg, redirect_uri)
+
+    holder = {"code": None}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            q = urllib.parse.urlparse(self.path)
+            if q.path != "/callback":
+                self.send_response(404); self.end_headers(); return
+            holder["code"] = urllib.parse.parse_qs(q.query).get("code", [None])[0]
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write("<h3>飞书授权完成,可以关闭本页回到终端。</h3>"
+                             .encode("utf-8"))
+
+        def log_message(self, *args):
+            pass
+
+    print("请在浏览器完成飞书授权(登录你自己的账号):")
+    print(" ", url)
+    if not a.no_browser:
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+    srv = http.server.HTTPServer(("localhost", port), Handler)
+    print(f"等待回调 http://localhost:{port}/callback …(Ctrl-C 取消)")
+    try:
+        while holder["code"] is None:
+            srv.handle_request()
+    except KeyboardInterrupt:
+        print("\n已取消"); return
+    finally:
+        srv.server_close()
+    try:
+        feishu_user.exchange_code(cfg, holder["code"], redirect_uri)
+    except Exception as e:
+        print("换取 token 失败:", e); return
+    print("登录成功,已保存用户 token(~/.loom/feishu_user_token.json,600)。")
+    print("下一步:loom source enable feishu_user && loom sync --source feishu_user")
 
 
 def cmd_identity(cfg, a):
@@ -692,11 +762,17 @@ def build_parser():
     sp.add_argument("id")                          # 条目 id(loom search 结果里的括号/id)
     sp.add_argument("--limit", type=int, default=30)
     for cname, acts in (("repo", ("add", "rm", "scan", "ls")),
-                        ("feishu", ("add", "rm", "ls")),
                         ("identity", ("add", "ls"))):
         sp = sub.add_parser(cname)
         sp.add_argument("action", choices=acts)
         sp.add_argument("value", nargs="?", default="")
+    # feishu 单列:除 bitable 的 add/rm/ls,还有 user OAuth 的 login/status/logout。
+    sp = sub.add_parser("feishu")
+    sp.add_argument("action", choices=("add", "rm", "ls", "login", "status", "logout"))
+    sp.add_argument("value", nargs="?", default="")
+    sp.add_argument("--port", type=int, help="login 本地回调端口(默认取配置 redirect_port)")
+    sp.add_argument("--no-browser", action="store_true",
+                    help="login 不自动开浏览器,只打印授权链接")
     sp = sub.add_parser("source")
     sp.add_argument("action", choices=("enable", "disable"))
     sp.add_argument("name")
