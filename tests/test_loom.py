@@ -854,6 +854,29 @@ class FeishuUserCollectorTest(unittest.TestCase):
         self.assertEqual(e["detail"]["dropped"], 1)                 # m3
         self.assertEqual(e["detail"]["msgs"], 4)                    # 计入图片
 
+    def test_watchlist_keyword_recovers_topical_message(self):
+        # 大群、他人发、没@我 → 纯结构信号为0会被丢;但命中 owner.watchlist 关键词
+        # (+8)就能捞回"话题相关但没点名我"的内容。
+        feishu_user_col._save_token({
+            "access_token": "u-acc", "refresh_token": "r0",
+            "access_expires_at": 9999999999, "refresh_expires_at": 9999999999})
+        chats = {"code": 0, "data": {"has_more": False, "items": [
+            {"chat_id": "oc_1", "name": "算法专项群"}]}}
+        msgs = {"code": 0, "data": {"has_more": False, "items": [
+            {"message_id": "k1", "msg_type": "text", "create_time": "1721400000000",
+             "sender": {"id": "ou_other", "sender_type": "user"},
+             "body": {"content": json.dumps({"text": "bingo 国家 tier 已完成同步变更"})}},
+            {"message_id": "k2", "msg_type": "text", "create_time": "1721400600000",
+             "sender": {"id": "ou_other", "sender_type": "user"},
+             "body": {"content": json.dumps({"text": "周末去哪玩随便聊"})}}]}}
+        self._stub_env(chats, msgs)
+        cfg = self._enabled_cfg()
+        cfg["owner"] = {"watchlist": ["bingo", "pltv"]}
+        out = feishu_user_col.collect(cfg, "2000-01-01")
+        self.assertEqual(len(out), 1)
+        self.assertIn("bingo 国家 tier", out[0]["detail"]["body"])   # 关键词命中,捞回
+        self.assertNotIn("周末去哪玩", out[0]["detail"]["body"])      # 无关,仍丢
+
     def test_irrelevant_group_produces_no_entry(self):
         # 大群里只有他人闲聊,既没@我也没我发言 → 整个群这天不入台账。
         feishu_user_col._save_token({

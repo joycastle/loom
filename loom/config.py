@@ -15,7 +15,9 @@ from . import util
 _BASELINE = {}
 
 DEFAULT_CONFIG = {
-    "owner": {"name": "", "feishu_name": ""},
+    # watchlist:我负责的项目/表名/领域词。飞书群消息命中即算"和我相关"(哪怕
+    # 没点名我),用来把话题相关但没@我的内容也捞进周报。子串匹配,大小写不敏感。
+    "owner": {"name": "", "feishu_name": "", "watchlist": []},
     "identities": {"emails": [], "names": []},
     "default_since_days": 100,
     "redact": True,          # 采集入库前抹掉 token/密钥值(推云端/Basic Memory 防泄露);私有可信仓可设 false
