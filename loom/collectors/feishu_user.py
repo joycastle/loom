@@ -46,7 +46,7 @@ BODY_CAP = 8000
 # ——既做高信噪比,也顺带减少他人发言的沉淀(隐私)。信号权重见 _score()。
 KEEP_SCORE = 8
 _NOISE_PREFIX = ("欢迎", "入职", "收到", "好的", "谢谢", "辛苦", "哈哈", "赞")
-# 跨源信号:从我近期编码/笔记里抽 ASCII 标识符(表名/字段/repo,如 ml_pltv_d1_feature),
+# 跨源信号:从我近期编码/笔记里抽 ASCII 标识符(表名/字段/repo,如 orders_daily_v2),
 # 群里提到即"我正在忙的东西"。只认长标识符,避开泛化英文停用词。
 _IDENT_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{4,}")
 _IDENT_STOP = {"https", "http", "select", "where", "false", "true", "null",

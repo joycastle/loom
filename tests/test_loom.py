@@ -829,7 +829,7 @@ class FeishuUserCollectorTest(unittest.TestCase):
             {"message_id": "m1", "msg_type": "text", "create_time": "1721400000000",
              "sender": {"id": "ou_other", "sender_type": "user"},
              "mentions": [{"id": "ou_me", "name": "我"}],
-             "body": {"content": json.dumps({"text": "宪伟哥帮看下归因链路"})}},
+             "body": {"content": json.dumps({"text": "老王帮看下这条数据链路"})}},
             # 我发的 → 始终留
             {"message_id": "m2", "msg_type": "text", "create_time": "1721400600000",
              "sender": {"id": "ou_me", "sender_type": "user"},
@@ -847,7 +847,7 @@ class FeishuUserCollectorTest(unittest.TestCase):
         self.assertEqual(len(out), 1)
         e = out[0]
         self.assertEqual(e["project"], "数据中台群")
-        self.assertIn("宪伟哥帮看下归因链路", e["detail"]["body"])   # @我,留
+        self.assertIn("老王帮看下这条数据链路", e["detail"]["body"])   # @我,留
         self.assertIn("明天对齐口径", e["detail"]["body"])          # 我发的,留
         self.assertNotIn("周末谁去打球", e["detail"]["body"])        # 他人闲聊,丢
         self.assertEqual(e["detail"]["kept"], 2)
@@ -865,16 +865,16 @@ class FeishuUserCollectorTest(unittest.TestCase):
         msgs = {"code": 0, "data": {"has_more": False, "items": [
             {"message_id": "k1", "msg_type": "text", "create_time": "1721400000000",
              "sender": {"id": "ou_other", "sender_type": "user"},
-             "body": {"content": json.dumps({"text": "bingo 国家 tier 已完成同步变更"})}},
+             "body": {"content": json.dumps({"text": "falcon 项目指标本周已同步"})}},
             {"message_id": "k2", "msg_type": "text", "create_time": "1721400600000",
              "sender": {"id": "ou_other", "sender_type": "user"},
              "body": {"content": json.dumps({"text": "周末去哪玩随便聊"})}}]}}
         self._stub_env(chats, msgs)
         cfg = self._enabled_cfg()
-        cfg["owner"] = {"watchlist": ["bingo", "pltv"]}
+        cfg["owner"] = {"watchlist": ["falcon", "atlas"]}
         out = feishu_user_col.collect(cfg, "2000-01-01")
         self.assertEqual(len(out), 1)
-        self.assertIn("bingo 国家 tier", out[0]["detail"]["body"])   # 关键词命中,捞回
+        self.assertIn("falcon 项目指标", out[0]["detail"]["body"])   # 关键词命中,捞回
         self.assertNotIn("周末去哪玩", out[0]["detail"]["body"])      # 无关,仍丢
 
     def test_irrelevant_group_produces_no_entry(self):
