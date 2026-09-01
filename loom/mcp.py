@@ -55,12 +55,12 @@ def _tool_topic_show(cfg, args):
 
 
 def _tool_related(cfg, args):
-    from . import relations, store
+    from . import relate, store
     eid = (args.get("id") or "").strip()
     by_id = store.load()
     if eid not in by_id:
         return f"(无此条目 id:{eid};先用 loom_search 找到 id)"
-    hits = relations.neighbors(by_id, eid, limit=int(args.get("limit") or 20))
+    hits = relate.neighbors(by_id, eid, limit=int(args.get("limit") or 20))
     if not hits:
         return "(暂无自动派生的关联)"
     out = []

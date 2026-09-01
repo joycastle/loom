@@ -92,6 +92,13 @@ def _fingerprint(e):
     if kind == "commit" and d.get("files") is not None:
         subj = _PR_SUFFIX.sub("", (e.get("summary") or "").strip())
         return ("commit", subj, d.get("files"), d.get("ins"), d.get("del"))
+    # 文本去重只给 chat(消息正文进了 _text,转发·重复入库的同一条消息可靠判重)。
+    # 刻意排除 session/doc/note:
+    #   - session 有 sid 强身份(store 已按 id 去重),开场白/摘要雷同 ≠ 同一会话;
+    #   - doc/note 的条目只带标题、正文不在 _text 里,按标题去重会把同名不同内容的文档
+    #     (如两个项目各自的 README.md)误折叠。要安全去重它们得采集时带内容哈希(TODO)。
+    if kind != "chat":
+        return None
     text = " ".join(_text(e).split()).lower()
     return (kind, text) if text else None
 

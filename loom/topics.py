@@ -304,8 +304,8 @@ def _fewshot(by_id, tmap, n=6):
 
 def _relation_hint(by_id, tmap, pgs, eid, k=3):
     """给候选附上关系邻居;优先展示【已归类】的邻居(=标签传播的强先验)。"""
-    from . import relations
-    nb = relations.neighbors(by_id, eid, limit=8)
+    from . import relate
+    nb = relate.neighbors(by_id, eid, limit=8)
     nb.sort(key=lambda h: (0 if tmap.get(h["id"]) else 1, -h["score"]))
     hints = []
     for h in nb[:k]:

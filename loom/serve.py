@@ -261,14 +261,14 @@ def api_entry(eid, by_id):
 
 def api_related(eid, by_id, limit=30):
     """条目的自动派生关联(会话↔提交、共改、文档↔提交、对话续接)。"""
-    from . import relations
-    return relations.neighbors(by_id, (eid or "").strip(), limit=limit)
+    from . import relate
+    return relate.neighbors(by_id, (eid or "").strip(), limit=limit)
 
 
 def api_relation_graph(by_id, max_nodes=48, max_edges=72):
     """全局结构关系总览;完整计数 + 为可读性裁剪后的强边子图。"""
-    from . import relations
-    return relations.global_graph(by_id, max_nodes=max_nodes, max_edges=max_edges)
+    from . import relate
+    return relate.global_graph(by_id, max_nodes=max_nodes, max_edges=max_edges)
 
 
 def api_topic_relation_graph(cfg, by_id):
@@ -277,7 +277,7 @@ def api_topic_relation_graph(cfg, by_id):
     图上的节点始终是主题,所以不会因为原始记录太多而裁掉语义层级。记录类型按
     直接归类计数展示;自动结构边先在记录层派生,再按两端的主题组合去重聚合。
     """
-    from . import relations
+    from . import relate
 
     topic_view = api_topics(cfg, by_id)
     pgs = topics.pages(cfg)
@@ -305,7 +305,7 @@ def api_topic_relation_graph(cfg, by_id):
         "count": 0, "score": 0.0, "reason_counts": defaultdict(int),
         "examples": [], "example_keys": set(),
     })
-    raw_edges = relations.all_edges(by_id)
+    raw_edges = relate.all_edges(by_id)
     mapped_raw_edges = 0
     within_topic_edges = 0
     for edge in raw_edges:
