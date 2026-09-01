@@ -79,6 +79,38 @@ class _UF:
         return list(g.values())
 
 
+_PR_SUFFIX = re.compile(r"\s*\(#\d+\)\s*$")
+
+
+def _fingerprint(e):
+    """条目内容指纹:同一件东西被采两遍 → 同指纹。覆盖所有来源,不只 git:
+      - 跨仓镜像提交(开源仓 + 私有镜像仓):subject 去掉 PR 号后 + 文件数/增删行相同;
+      - 续接/重复同步的会话、转发或重复入库的消息、同步两遍的文档:同 kind 内正文文本一致。
+    **只抓文本几乎一模一样的**——跨源'讲同一件事'(文本不同)不是重复,交给聚类连,别在这误折叠。"""
+    kind = e.get("kind", "")
+    d = e.get("detail") or {}
+    if kind == "commit" and d.get("files") is not None:
+        subj = _PR_SUFFIX.sub("", (e.get("summary") or "").strip())
+        return ("commit", subj, d.get("files"), d.get("ins"), d.get("del"))
+    text = " ".join(_text(e).split()).lower()
+    return (kind, text) if text else None
+
+
+def _dedup(items):
+    """按内容指纹去重(纯机制,去重完全相同的内容,不涉及个人策略);不改 store,只影响
+    聚类/日报材料。不修它的话,重复采集会灌高 member_count/边数、造一堆'N条'假簇。"""
+    seen = {}
+    out = []
+    for eid, e in items:
+        fp = _fingerprint(e)
+        if fp is not None:
+            if fp in seen:
+                continue
+            seen[fp] = eid
+        out.append((eid, e))
+    return out
+
+
 def _text(e):
     d = e.get("detail") or {}
     return " ".join([e.get("summary", ""), str(d.get("body", "")),
@@ -190,6 +222,7 @@ def cluster(items, cfg=None):
     """把一批条目聚成簇。items 可为 [(eid, entry)] 或 {eid: entry}。策略走 cfg。"""
     if isinstance(items, dict):
         items = list(items.items())
+    items = _dedup(items)                                 # 先按内容指纹去重(全源,不只 git)
     idmap = dict(items)
     if not items:
         return []

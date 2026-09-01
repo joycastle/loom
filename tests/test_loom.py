@@ -2397,6 +2397,50 @@ class ClusterTest(unittest.TestCase):
         cap = config.DEFAULT_CONFIG["report"]["cluster"]["big_cluster"]
         self.assertLessEqual(max(len(c["members"]) for c in cs), cap)
 
+    def test_dedup_collapses_duplicates_and_cross_source_outranks_volume(self):
+        from loom import cluster
+        items = {}
+        # 开源仓 + 私有镜像仓:同一提交(subject 仅差 PR 号、numstat 相同)各一次 ×6
+        for i in range(6):
+            for repo, pr in (("oss", i + 20), ("ent", i + 5)):
+                items[f"{repo}:{i}"] = self._e(
+                    f"{repo}:{i}", "commit", "git", "tool",
+                    f"feat: 自研工具改动 {i} (#{pr})", files=[f"m{i}.py"])
+        # 一件跨源(飞书讨论 + 会话 + 提交)的正事,只 3 条
+        items["fx"] = self._e("fx", "chat", "feishu_user", "群",
+                              "audience_weekly 上线验收了吗", body="audience_weekly 验收")
+        items["sx"] = self._e("sx", "session", "claude", "投放",
+                              "查 audience_weekly 空窗", body="audience_weekly 空窗")
+        items["gx"] = self._e("gx", "commit", "git", "投放",
+                              "修 audience_weekly 连接", files=["audience_weekly.sql"])
+        cs = cluster.cluster(items)
+        # 镜像塌缩:6 对 → 6 条,不是 12
+        tool_members = sum(len(c["members"]) for c in cs
+                           for m in [c["members"][0]] if m["id"].split(":")[0] in ("oss", "ent"))
+        self.assertLessEqual(tool_members, 6)
+        # 跨源正事(3源)重要度高于单源自研堆量
+        cross = max(cs, key=lambda c: c["importance"]["features"]["kind_diversity"])
+        self.assertEqual(cross["importance"]["features"]["kind_diversity"], 3)
+        vol = max((c for c in cs if c is not cross),
+                  key=lambda c: c["importance"]["features"]["member_count"])
+        self.assertGreater(cross["importance"]["score"], vol["importance"]["score"])
+
+    def test_dedup_is_content_based_across_all_sources(self):
+        from loom import cluster
+        # 非 git 源也去重:同 kind 正文一模一样的两条(重复同步/续接)→ 折叠为一条;
+        # 但"讲同一件事的不同来源"(文本不同)绝不折叠,留给聚类连。
+        items = {
+            "chatA": self._e("chatA", "chat", "feishu_user", "群", "季度复盘会改到周四",
+                             body="季度复盘会改到周四"),
+            "chatB": self._e("chatB", "chat", "feishu_user", "群", "季度复盘会改到周四",
+                             body="季度复盘会改到周四"),           # 重复入库,应折叠
+            "noteX": self._e("noteX", "note", "notes", "笔记", "季度复盘会改到周四"),  # 不同 kind,保留
+        }
+        cs = cluster.cluster(items)
+        got = {m["id"] for c in cs for m in c["members"]}
+        self.assertEqual(len(got & {"chatA", "chatB"}), 1)      # 两条重复聊天只剩一条
+        self.assertIn("noteX", got)                            # 跨源同事不误删
+
     def test_gen_material_has_importance_table_and_includes_feishu(self):
         from loom import cluster, report
         items = [
@@ -2415,6 +2459,11 @@ class ClusterTest(unittest.TestCase):
         self.assertIn("nova_daily", mat)            # 簇标签
         self.assertIn("feishu_user", mat)            # 飞书聊天被纳入(旧版会漏)
         self.assertIn("BLUF", mat)                     # 新 SOP 指引
+        # 素材覆盖清单:逼 AI 别只凭当前 session 记忆写、逐来源对账
+        self.assertIn("本日素材覆盖", mat)
+        self.assertIn("git 1", mat)                    # 按来源计数
+        self.assertIn("飞书 1", mat)                    # 采集器内部名换成展示名
+        self.assertIn("别只把你此刻正在用的那个 AI 会话", mat)  # 点破最易犯的错(工具无关,不假设 Claude)
 
 
 class ConfigCliTest(unittest.TestCase):
