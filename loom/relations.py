@@ -196,9 +196,13 @@ def global_graph(by_id, max_nodes=60, max_edges=120):
     每类结构事实只扫一次。返回的 ``total_*`` 是完整派生图规模,``nodes`` /
     ``edges`` 是按 score 排序后的可视子图;因此大台账不会直接退化成毛球。
     """
+    return graph_from_edges(by_id, all_edges(by_id), max_nodes, max_edges)
+
+
+def graph_from_edges(by_id, ranked, max_nodes=60, max_edges=120):
+    """给定已排序的边(现算或物化 sidecar 都行),裁成适合网页阅读的子图。"""
     max_nodes = max(2, min(int(max_nodes or 60), 120))
     max_edges = max(1, min(int(max_edges or 120), 300))
-    ranked = all_edges(by_id)
 
     selected_edges = []
     selected_nodes = set()

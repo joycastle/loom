@@ -9,7 +9,7 @@
 检索索引、按天日记、主题关联、私有云备份。
 - **代码**在本仓;**用户数据**在 `~/.loom/`(config/.env/data/vault),两者物理分离。
 - 命令:`loom sync | search | related | doc add | data add | note | report | session | topic | deprecate | init`。
-- **两种关联**:`topic`(人工语义 DAG,一件事)+ `related`(自动结构边:会话产出的提交/共改文件/文档↔提交/对话续接,从条目字段派生、零人工)。
+- **两种关联**:`topic`(人工语义 DAG,一件事)+ `related`(自动结构边:会话产出的提交/共改文件/文档↔提交/对话续接,从条目字段派生、零人工)。关联层在 `loom sync` **入库时物化**进 sidecar(`relate.py`),`related`/浏览图谱/日报**共用同一份**;同一件东西被采两遍(跨仓镜像提交、转发/重复入库的消息)自动**去重**,不改 store 原始条目、可重算。
 - **分类工作流**:`topic gather`(未归类→AI 出 TSV)→ `apply`;`gather --refine`(回看已归类,补更细/更多主题,apply 追加不覆盖);`gather --hierarchy`(AI 提父子边)→ `set-parents --file`(校验无环后写父级)。
 - **serve/mcp-serve**:`loom serve` 本地管理页(浏览器);`loom mcp-serve` 把 loom 暴露成 MCP 原生工具
   (`claude mcp add loom -- loom mcp-serve`),供 Claude/Codex 等直接调用 `loom_search`/`loom_note` 等。

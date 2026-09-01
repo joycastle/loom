@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-from . import agents, config, dataset, digest, intake, render, report, search, serve, skillsync, store, topics, util
+from . import agents, config, dataset, digest, intake, relate, render, report, search, serve, skillsync, store, topics, util
 from . import collectors
 from .collectors import feishu_user
 
@@ -55,6 +55,9 @@ def do_collect(cfg, sources, since):
     if nd:
         print(f"  [digest] 覆盖 {nd} 条会话摘要")
     store.save(by_id)
+    ndup, nedge = relate.apply_all(by_id)  # 入库即物化关联层:去重 + 结构边,供 related/浏览/日报共用
+    if ndup:
+        print(f"  [relate] 去重 {ndup} 条 · 关联边 {nedge}")
     search.rebuild()  # 派生检索索引随采集同步重建
     print(f"采集完成:本轮 {total} 条,库内共 {len(by_id)} 条(since {since})")
     return by_id
@@ -249,7 +252,6 @@ def cmd_search(cfg, a):
 
 
 def cmd_related(cfg, a):
-    from . import relations
     by_id = store.load()
     if a.id not in by_id:
         print(f"(无此条目 id:{a.id};用 loom search 找到 id)")
@@ -257,7 +259,7 @@ def cmd_related(cfg, a):
     e = by_id[a.id]
     print(f"# 与 [{e['tool']}/{e['kind']}] {e.get('summary','')[:56]} 相关的条目")
     print(f"  {a.id}\n")
-    hits = relations.neighbors(by_id, a.id, limit=a.limit)
+    hits = relate.neighbors(by_id, a.id, limit=a.limit)
     if not hits:
         print("(暂无自动派生的关联;试试 loom topic show 看语义主题)")
         return

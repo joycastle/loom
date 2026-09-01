@@ -2466,6 +2466,65 @@ class ClusterTest(unittest.TestCase):
         self.assertIn("别只把你此刻正在用的那个 AI 会话", mat)  # 点破最易犯的错(工具无关,不假设 Claude)
 
 
+class RelateTest(unittest.TestCase):
+    """入库物化的关联层:去重 + 结构边,sidecar 缓存 + 现算兜底,消费方共用。"""
+
+    def _sess(self, eid, project, start, end):
+        return {"id": eid, "kind": "session", "tool": "claude", "project": project,
+                "date": start[:10], "ts": start, "summary": "会话",
+                "detail": {"start": start, "end": end, "opening": "开工"},
+                "ref": eid}
+
+    def _commit(self, eid, project, ts, summary, files):
+        return {"id": eid, "kind": "commit", "tool": "git", "project": project,
+                "date": ts[:10], "ts": ts, "summary": summary,
+                "detail": {"files": len(files), "ins": 3, "del": 1,
+                           "file_list": [{"path": p, "ins": 3, "del": 1} for p in files]},
+                "ref": eid}
+
+    def _by_id(self):
+        # 会话产出提交 c1;c1mirror 是 c1 的跨仓镜像(subject 仅差 PR 号、numstat 相同)
+        return {
+            "s1": self._sess("s1", "dw", "2026-08-31T10:00", "2026-08-31T12:00"),
+            "c1": self._commit("c1", "dw", "2026-08-31T11:00",
+                               "feat: 建 nova 表 (#20)", ["nova.sql"]),
+            "c1mirror": self._commit("c1mirror", "dw", "2026-08-31T11:00",
+                                     "feat: 建 nova 表 (#7)", ["nova.sql"]),
+        }
+
+    def test_build_dedups_and_edges_on_visible(self):
+        from loom import relate
+        d = relate.build(self._by_id())
+        self.assertEqual(d["dup_of"], {"c1mirror": "c1"})       # 镜像指向代表(id 排序取前者)
+        # 边建在去重后的可见条目上:不含 c1mirror
+        ids_in_edges = {x for ed in d["edges"] for x in (ed["source"], ed["target"])}
+        self.assertNotIn("c1mirror", ids_in_edges)
+        self.assertTrue(any({"s1", "c1"} == {ed["source"], ed["target"]} for ed in d["edges"]))
+
+    def test_neighbors_served_deduped_and_dup_maps_to_canonical(self):
+        from loom import relate
+        by_id = self._by_id()
+        nb_ids = {h["id"] for h in relate.neighbors(by_id, "s1")}
+        self.assertIn("c1", nb_ids)
+        self.assertNotIn("c1mirror", nb_ids)                   # 重复条目不出现在邻域
+        # 查重复条目 id,应落到它代表的邻域(= s1)
+        self.assertIn("s1", {h["id"] for h in relate.neighbors(by_id, "c1mirror")})
+
+    def test_sidecar_cache_and_sig_invalidation(self):
+        from loom import relate
+        by_id = self._by_id()
+        ndup, nedge = relate.apply_all(by_id)                  # 写 sidecar
+        self.assertEqual(ndup, 1)
+        cached = relate.load()
+        self.assertEqual(cached["sig"], relate._sig(by_id))
+        # 库变了(加一条)→ sig 对不上 → _fresh 现算兜底,不会用陈旧缓存
+        by_id["c2"] = self._commit("c2", "dw", "2026-08-31T11:30",
+                                   "feat: 别的活 (#21)", ["other.sql"])
+        self.assertNotEqual(cached["sig"], relate._sig(by_id))
+        dup, _ = relate._fresh(by_id)
+        self.assertEqual(dup, {"c1mirror": "c1"})              # 现算结果仍正确
+
+
 class ConfigCliTest(unittest.TestCase):
     def _a(self, action=None, path=None, value=None):
         import types
