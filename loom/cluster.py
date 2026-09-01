@@ -12,6 +12,7 @@
 **源码只留机制**:所有词表/权重/阈值都来自配置(report.cluster.*),下面 _policy()
 从 config 读、给通用默认。派生产物(可重算),不入 entries.jsonl。
 """
+import hashlib
 import os
 import re
 from collections import Counter, defaultdict
@@ -85,18 +86,24 @@ _PR_SUFFIX = re.compile(r"\s*\(#\d+\)\s*$")
 def _fingerprint(e):
     """条目内容指纹:同一件东西被采两遍 → 同指纹。覆盖所有来源,不只 git:
       - 跨仓镜像提交(开源仓 + 私有镜像仓):subject 去掉 PR 号后 + 文件数/增删行相同;
-      - 续接/重复同步的会话、转发或重复入库的消息、同步两遍的文档:同 kind 内正文文本一致。
-    **只抓文本几乎一模一样的**——跨源'讲同一件事'(文本不同)不是重复,交给聚类连,别在这误折叠。"""
+      - 文档/笔记同步两遍:文件名 + 正文内容哈希一致(同名不同内容 → 不同 hash,不误折叠);
+      - 转发/重复入库的同一条消息:chat 正文文本一致(消息正文进了 _text)。
+    **只抓真·同一件东西**——跨源'讲同一件事'(文本不同)不是重复,交给聚类连,别在这误折叠。"""
     kind = e.get("kind", "")
     d = e.get("detail") or {}
     if kind == "commit" and d.get("files") is not None:
         subj = _PR_SUFFIX.sub("", (e.get("summary") or "").strip())
         return ("commit", subj, d.get("files"), d.get("ins"), d.get("del"))
-    # 文本去重只给 chat(消息正文进了 _text,转发·重复入库的同一条消息可靠判重)。
-    # 刻意排除 session/doc/note:
-    #   - session 有 sid 强身份(store 已按 id 去重),开场白/摘要雷同 ≠ 同一会话;
-    #   - doc/note 的条目只带标题、正文不在 _text 里,按标题去重会把同名不同内容的文档
-    #     (如两个项目各自的 README.md)误折叠。要安全去重它们得采集时带内容哈希(TODO)。
+    if kind in ("doc", "note"):
+        # doc/note 的 _text 只有标题(正文在 detail.content,不进 _text)——按标题去重会把
+        # 同名不同内容的文档(如两个项目各自的 README.md)误折叠。改用「文件名 + 正文内容
+        # 哈希」:同名且正文一模一样才折叠,同名不同内容 hash 不同 → 保留。宁可漏、不可误删。
+        content = (d.get("content") or "").strip()
+        if not content:
+            return None
+        base = os.path.basename((d.get("path") or e.get("ref") or "").rstrip("/")).lower()
+        return (kind, base, hashlib.sha1(content.encode("utf-8")).hexdigest())
+    # session 有 sid 强身份(store 已按 id 去重),开场白/摘要雷同 ≠ 同一会话,不按文本去重。
     if kind != "chat":
         return None
     text = " ".join(_text(e).split()).lower()

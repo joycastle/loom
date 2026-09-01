@@ -2434,12 +2434,30 @@ class ClusterTest(unittest.TestCase):
                              body="季度复盘会改到周四"),
             "chatB": self._e("chatB", "chat", "feishu_user", "群", "季度复盘会改到周四",
                              body="季度复盘会改到周四"),           # 重复入库,应折叠
-            "noteX": self._e("noteX", "note", "notes", "笔记", "季度复盘会改到周四"),  # 不同 kind,保留
+            "noteX": self._e("noteX", "note", "notes", "笔记", "季度复盘会改到周四"),  # 无 content → 不去重,保留
         }
         cs = cluster.cluster(items)
         got = {m["id"] for c in cs for m in c["members"]}
         self.assertEqual(len(got & {"chatA", "chatB"}), 1)      # 两条重复聊天只剩一条
         self.assertIn("noteX", got)                            # 跨源同事不误删
+
+    def test_doc_note_dedup_by_content_hash(self):
+        from loom import cluster
+        def doc(eid, name, content):
+            return {"id": eid, "kind": "doc", "tool": "docs", "project": "p",
+                    "date": "2026-08-31", "ts": "2026-08-31T10:00", "summary": name,
+                    "ref": f"/repo/{name}", "detail": {"path": name, "content": content}}
+        items = {
+            "a": doc("a", "README.md", "# loom\n统一台账"),
+            "b": doc("b", "README.md", "# loom\n统一台账"),   # 同名同内容(镜像)→ 折叠
+            "c": doc("c", "README.md", "# other\n别的项目"),  # 同名不同内容 → hash 不同,保留
+            "d": doc("d", "README.md", ""),                    # 无正文 → 不参与去重,保留
+        }
+        cs = cluster.cluster(items)
+        got = {m["id"] for c in cs for m in c["members"]}
+        self.assertEqual(len(got & {"a", "b"}), 1)   # 同名同内容折叠为一
+        self.assertIn("c", got)                       # 同名不同内容不误合
+        self.assertIn("d", got)                       # 空正文保留
 
     def test_gen_material_has_importance_table_and_includes_feishu(self):
         from loom import cluster, report
