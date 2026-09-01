@@ -90,7 +90,7 @@ DEFAULT_CONFIG = {
     }},
     # report:日报出料 + 跨源聚类的**全部策略**(词表/权重/阈值),源码只留机制。
     "report": {
-        "importance_tiers": {"high": 8, "mid": 4},   # 决定簇展开/一句带过
+        "importance_tiers": {"high": 15, "mid": 8},  # 决定簇展开/一句带过(跨源簇易过线)
         "section_keywords": {                        # 把 AI 日报按标题切段的关键词
             "work": ["工作", "进度", "完成", "做了"],
             "thinking": ["思考", "心得", "问题", "复盘"],
@@ -110,9 +110,12 @@ DEFAULT_CONFIG = {
                 "rel_continue": 4.0, "rel_touch": 3.0, "rel_shared_file": 2.5,
                 "rel_time": 1.0,
             },
+            # 重要度权重:偏向"跨源多样 + 个人关注",而非"提交数量"。degree/member_count
+            # 是量的信号(单源刷一堆小提交也会高),压低;kind_diversity(同一件事被几种
+            # 来源印证=真的重要)与 keyword_hit(命中关注词=对本职有分量)拉高。
             "score_weights": {
-                "degree": 1.0, "member_count": 0.5, "kind_diversity": 2.0,
-                "span_days": 1.0, "file_changes": 0.02, "keyword_hit": 1.5,
+                "degree": 0.3, "member_count": 0.3, "kind_diversity": 6.0,
+                "span_days": 1.0, "file_changes": 0.02, "keyword_hit": 3.0,
             },
             # 泛化 id:出现在一堆条目里但不代表"同一件事",不作聚类标识符。
             # 用户在私有 config 的 generic_ids_extra 追加自己项目特有的噪音词。
@@ -124,7 +127,15 @@ DEFAULT_CONFIG = {
                             "public", "prototype", "source", "apps", "assets", "build",
                             "dist", "node_modules", "package", "config", "jsonl",
                             "json", "sqlite", "since", "until", "month", "week",
-                            "journal", "vault", "local", "loom"],
+                            "journal", "vault", "local", "loom",
+                            # 常见英文/代码散词:出现在 commit 正文里,不代表"同一件事",
+                            # 别当共享标识符(否则造 nothing/external 之类垃圾标签与假边)。
+                            "absent", "abspath", "actively", "after", "alone", "already",
+                            "always", "another", "append", "before", "business", "candidates",
+                            "carry", "circuit", "cleaner", "collected", "common", "concatenating",
+                            "curated", "default", "defaults", "editable", "enable", "everyone",
+                            "exclude", "external", "guardian", "mentions", "nothing", "reviews",
+                            "scaffold", "search", "session", "stage", "suggests", "value"],
             "generic_ids_extra": [],
         },
     },

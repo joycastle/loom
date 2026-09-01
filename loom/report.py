@@ -88,6 +88,20 @@ def _tier(score, tiers):
     return "高" if score >= tiers["high"] else ("中" if score >= tiers["mid"] else "低")
 
 
+# 来源展示名(纯标签,非策略):把采集器内部名换成人看的词。未知源原样显示。
+_TOOL_LABEL = {"feishu_user": "飞书", "feishu": "飞书", "claude": "Claude",
+               "codex": "Codex", "cursor": "Cursor", "git": "git",
+               "codebuddy": "CodeBuddy", "opencode": "OpenCode", "pi": "pi"}
+
+
+def _coverage(items):
+    """本日素材按来源计数——写日报前的'对账清单',逼 AI 别只凭当前 session 记忆写。"""
+    from collections import Counter
+    c = Counter(e.get("tool") or "?" for e in items)
+    parts = [f"{_TOOL_LABEL.get(t, t)} {n}" for t, n in c.most_common()]
+    return parts, len(items)
+
+
 def _member_detail(m, by_id):
     """一条簇成员的证据行(带 ref 回链;ref 跟着 member 走,AI 只表达不编造)。"""
     e = by_id.get(m["id"], {})
@@ -125,6 +139,13 @@ def gen_material(cfg, date):
     singles = [c for c in clusters if c["singleton"]]
 
     L = [f"# {date} 原材料(已跨源聚类,供 AI 写日报)", ""]
+    parts, total = _coverage(items)
+    L.append(f"## 本日素材覆盖 · 共 {total} 条 · {' / '.join(parts)}")
+    L.append("> ⚠️ 写日报前先对账:**日报要覆盖上面每一个来源**,别只把你此刻正在用的那个 AI 会话"
+             "(不管是 Claude / Codex / Cursor,即你现在这个)总结进去。凡当前会话之外的来源"
+             "(git 提交 / 其它 AI 工具的会话 / 飞书),都要么在日报里有所体现,要么被明确判为"
+             "次要——不能因为不在你此刻的对话记忆里就漏掉。")
+    L.append("")
     L.append("## 重要度表(决定详略:高=展开,低=一句带过)")
     for c in multi:
         f = c["importance"]
@@ -159,12 +180,16 @@ def gen_material(cfg, date):
 
     L += ["---",
           "请基于以上**已聚类**的真实痕迹,以第一人称写这天的日报。写法(稳定 SOP):",
-          "1. 开头一句话总线(BLUF):今天最重要的一件事/结论。",
+          "1. 开头总线(BLUF):点出这天**并行的几条线**(常有 2~3 条,别硬压成'主线只有一件事');"
+          "重要度看'跨源多样 + 对本职的分量',**不是提交数量**——你此刻这个 AI 会话一直在干的事"
+          "(哪怕提交最多)也不天然是头条,别让 session 偏见带偏排序。",
           "2. 「今日工作与进度」:**按上面的簇、每簇写成一条**——先给结论(加粗),"
           "再跟 2~4 条带 ref 的证据(把同一件事的多源信号合并成一条,别拆开)。"
           "高优先簇≤5 个;没有 ref 证据支撑的结论要降级或标注「未见明确证据」。",
           "3. 次要的独立单条:合并成「其他事项:A、B、C」一句话带过,不逐条展开。",
           "4. 「今日思考」「明日计划」:只写材料里有依据的,不虚构。",
+          "5. 存回前对账:回到顶部「本日素材覆盖」,逐来源确认每个来源都已体现或已判次要——"
+          "尤其别漏掉当前会话之外的 git/Codex/飞书/其它 AI 会话。",
           f"写好存回:loom report set {date} --file <日报.md>(或管道 stdin)"]
     return "\n".join(L)
 
